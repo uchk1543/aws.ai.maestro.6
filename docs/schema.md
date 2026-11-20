@@ -40,6 +40,14 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 | `POST /api/chat` | `{"session_id","message"}` | `docs/examples/chat_response.json` |
 | `GET /api/documents?doc_type=<종류>&cursor=<다음 쪽>` | - | `docs/examples/documents.json` (문서 분류 내역, #143) |
 | `GET /api/jobs/{id}/files` | - | `docs/examples/job_files.json` (서류 보기: 원본 주소 + 읽은 칸, #156) |
+| `GET /api/jobs/{id}/notice?format=md\|html` | - | 불일치 통지 문서 내려받기 (F9 #155, 아직 없음. 문서 내용은 아래 `NoticeDocument`, 예시 `docs/examples/notice.json`, C7 #158) |
+
+불일치 통지 문서 (C7 #158. 모양은 `tools/models.py`의 `NoticeDocument`, 만드는 함수는 `tools/validate.py`의 `notice_document(job_id, docs, issues)`)
+- `subject`: `[불일치 확인 요청] B/L <번호> / 송장 <번호>`. 번호를 못 읽은 쪽은 빼고, 둘 다 없으면 작업 ID
+- `markdown`, `html`: 같은 내용의 본문 둘. 대상 서류(종류·파일 이름·서류 번호), 불일치와 확인 필요마다 규칙·근거 문장·짚은 칸(적힌 값)·확인 방법(`checked_by`). 참고는 뺀다. 불일치가 없으면 "불일치 없음" 한 줄
+- 요청 문장은 코드가 정한다: 불일치는 "정정한 서류를 다시 보내 주세요.", 확인 필요는 "원본 값을 확인해 주세요."
+- 맨 위에 "자동 생성 문서입니다. 사람이 검토한 뒤 보냅니다." 표시. 모델은 쓰지 않고, 서류에서 온 글자는 데이터로만 넣는다(마크다운·HTML 이스케이프, 한 줄 정리, 300자 상한)
+- `mismatch_count`, `check_count`: 본문에 담은 건수. 화면은 다시 세지 않는다
 
 서류 보기 (`GET /api/jobs/{id}/files`, F7 #156. 모양은 `tools/models.py`의 `JobFilesResponse`)
 - 서류마다 `url`(원본, 미리 서명된 GET 300초, inline), `content_type`. 화면은 PDF는 iframe, 이미지는 img로 띄운다
