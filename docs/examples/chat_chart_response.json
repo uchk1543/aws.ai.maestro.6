@@ -1,0 +1,64 @@
+{
+  "answer": "이번 달(11/1~11/30) 통관 지연은 수입자 2곳, 모두 3건입니다. 샘플무역이 2건으로 가장 많습니다. (통관 지연 기준: 입항 후 3일 지나도 수리·반출 아님)",
+  "filters": {
+    "status": "통관 지연",
+    "period": "this_month",
+    "date_from": null,
+    "date_to": null,
+    "unsupported": [],
+    "and_status": null,
+    "consignee": null,
+    "item": null,
+    "bl_no": null
+  },
+  "period_resolved": {
+    "from": "2026-11-01",
+    "to": "2026-11-30"
+  },
+  "rows": [
+    {
+      "bl_no": "BL-2026-0001",
+      "consignee": "샘플무역",
+      "item": "리튬이온 배터리팩",
+      "arrived_at": "2026-11-12",
+      "customs_status": "심사 중",
+      "last_event_at": "2026-11-13",
+      "job_id": "job-7c1e"
+    },
+    {
+      "bl_no": "BL-2026-0004",
+      "consignee": "샘플무역",
+      "item": "남성 셔츠",
+      "arrived_at": "2026-11-14",
+      "customs_status": "검사 중",
+      "last_event_at": "2026-11-15",
+      "job_id": null
+    },
+    {
+      "bl_no": "BL-2026-0007",
+      "consignee": "이그잼플유통",
+      "item": "운동화",
+      "arrived_at": "2026-11-17",
+      "customs_status": "수입신고",
+      "last_event_at": "2026-11-17",
+      "job_id": null
+    }
+  ],
+  "blocked": null,
+  "chart": {
+    "type": "bar",
+    "title": "이번 달(11/1~11/30) 수입자별 통관 지연",
+    "x_label": "수입자",
+    "y_label": "건수",
+    "points": [
+      {
+        "label": "샘플무역",
+        "value": 2
+      },
+      {
+        "label": "이그잼플유통",
+        "value": 1
+      }
+    ]
+  }
+}

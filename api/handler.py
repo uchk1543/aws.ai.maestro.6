@@ -280,7 +280,9 @@ class DynamoChatHistory:
     def put(self, line: ChatHistoryLine, expires_at: int) -> None:
         item = {"session_id": line.session_id, "ts": line.ts, "role": line.role, "text": line.text, "expires_at": expires_at}
         if line.filters is not None:
-            item["filters"] = line.filters.model_dump(mode="json")  # 칸 모두. 날짜는 'YYYY-MM-DD', 빈 칸은 NULL
+            # 칸 모두. 날짜는 'YYYY-MM-DD', 빈 칸은 NULL. 현황 Agent 칸(#257)은 값이 있을 때만 (옛 줄과 같은 모양)
+            filters = line.filters.model_dump(mode="json")
+            item["filters"] = {k: v for k, v in filters.items() if v is not None or k not in AGENT_FILTER_KEYS}
         for name in ("count", "rule", "blocked", "block_reason"):
             value = getattr(line, name)
             if value is not None:
@@ -324,6 +326,7 @@ def _whole(value) -> int | None:
     return int(value)
 
 
+AGENT_FILTER_KEYS = ("and_status", "consignee", "item", "bl_no")  # 현황 Agent만 쓰는 조회 칸 (#257)
 CHAT_DB_TIMEOUT_S = 2  # 대화 기록 연결·읽기 타임아웃. 기록은 답 뒤에 붙는 부가 일이라 짧게 (API Gateway 30초)
 CHAT_DB_ATTEMPTS = 2  # 재시도 1회 (team.md)
 CHAT_PUT_WORST_S = 2 * CHAT_DB_TIMEOUT_S * CHAT_DB_ATTEMPTS  # put_item 한 번이 가장 오래 걸리는 시간 (8초)
@@ -787,6 +790,8 @@ def chat(body) -> dict:
     반환: 200 ChatResponse / 400 요청 형식. 기록 저장이 실패해도 본문은 같은 200이다 ([warn] chat-history 로그만).
       답이 늦어 CHAT_DEADLINE_S 안에 기록을 끝낼 수 없으면 기록을 건너뛴다 (API Gateway 30초 안에 답한다).
       가드레일(E7 #152)은 answer 안에서 돈다. 막힌 답(ChatResponse.blocked)은 blocked true와 그 이유로 남긴다.
+      현황 Agent(#257, 환경 변수 QUERY_AGENT=1)를 켜면 같은 세션의 앞 대화 HISTORY_TURN_LINES줄과 작업·서류 읽기(HandlerJobs)를 넘긴다.
+      앞 대화를 못 읽으면 앞 대화 없이 답한다.
     """
     started = _monotonic()
     message = body.get("message") if isinstance(body, dict) else None
@@ -802,10 +807,62 @@ def chat(body) -> dict:
 
     question = message.strip()
     ms, tag = _now_ms(), _request_tag()
-    res = answer(question, session_id or "-", store=dynamo_shipments())
+    agent_on = os.environ.get("QUERY_AGENT") == "1"  # 현황 Agent (#257). 켰을 때만 앞 대화를 읽어 넘긴다
+    history = _recent_turns(session_id, ms) if agent_on and session_id is not None else None
+    res = answer(question, session_id or "-", store=dynamo_shipments(), jobs=HandlerJobs() if agent_on else None, history=history)
     if session_id is not None:
         _save_turn(session_id, ms, tag, question, res, started)
     return _response(200, res.model_dump(mode="json", by_alias=True))
+
+
+HISTORY_TURN_LINES = 6  # 현황 Agent에 넘기는 앞 대화 줄 수 (질문·답 3턴, #257)
+
+
+def _recent_turns(session_id: str, ms: int) -> list[ChatHistoryLine]:
+    """현황 Agent에 넘길 같은 세션의 앞 대화 (오래된 순). 읽기 실패는 빈 목록 ([warn] 로그만, 답은 계속한다)."""
+    try:
+        return _chat_store().recent(session_id, HISTORY_TURN_LINES, ms // 1000)
+    except Exception as exc:
+        print(f"[warn] chat-history session={session_id} 앞 대화 못 읽음 {type(exc).__name__}: {exc}")
+        return []
+
+
+class HandlerJobs:
+    """현황 Agent의 작업·서류 읽기 (#257, tools.query.JobSource). GET /jobs/{id}·GET /jobs·GET /documents와 같은 코드. 읽기만 한다.
+
+    작업 줄 Scan은 질문 하나에 한 번만 한다 (find_jobs·list_documents가 함께 써도). 깨진 줄은 건너뛴다.
+    """
+
+    def __init__(self):
+        self._items: list[dict] | None = None
+
+    def _all(self) -> list[dict]:
+        if self._items is None:
+            self._items = sorted(
+                _scan_jobs(), key=lambda i: int(i.get("created_at") or i.get("updated_at") or 0), reverse=True
+            )
+        return self._items
+
+    def job(self, job_id: str) -> Job | None:
+        return load_job(job_id) if JOB_ID.match(job_id) else None
+
+    def jobs(self) -> list[JobSummary]:
+        rows = []
+        for item in self._all():
+            try:
+                rows.append(job_summary(item))
+            except Exception as exc:
+                print(f"[warn] chat jobs job={item.get('job_id')} 건너뜀: {type(exc).__name__}: {exc}")
+        return rows
+
+    def documents(self) -> list[DocumentRecord]:
+        records = []
+        for item in self._all():
+            try:
+                records += job_documents(item)
+            except Exception as exc:
+                print(f"[warn] chat documents job={item.get('job_id')} 건너뜀: {type(exc).__name__}: {exc}")
+        return records
 
 
 def _session_ok(value) -> bool:
@@ -816,14 +873,15 @@ def _session_ok(value) -> bool:
 def _queried(filters: ChatFilters) -> bool:
     """answer가 실제로 화물 기록을 조회했는지 응답 조건으로 가린다 (agent/query_agent.py answer의 분기와 같다).
 
-    조회하지 않는 답: 못 담는 조건(unsupported)이 있음, 상태·기간이 모두 없음(되묻기·조건을 못 만듦),
+    조회하지 않는 답: 못 담는 조건(unsupported)이 있음, 조건(상태·기간, #257의 그중 상태·수입자·품명·B/L)이 모두 없음(되묻기·조건을 못 만듦),
     상태가 화물 기록 값 목록에 없음. 조회했으면 응답 상태는 값 목록의 표기로 맞춰져 있다.
     """
     from agent.query_agent import STATUSES
 
-    if filters.unsupported or not (filters.status or filters.period):
+    conditions = (filters.status, filters.period, filters.and_status, filters.consignee, filters.item, filters.bl_no)
+    if filters.unsupported or not any(conditions):
         return False
-    return filters.status is None or filters.status in (*STATUSES, DELAY_STATUS)
+    return all(s is None or s in (*STATUSES, DELAY_STATUS) for s in (filters.status, filters.and_status))
 
 
 def _reply_fields(res: ChatResponse) -> dict:
@@ -836,7 +894,7 @@ def _reply_fields(res: ChatResponse) -> dict:
         return {"blocked": True, "block_reason": res.blocked}
     if not _queried(res.filters):
         return {"filters": res.filters, "blocked": False}
-    rule = DELAY_RULE if res.filters.status == DELAY_STATUS else None
+    rule = DELAY_RULE if DELAY_STATUS in (res.filters.status, res.filters.and_status) else None
     return {"filters": res.filters, "count": len(res.rows), "rule": rule, "blocked": False}
 
 

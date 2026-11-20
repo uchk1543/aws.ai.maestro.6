@@ -16,11 +16,12 @@ def today_kst() -> str:
     return datetime.now(KST).date().isoformat()
 
 
-def make_model():
+def make_model(read_timeout: int = 120):
     """Bedrock 모델 객체를 만든다.
 
     언제: Strands Agent를 만들 때.
-    받는 것: 없음. 환경 변수 MODEL_ID(필수), MAX_TOKENS(기본 8000), AWS_REGION(기본 ap-northeast-2).
+    받는 것: read_timeout(읽기 타임아웃 초. 기본 120 = 서류 한 장 판독. 현황 Agent는 API Gateway 30초 때문에 짧게, #257).
+      환경 변수 MODEL_ID(필수), MAX_TOKENS(기본 8000), AWS_REGION(기본 ap-northeast-2).
     반환: strands BedrockModel.
     temperature 등 샘플링 값은 넣지 않는다 (Claude 5.5 계열에서 오류, agent-design.md 10번).
     """
@@ -35,7 +36,7 @@ def make_model():
         region_name=REGION,
         max_tokens=int(os.environ.get("MAX_TOKENS", "8000")),
         # 읽기 타임아웃은 서류 한 장 판독 시간을 고려해 넉넉히, 재시도는 1회
-        boto_client_config=Config(read_timeout=120, connect_timeout=5, retries={"max_attempts": 2, "mode": "standard"}),
+        boto_client_config=Config(read_timeout=read_timeout, connect_timeout=5, retries={"max_attempts": 2, "mode": "standard"}),
     )
 
 

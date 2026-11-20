@@ -3,11 +3,13 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import historyExample from "../../../docs/examples/chat_history.json";
+import chatChartExample from "../../../docs/examples/chat_chart_response.json";
 import chatExample from "../../../docs/examples/chat_response.json";
 import * as api from "../api";
 import { renderWithQuery } from "../test-utils";
 import type { ChatHistoryResponse, ChatResponse } from "../types";
-import { ChatPage, chatSessionId, describeFilters, EXAMPLES, historyToMessages } from "./ChatPage";
+import { ticks } from "../components/ChatChart";
+import { CHAT_NOTE, ChatPage, chatSessionId, describeFilters, EXAMPLES, historyToMessages } from "./ChatPage";
 
 vi.mock("../api", async (importOriginal) => {
   const real = await importOriginal<typeof import("../api")>();
@@ -214,9 +216,70 @@ describe("describeFilters", () => {
     expect(last.role === "assistant" && last.response.blocked).toBe("무관한 질문");
   });
 
-  it("입력칸 아래에 질문마다 따로 답한다는 안내를 둔다 (서버는 앞 질문을 기억하지 않는다, FB09)", () => {
+  it("입력칸 아래에 앞 질문을 이어 물을 수 있다는 안내를 둔다 (#257 현황 Agent)", () => {
     renderWithQuery(<ChatPage />);
-    const note = screen.getByText("질문마다 따로 답합니다. 조건을 한 문장에 모두 적어 주세요");
+    const note = screen.getByText(CHAT_NOTE);
+    expect(note).toHaveTextContent("이어 물을 수 있습니다");
     expect(screen.getByRole("textbox", { name: "질문" })).toHaveAccessibleDescription(note.textContent!);
+  });
+
+  it("그래프는 서버 값 그대로 그리고, 아래에 같은 값의 표를 둔다 (#257)", async () => {
+    const user = userEvent.setup();
+    const res = chatChartExample as ChatResponse;
+    vi.mocked(api.sendChat).mockResolvedValue(res);
+    renderWithQuery(<ChatPage />);
+
+    await user.click(screen.getByRole("button", { name: EXAMPLES[3] }));
+    const figure = await screen.findByRole("figure", { name: `${res.chart!.title} 막대그래프` });
+    const table = within(figure).getByRole("table");
+    expect(within(table).getAllByRole("row").map((r) => r.textContent)).toEqual(["수입자건수", "샘플무역2", "이그잼플유통1"]);
+    expect(figure.querySelectorAll("rect.chart-bar")).toHaveLength(2);
+    // 조건 칩에 이번 달 기간
+    const conds = within(screen.getByRole("list", { name: "조회 조건" })).getAllByRole("listitem");
+    expect(conds.map((c) => c.textContent)).toEqual(["상태: 통관 지연", "기간: 이번 달 (2026-11-01 ~ 2026-11-30)", "3건"]);
+  });
+
+  it("선·원 그래프도 그린다. 그래프가 없는 답에는 그리지 않는다", async () => {
+    const user = userEvent.setup();
+    const base = chatChartExample as ChatResponse;
+    vi.mocked(api.sendChat)
+      .mockResolvedValueOnce({ ...base, chart: { ...base.chart!, type: "line" } })
+      .mockResolvedValueOnce({ ...base, chart: { ...base.chart!, type: "pie" } })
+      .mockResolvedValueOnce(example);
+    renderWithQuery(<ChatPage />);
+
+    await user.click(screen.getByRole("button", { name: EXAMPLES[3] }));
+    const line = await screen.findByRole("figure", { name: /선 그래프$/ });
+    expect(line.querySelector("path.chart-line")).not.toBeNull();
+    await user.click(screen.getByRole("button", { name: EXAMPLES[3] }));
+    const pie = await screen.findByRole("figure", { name: /원 그래프$/ });
+    expect(pie.querySelectorAll("path.chart-slice")).toHaveLength(2);
+    await user.click(screen.getByRole("button", { name: EXAMPLES[0] }));
+    await screen.findByText(example.answer);
+    expect(screen.getAllByRole("figure")).toHaveLength(2);
+  });
+
+  it("답에 작업 ID 가 있고 표에 없으면 작업 화면으로 가는 버튼을 둔다 (#257 get_job)", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.sendChat).mockResolvedValue({
+      answer: "작업 job-1a2b3c4d에서 불일치 1건이 있었습니다.",
+      filters: { status: null, period: null },
+      period_resolved: null,
+      rows: [],
+      blocked: null,
+      chart: null,
+    });
+    window.location.hash = "#/chat";
+    renderWithQuery(<ChatPage />);
+
+    await user.click(screen.getByRole("button", { name: EXAMPLES[0] }));
+    await user.click(await screen.findByRole("button", { name: /작업 화면 열기 · job-1a2b3c4d/ }));
+    expect(window.location.hash).toBe("#/jobs/job-1a2b3c4d");
+  });
+
+  it("ticks 는 0 부터 최댓값을 덮는 정수 눈금", () => {
+    expect(ticks(0)).toEqual([0]);
+    expect(ticks(3)).toEqual([0, 1, 2, 3]);
+    expect(ticks(11)).toEqual([0, 3, 6, 9, 12]);
   });
 });

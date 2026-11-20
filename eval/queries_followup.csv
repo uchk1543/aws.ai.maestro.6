@@ -1,0 +1,6 @@
+pair_id,first,first_args,first_count,second,second_args,second_count
+F01,이번 주 통관 지연 건은?,"{""status"": ""통관 지연"", ""period"": ""this_week""}",3,그중에 검사 중인 건은?,"{""status"": ""통관 지연"", ""period"": ""this_week"", ""and_status"": ""검사 중""}",2
+F02,지난주에 통관 지연된 화물 있어?,"{""status"": ""통관 지연"", ""period"": ""last_week""}",8,그중 수입신고 단계인 건?,"{""status"": ""통관 지연"", ""period"": ""last_week"", ""and_status"": ""수입신고""}",2
+F03,이번 달 입항한 화물 몇 건이야?,"{""period"": ""this_month""}",56,그중 심사 중인 건은?,"{""period"": ""this_month"", ""status"": ""심사 중""}",4
+F04,지금 통관 지연 화물 전부 보여줘,"{""status"": ""통관 지연""}",13,그중 샘플푸드코리아 건만,"{""status"": ""통관 지연"", ""consignee"": ""샘플푸드코리아""}",4
+F05,오늘 입항한 화물 몇 건이야?,"{""period"": ""today""}",7,그중 아직 입항 상태인 건?,"{""period"": ""today"", ""status"": ""입항""}",3
