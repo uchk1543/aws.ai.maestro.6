@@ -8,13 +8,14 @@ CloudFront가 /api/*를 API Gateway로 보내고, rawPath에 /api가 붙어 온�
     GET  /api/jobs/{id}      → Job                     (화면이 2초마다)
     POST /api/jobs/{id}/hs   → {"declaration_draft"}   (C3, 사람이 고른 HS 반영. D2: 조건을 채우면 WMS 자동 등록)
     POST /api/jobs/{id}/approve → {"wms"}              (D3, 사람 승인으로 WMS 등록. 불일치가 남았으면 409)
-    POST /api/chat           → ChatResponse            (E5, 현황 조회. 1번 agent.query_agent)
+    POST /api/chat           → ChatResponse            (E5, 현황 조회. 1번 agent.query_agent. E6: session_id가 있으면 질문·답을 team06-chat에, 7일 보존)
     GET  /api/documents?doc_type=…&cursor=… → DocumentsResponse (G10 #143, 문서 분류 내역. team06-jobs Scan)
     GET  /api/jobs/{id}/files → JobFilesResponse        (F7 #156, 서류 보기: 원본 주소 + 읽은 칸)
+    GET  /api/chat/{id}      → {"messages"}            (E6 #157, 대화 기록 최근 50줄 오래된 순)
 서류 처리(run_job)는 처리 Lambda team06-worker(api/worker.py)가 한다. API Gateway는 요청 하나를 30초 안에 끝내야 한다.
 
 환경 변수: JOBS_TABLE(team06-jobs), DOCS_BUCKET(team06-docs-...), MODEL_ID, HS_HISTORY_TABLE(team06-hs-history),
-WMS_TABLE(team06-wms), SHIPMENTS_TABLE(team06-shipments), WORKER_FUNCTION(team06-worker, API Lambda에만)
+WMS_TABLE(team06-wms), SHIPMENTS_TABLE(team06-shipments), CHAT_TABLE(team06-chat), WORKER_FUNCTION(team06-worker, API Lambda에만)
 """
 
 import base64
@@ -24,6 +25,7 @@ import re
 import time
 import unicodedata
 import uuid
+from datetime import datetime, timedelta, timezone
 from functools import cache
 
 from botocore.exceptions import BotoCoreError, ClientError
@@ -33,6 +35,9 @@ from tools import declaration, hs, report, wms
 from tools.models import (
     DOC_TYPE_KO,
     Cell,
+    ChatHistoryLine,
+    ChatHistoryResponse,
+    ChatResponse,
     DeclarationDraft,
     DocPage,
     DocType,
@@ -47,7 +52,7 @@ from tools.models import (
     Step,
     WmsState,
 )
-from tools.query import dynamo_shipments
+from tools.query import DELAY_RULE, DELAY_STATUS, dynamo_shipments
 
 ALLOWED_DOC_TYPES = {"commercial_invoice", "packing_list", "bill_of_lading", "certificate_of_origin"}  # 약속 1의 4종 (#129)
 JOB_ID = re.compile(r"^job-[0-9a-f]{8}$")
@@ -232,6 +237,74 @@ def _hs_known(code: str) -> bool:
     TODO(#164): 2번이 tools/hs.py에 표 확인 함수를 만들면 그 함수로 바꾼다. 지금은 이미 있는 CsvHSTable.exists를 쓴다.
     """
     return _hs_table().exists(code)
+
+
+class DynamoChatHistory:
+    """대화 기록(team06-chat)의 DynamoDB판. 키: session_id(파티션) + ts(정렬). 칸: infra/README.md "테이블" + block_reason.
+
+    한 줄 = 최상위 칸 session_id, ts, role, text, expires_at(초, TTL 7일). 답 줄은 blocked와
+    값이 있는 filters(map)·count·rule·block_reason을 더한다. null은 칸을 쓰지 않는다.
+    읽을 때 count(Decimal)는 int로, 없는 칸은 null로 되돌린다. 형식: docs/schema.md 약속 2.
+    """
+
+    def __init__(self, table):
+        self.table = table
+
+    def put(self, line: ChatHistoryLine, expires_at: int) -> None:
+        item = {"session_id": line.session_id, "ts": line.ts, "role": line.role, "text": line.text, "expires_at": expires_at}
+        if line.filters is not None:
+            item["filters"] = line.filters.model_dump(mode="json")  # 칸 모두. 날짜는 'YYYY-MM-DD', 빈 칸은 NULL
+        for name in ("count", "rule", "blocked", "block_reason"):
+            value = getattr(line, name)
+            if value is not None:
+                item[name] = value
+        self.table.put_item(Item=item)
+
+    def recent(self, session_id: str, limit: int, now_s: int) -> list[ChatHistoryLine]:
+        """ts가 가장 큰 limit줄에서 만료된 줄(expires_at ≤ now_s)을 빼고 오래된 순으로. Query 한 번(내림차순 + Limit) 뒤 뒤집는다.
+
+        TTL은 만료 뒤 바로 지우지 않아서(며칠 안) 그 전에는 Query에 나온다. 그래서 여기서 뺀다.
+        """
+        from boto3.dynamodb.conditions import Key
+
+        page = self.table.query(
+            KeyConditionExpression=Key("session_id").eq(session_id), ScanIndexForward=False, Limit=limit
+        )
+        return [_history_line(item) for item in reversed(page.get("Items", [])) if not _expired(item, now_s)]
+
+
+def _expired(item: dict, now_s: int) -> bool:
+    """expires_at이 지금 초 이하면 만료. expires_at이 없는 줄(손으로 넣은 줄 등)은 만료로 보지 않는다."""
+    expires_at = item.get("expires_at")
+    return expires_at is not None and expires_at <= now_s
+
+
+def _history_line(item: dict) -> ChatHistoryLine:
+    """team06-chat 한 줄 → ChatHistoryLine. 없는 칸은 null, count는 int, filters는 ChatFilters. 맞지 않으면 예외 (GET 502)."""
+    return ChatHistoryLine(
+        session_id=item["session_id"], ts=item["ts"], role=item["role"], text=item["text"],
+        filters=item.get("filters"), count=_whole(item.get("count")), rule=item.get("rule"),
+        blocked=item.get("blocked"), block_reason=item.get("block_reason"),
+    )
+
+
+def _whole(value) -> int | None:
+    """DynamoDB 숫자(Decimal) → int. 소수가 있거나 숫자가 아니면 ValueError."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or value != int(value):
+        raise ValueError(f"count가 정수가 아닙니다: {value!r}")
+    return int(value)
+
+
+@cache
+def _chat_store() -> DynamoChatHistory:
+    name = os.environ["CHAT_TABLE"]  # 먼저 읽는다. 없으면 boto3를 만들기 전에 KeyError
+    import boto3
+    from botocore.config import Config
+
+    config = Config(connect_timeout=5, read_timeout=5, retries={"max_attempts": 2})
+    return DynamoChatHistory(boto3.resource("dynamodb", config=config).Table(name))
 
 
 # ---------------------------------------------------------------------------
@@ -581,13 +654,48 @@ def approve_job(job_id: str, body) -> dict:
 
 
 MAX_QUESTION = 500  # 현황 질문 길이 한도
+SESSION_ID = re.compile(r"[A-Za-z0-9-]{1,64}")  # fullmatch로 쓴다. '$'는 끝 줄바꿈 앞에서도 맞는다
+SESSION_ID_ERROR = "session_id는 영문·숫자·-로 64자까지입니다"
+HISTORY_LIMIT = 50  # GET /chat/{session_id}가 읽는 줄 수 (Turn이 아니라 줄)
+HISTORY_ERROR = "대화 기록을 불러오지 못했습니다"
+CHAT_TTL_SECONDS = 7 * 24 * 60 * 60  # 604800. team06-chat expires_at (infra/create.sh가 TTL을 켰다)
+
+KST_OFFSET = timezone(timedelta(hours=9))  # 한국 시간. 1988년 뒤 서머타임이 없어 고정 +9 (ts 글자 순서 = 시간 순서)
+_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+TS_MS_MAX = 253_402_268_400_000  # 한국 시간 10000-01-01 00:00. 이보다 작아야 연도가 네 자리
+
+
+def kst_stamp(ms: int) -> str:
+    """UTC 유닉스 밀리초(0 ≤ ms < TS_MS_MAX) → 한국 시간 'YYYYMMDDHHMMSSmmm' 17자리 (infra/README.md team06-chat ts).
+
+    datetime.fromtimestamp는 Windows에서 3000년 뒤 값에 OSError를 내서 epoch에 더해 계산한다.
+    """
+    t = (_EPOCH + timedelta(milliseconds=ms)).astimezone(KST_OFFSET)
+    return t.strftime("%Y%m%d%H%M%S") + f"{ms % 1000:03d}"
+
+
+def history_ts(ms: int, tag: str, order: int) -> str:
+    """기록 줄 정렬 키 '<kst_stamp(ms)>#<tag>#<order>'. tag: 16진수 8자리, order: 0 질문 · 1 답."""
+    return f"{kst_stamp(ms)}#{tag}#{order}"
+
+
+def _now_ms() -> int:
+    """지금 UTC 유닉스 밀리초. 테스트가 바꿔 끼운다."""
+    return time.time_ns() // 1_000_000
+
+
+def _request_tag() -> str:
+    """요청마다 새 16진수 8자리. 같은 밀리초의 두 요청이 같은 ts로 덮어쓰지 않게 한다."""
+    return uuid.uuid4().hex[:8]
 
 
 def chat(body) -> dict:
-    """POST /chat. 현황 질문에 답한다 (E5, 1번 agent.query_agent). 형식: docs/examples/chat_response.json
+    """POST /chat. 현황 질문에 답하고, session_id가 있으면 질문·답 한 줄씩 7일 남긴다 (E5·E6 #157). 형식: docs/schema.md 약속 2
 
-    받는 것: {"session_id", "message"}. message는 비지 않은 글자 500자까지, session_id는 글자(없으면 '-').
-    반환: 200 ChatResponse / 400 요청 형식. 조회·건수는 코드가 하고 모델은 질문을 조건으로만 바꾼다.
+    받는 것: {"session_id", "message"}. message는 비지 않은 글자 500자까지.
+      session_id는 영문·숫자·-로 1~64자. 칸이 없거나 null이면 답만 하고 기록은 남기지 않는다 (Query_Agent에는 '-').
+    반환: 200 ChatResponse / 400 요청 형식. 기록 저장이 실패해도 본문은 같은 200이다 ([warn] chat-history 로그만).
+      가드레일(E7 #152)은 answer 안에서 돈다. 막힌 답(ChatResponse.blocked)은 blocked true와 그 이유로 남긴다.
     """
     message = body.get("message") if isinstance(body, dict) else None
     session_id = body.get("session_id") if isinstance(body, dict) else None
@@ -595,13 +703,71 @@ def chat(body) -> dict:
         return _error(400, "message가 비어 있습니다")
     if len(message) > MAX_QUESTION:
         return _error(400, f"message는 {MAX_QUESTION}자까지입니다")
-    if session_id is not None and not isinstance(session_id, str):
-        return _error(400, "session_id는 글자입니다")
+    if session_id is not None and not _session_ok(session_id):
+        return _error(400, SESSION_ID_ERROR)
     from agent.query_agent import answer
     from tools.query import dynamo_shipments
 
-    res = answer(message.strip(), session_id or "-", store=dynamo_shipments())
+    question = message.strip()
+    ms, tag = _now_ms(), _request_tag()
+    res = answer(question, session_id or "-", store=dynamo_shipments())
+    if session_id is not None:
+        _save_turn(session_id, ms, tag, question, res)
     return _response(200, res.model_dump(mode="json", by_alias=True))
+
+
+def _session_ok(value) -> bool:
+    return isinstance(value, str) and SESSION_ID.fullmatch(value) is not None
+
+
+def _reply_fields(res: ChatResponse) -> dict:
+    """답 줄의 filters·count·rule·blocked·block_reason. 막힌 답이면 이유만, 그 밖은 조건·건수·규칙."""
+    if res.blocked is not None:  # E7: 막으면 모델·조회 없이 정해 둔 답과 이유를 준다
+        return {"blocked": True, "block_reason": res.blocked}
+    # 규칙 문장은 통관 지연으로 조회했을 때만. 못 담는 조건(unsupported)이 있으면 조회하지 않았다 (#165)
+    delayed = res.filters.status == DELAY_STATUS and not res.filters.unsupported
+    return {"filters": res.filters, "count": len(res.rows), "rule": DELAY_RULE if delayed else None, "blocked": False}
+
+
+def _save_turn(session_id: str, ms: int, tag: str, question: str, res: ChatResponse) -> None:
+    """한 Turn의 질문 줄(#0)과 답 줄(#1)을 같은 expires_at(요청 초 + 7일)으로 남긴다. 예외를 내지 않는다 (기록은 부가 기능).
+
+    저장소를 못 만들거나 줄을 못 만들면 둘 다 건너뛴다. 질문 줄 쓰기가 실패해도 답 줄은 쓴다.
+    """
+    expires_at = ms // 1000 + CHAT_TTL_SECONDS
+    try:
+        store = _chat_store()
+        lines = [
+            ChatHistoryLine(session_id=session_id, ts=history_ts(ms, tag, 0), role="user", text=question),
+            ChatHistoryLine(
+                session_id=session_id, ts=history_ts(ms, tag, 1), role="assistant", text=res.answer, **_reply_fields(res)
+            ),
+        ]
+    except Exception as exc:
+        print(f"[warn] chat-history session={session_id} 기록 못 함 {type(exc).__name__}: {exc}")
+        return
+    for line in lines:
+        try:
+            store.put(line, expires_at)
+        except Exception as exc:
+            print(f"[warn] chat-history session={session_id} role={line.role} 저장 실패 {type(exc).__name__}: {exc}")
+
+
+def get_chat_history(session_id) -> dict:
+    """GET /chat/{session_id}. 그 세션의 최근 HISTORY_LIMIT줄에서 만료된 줄을 빼고 오래된 순으로 (E6 #157). 형식: docs/examples/chat_history.json
+
+    반환: 200 ChatHistoryResponse (expires_at 없음) / 400 session_id 형식 (테이블을 읽지 않는다) / 502 읽기 실패.
+      저장소를 못 만들거나(CHAT_TABLE 없음) 저장된 줄이 모델과 맞지 않아도 502다.
+    """
+    if not _session_ok(session_id):
+        return _error(400, SESSION_ID_ERROR)
+    try:
+        lines = _chat_store().recent(session_id, HISTORY_LIMIT, _now_ms() // 1000)
+    except Exception as exc:
+        print(f"[error] chat-history session={session_id} {type(exc).__name__}: {exc}")
+        return _error(502, HISTORY_ERROR)
+    print(f"[api] chat-history session={session_id} lines={len(lines)}")
+    return _response(200, ChatHistoryResponse(messages=lines).model_dump(mode="json"))
 
 
 # ---------------------------------------------------------------------------
@@ -843,6 +1009,8 @@ def lambda_handler(event, context):
         if method == "GET" and path.startswith("/jobs/") and path.count("/") == 2:
             return get_job(path.split("/")[2])
         parts = path.split("/")
+        if method == "GET" and len(parts) == 3 and parts[1] == "chat":
+            return get_chat_history(parts[2])
         if method == "GET" and len(parts) == 4 and parts[1] == "jobs" and parts[3] == "files":
             return job_files(parts[2])
         if method == "POST" and len(parts) == 4 and parts[1] == "jobs" and parts[3] == "hs":
