@@ -85,7 +85,12 @@ export function DocViewer({
           const onPage = boxes.filter((b) => b.mark.page === pageNo);
           const open = onPage.find((b) => b.id === activeId && closedId !== b.id) ?? null;
           return (
-            <figure key={pageNo} className="viewer-page" style={{ aspectRatio: `${page.width} / ${page.height}` }}>
+            <figure
+              key={pageNo}
+              className="viewer-page"
+              // --ar: 가로/세로. 쓸 수 있는 높이(--fit-h)가 정해진 곳에서는 그 높이에 맞춰 너비를 줄인다 (한 화면에 한 쪽이 다 보이게)
+              style={{ aspectRatio: `${page.width} / ${page.height}`, "--ar": page.width / page.height } as CSSProperties}
+            >
               <img src={page.url} alt={`${file.file_name} ${pageNo}쪽`} />
               {onPage.map((b) => {
                 const active = b.id === activeId;

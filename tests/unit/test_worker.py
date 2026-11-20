@@ -18,11 +18,41 @@ import tools.wms as wms
 from tests.unit.fakes import MemoryHSHistory, MemoryWms
 from tests.unit.test_report_shipment import TODAY, MemoryWriter
 from tools.models import (
-    Cell, DeclarationDraft, ExtractedDocument, HSResult, Issue, Job, JobResult, Shipment, Step, WmsState,
+    Cell, DeclarationDraft, ExtractedDocument, HSResult, Issue, Job, JobResult, OcrLine, OcrResult, Shipment, Step, WmsState,
 )
+from tools.ocr import PageImage
 
 JOB = "job-0000f003"
 FILES = [{"key": "uploads/s1/invoice.pdf", "doc_type": "commercial_invoice"}]
+OCR_TOTALS: dict[str, str] = {}
+
+@pytest.fixture(autouse=True)
+def ocr(monkeypatch):
+    """Textract·PDF 그리기·S3 쓰기 대신 (F10 #188). PDF는 한 쪽 그림(가짜)을 만들고, OCR 은 서류마다 줄을 돌려준다.
+
+    반환: 부른 기록 {"ocr": [키], "stored": {S3 키: 형식}}.
+    """
+    seen = {"ocr": [], "stored": {}}
+
+    def fake_render(data, *, max_pages=None):
+        return [PageImage(data=b"jpeg-page-1", width=1240, height=1754)]
+
+    def fake_ocr(key, data, *, client=None, pages=None):
+        seen["ocr"].append(key)
+        name = key.rsplit("/", 1)[-1]
+        lines = [
+            OcrLine(page=1, text="COMMERCIAL INVOICE", bbox=(0.25, 0.05, 0.5, 0.04)),
+            OcrLine(page=1, text="Invoice No. INV-2026-001", bbox=(0.1, 0.15, 0.5, 0.02)),
+        ]
+        if name in OCR_TOTALS:
+            lines.append(OcrLine(page=1, text=OCR_TOTALS[name], bbox=(0.8, 0.34, 0.12, 0.02)))
+        return OcrResult(file=key, lines=lines)
+
+    monkeypatch.setattr(worker, "render_pages", fake_render)
+    monkeypatch.setattr(worker, "ocr_document", fake_ocr)
+    monkeypatch.setattr(handler, "store_object", lambda key, data, content_type: seen["stored"].__setitem__(key, content_type))
+    return seen
+
 
 
 @pytest.fixture(autouse=True)
@@ -99,7 +129,8 @@ def test_queued_job_runs_and_saves_progress(table, monkeypatch):
 
     assert seen == {"job_id": JOB, "files": FILES, "data": FILES[0]["key"].encode()}
     assert statuses(table) == ["running", "running", "running", "done"]
-    assert [len(j.steps) for j in table.puts] == [0, 1, 2, 2]
+    assert [len(j.steps) for j in table.puts] == [0, 1, 2, 3]  # 마지막 저장에 OCR 단계 한 줄 (F10)
+    assert saved(table).steps[-1].tool == "ocr_document" and saved(table).steps[-1].ok
     assert saved(table).result == JobResult()
 
 
@@ -116,7 +147,7 @@ def test_run_job_crash_is_failed_and_keeps_steps(table, monkeypatch):
     assert worker.lambda_handler({"job_id": JOB, "files": FILES}, None) == {"job_id": JOB, "status": "failed"}
     job = saved(table)
     assert (job.status, job.error) == ("failed", "RuntimeError: 터짐")
-    assert [s.tool for s in job.steps] == ["read_document"]
+    assert [s.tool for s in job.steps] == ["read_document", "ocr_document"]
 
 
 @pytest.mark.parametrize("status", ["waiting_approval", "done", "failed"])
@@ -409,6 +440,138 @@ def test_other_columns_of_the_row_are_kept(table, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Textract OCR 매번 호출, PDF 쪽 그림 (F10 #188)
+# ---------------------------------------------------------------------------
+def done_run_job(job_id, files, fetch, **_):
+    return Job(job_id=job_id, status="done", result=JobResult())
+
+
+def test_every_file_is_ocred_and_pdf_pages_are_stored(table, monkeypatch, ocr):
+    put_job(table)
+    files = [*FILES, {"key": "uploads/s1/scan.jpg", "doc_type": None}]
+    monkeypatch.setattr(document_agent, "run_job", done_run_job)
+
+    worker.lambda_handler({"job_id": JOB, "files": files}, None)
+
+    assert sorted(ocr["ocr"]) == sorted(f["key"] for f in files)
+    item = table.items[JOB]
+    saved_ocr = json.loads(item["ocr"])
+    assert set(saved_ocr) == {f["key"] for f in files}
+    assert OcrResult.model_validate(saved_ocr["uploads/s1/scan.jpg"]).lines[0].text == "COMMERCIAL INVOICE"
+    # PDF만 쪽 그림을 그려 원본 옆에 둔다. 이미지는 원본을 그대로 쓴다
+    assert ocr["stored"] == {"uploads/s1/invoice.pdf.p1.jpg": "image/jpeg"}
+    assert json.loads(item["pages"]) == {"uploads/s1/invoice.pdf": [{"key": "uploads/s1/invoice.pdf.p1.jpg", "width": 1240, "height": 1754}]}
+
+
+def test_ocr_failure_skips_only_that_file(table, monkeypatch):
+    put_job(table)
+
+    def flaky(key, data, *, client=None, pages=None):
+        if key.endswith("scan.jpg"):
+            raise TimeoutError("Textract 5초")
+        return OcrResult(file=key, lines=[])
+
+    monkeypatch.setattr(worker, "ocr_document", flaky)
+    monkeypatch.setattr(document_agent, "run_job", done_run_job)
+
+    files = [*FILES, {"key": "uploads/s1/scan.jpg", "doc_type": None}]
+    assert worker.lambda_handler({"job_id": JOB, "files": files}, None)["status"] == "done"
+    assert set(json.loads(table.items[JOB]["ocr"])) == {FILES[0]["key"]}
+    step = saved(table).steps[-1]
+    assert (step.tool, step.ok) == ("ocr_document", False) and "1/2장" in step.summary
+
+
+def test_broken_pdf_render_skips_ocr_for_that_file(table, monkeypatch):
+    put_job(table)
+
+    def broken(data, *, max_pages=None):
+        raise ValueError("깨진 PDF")
+
+    monkeypatch.setattr(worker, "render_pages", broken)
+    monkeypatch.setattr(document_agent, "run_job", done_run_job)
+
+    assert worker.lambda_handler({"job_id": JOB, "files": FILES}, None)["status"] == "done"
+    assert "ocr" not in table.items[JOB] and "pages" not in table.items[JOB]
+
+
+def test_rereader_gets_that_files_ocr(table, monkeypatch):
+    """다시 확인은 그 서류의 OCR 결과를 두 번째 근거로 받는다 (agent-design.md 4번)."""
+    put_job(table)
+    got = {}
+
+    def fake_reread(doc, field, data, *, ocr=None, **_):
+        got.update(file=doc.file, ocr=ocr)
+
+    monkeypatch.setattr(worker, "reread_field", fake_reread)
+
+    def fake_run_job(job_id, files, fetch, *, rereader=None, **_):
+        rereader(ExtractedDocument(doc_type="commercial_invoice", file=files[0]["key"]), "total_gross_kg", b"pdf")
+        return Job(job_id=job_id, status="done", result=JobResult())
+
+    monkeypatch.setattr(document_agent, "run_job", fake_run_job)
+    worker.lambda_handler({"job_id": JOB, "files": FILES}, None)
+
+    assert got["file"] == FILES[0]["key"] and got["ocr"].lines[0].text == "COMMERCIAL INVOICE"
+
+
+
+def test_ocr_wait_is_capped_and_job_still_finishes(table, monkeypatch):
+    """OCR 이 상한 안에 끝나지 않으면 그 서류는 OCR 없이 진행하고 작업은 끝난다 (#194 리뷰: running 으로 남지 않게)."""
+    import threading
+
+    put_job(table)
+    release = threading.Event()
+
+    def slow(key):
+        release.wait(5)
+        return None, []
+
+    monkeypatch.setattr(worker, "ocr_one", slow)
+    monkeypatch.setattr(worker, "OCR_WAIT_SECONDS", 0.05)
+    monkeypatch.setattr(document_agent, "run_job", done_run_job)
+    try:
+        assert worker.lambda_handler({"job_id": JOB, "files": FILES}, None)["status"] == "done"
+    finally:
+        release.set()
+    step = next(s for s in saved(table).steps if s.tool == "ocr_document")
+    assert not step.ok and "상한 안에 끝나지 않아 OCR 없이 진행" in step.summary
+    assert "ocr" not in table.items[JOB]
+
+
+def test_rereader_waits_only_for_that_files_ocr(monkeypatch):
+    """다시 확인은 그 서류의 OCR 만 기다린다. 다른 서류가 늦어도 먼저 끝난 서류는 바로 받는다."""
+    import threading
+
+    release = threading.Event()
+
+    def per_file(key):
+        if key.endswith("slow.jpg"):
+            release.wait(5)
+        return OcrResult(file=key, lines=[]), []
+
+    monkeypatch.setattr(worker, "ocr_one", per_file)
+    run = worker.OcrRun(["uploads/s1/fast.pdf", "uploads/s1/slow.jpg"], wait_seconds=0.2)
+    try:
+        assert run.get("uploads/s1/fast.pdf")[0].file == "uploads/s1/fast.pdf"
+        assert run.get("uploads/s1/slow.jpg") == (None, []) and run.timed_out == ["uploads/s1/slow.jpg"]
+    finally:
+        release.set()
+        run.finish()
+
+
+def test_rotated_photo_gets_upright_page_for_ocr_and_view(table, monkeypatch, ocr):
+    """EXIF 회전이 있는 사진은 세운 그림을 쪽 그림으로 두고 그것을 OCR 한다 (화면 박스와 방향을 맞춤)."""
+    put_job(table)
+    monkeypatch.setattr(worker, "upright_image", lambda data: PageImage(data=b"upright", width=1000, height=1400))
+    monkeypatch.setattr(document_agent, "run_job", done_run_job)
+    files = [{"key": "uploads/s1/photo.jpg", "doc_type": None}]
+
+    worker.lambda_handler({"job_id": JOB, "files": files}, None)
+
+    assert ocr["stored"] == {"uploads/s1/photo.jpg.p1.jpg": "image/jpeg"}
+    assert json.loads(table.items[JOB]["pages"]) == {"uploads/s1/photo.jpg": [{"key": "uploads/s1/photo.jpg.p1.jpg", "width": 1000, "height": 1400}]}
+
+# ---------------------------------------------------------------------------
 # C8 처리 직후 신고서 초안과 자동 등록 (#154)
 # ---------------------------------------------------------------------------
 CONFIRMED = [HSResult(line=1, status="자동 확정", by="history", hs_code="8507600000")]
@@ -431,8 +594,9 @@ def test_finished_job_gets_declaration_draft(table, monkeypatch):
     assert draft == declaration.draft_declaration(read_docs(), [], WAITING_HS)
     assert "items[0].hs_code" in draft.blank_fields
     assert ("수입자", IMPORTER) in [(f.name, f.value) for f in draft.fields]
-    assert [s.tool for s in job.steps] == ["cross_check", "draft_declaration", "record_shipment"]
-    assert job.steps[1] == draft_step(draft)
+    # OCR 단계(F10 #188)는 run_job 뒤, 초안 앞에 한 줄 남는다
+    assert [s.tool for s in job.steps] == ["cross_check", "ocr_document", "draft_declaration", "record_shipment"]
+    assert job.steps[2] == draft_step(draft)
 
 
 def test_draft_blanks_cells_flagged_by_issues(table, monkeypatch):
@@ -494,8 +658,8 @@ def test_done_job_is_registered_right_away(table, monkeypatch, shipments, wms_me
     assert [(row["line"], row["hs_code"]) for row in record.items] == [(1, "8507600000")]
     job = saved(table)
     assert (job.status, job.result.wms) == ("done", WmsState(status="등록됨", by="auto", wms_id=wms_id))
-    assert [s.tool for s in job.steps] == ["cross_check", "draft_declaration", "push_to_wms", "record_shipment"]
-    assert job.steps[2] == Step(tool="push_to_wms", summary=f"WMS 자동 등록: {wms_id}", ok=True)
+    assert [s.tool for s in job.steps] == ["cross_check", "ocr_document", "draft_declaration", "push_to_wms", "record_shipment"]
+    assert job.steps[3] == Step(tool="push_to_wms", summary=f"WMS 자동 등록: {wms_id}", ok=True)
     assert "items[0].hs_code" not in job.result.declaration_draft.blank_fields
     row = shipments.rows[BL]
     assert (row.customs_status, row.arrived_at, row.job_id) == ("수입신고", TODAY, JOB)

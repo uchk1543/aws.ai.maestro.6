@@ -12,12 +12,17 @@
 
 import importlib
 import inspect
+import random
 import typing
 from dataclasses import dataclass
 
 import pytest
+from pydantic import ValidationError
 
 from tools.models import (
+    ChatFilters,
+    ChatHistoryLine,
+    ChatHistoryResponse,
     ChatResponse,
     Classification,
     DeclarationDraft,
@@ -145,3 +150,119 @@ def test_fakes_follow_protocols():
         for method, names in PROTOCOLS[path].items():
             got = [n for n in inspect.signature(getattr(fake, method)).parameters if n != "self"]
             assert tuple(got[: len(names)]) == names, f"{fake.__name__}.{method}가 {path}와 다릅니다"
+
+
+# ---------------------------------------------------------------------------
+# 대화 기록 한 줄 규칙 (E6 #157). 모델만 본다 (api.handler는 부르지 않는다)
+# ---------------------------------------------------------------------------
+HISTORY_FIELDS = ["session_id", "ts", "role", "text", "filters", "count", "rule", "blocked", "block_reason"]
+_LINE_KEY = {"session_id": "s1", "ts": "20261121090000123#a1b2c3d4#0"}
+
+
+def test_chat_history_fields():
+    """기록 한 줄은 9칸이고 expires_at(저장 칸)은 없다. 모르는 칸은 실패한다 (_Strict)."""
+    assert list(ChatHistoryLine.model_fields) == HISTORY_FIELDS
+    assert list(ChatHistoryResponse.model_fields) == ["messages"]
+    with pytest.raises(ValidationError):
+        ChatHistoryLine(**_LINE_KEY, role="user", text="질문", expires_at=1795824000)
+    with pytest.raises(ValidationError):
+        ChatHistoryLine(**_LINE_KEY, role="user", text="질문", data="{}")
+
+
+_F = ChatFilters(status="통관 지연", period="this_week")
+
+
+@pytest.mark.parametrize(
+    ("fields", "ok"),
+    [
+        # 통과: 질문 줄, 조회한 답 줄, 조회하지 않은 답 줄(count null), 막힌 답 줄
+        ({"role": "user"}, True),
+        ({"role": "assistant", "filters": _F, "count": 1, "rule": "입항 후 3일 지나도 수리·반출 아님", "blocked": False}, True),
+        ({"role": "assistant", "filters": ChatFilters(unsupported=["수하인 샘플무역"]), "blocked": False}, True),
+        ({"role": "assistant", "blocked": True, "block_reason": "무관한 질문"}, True),
+        # 2.3 질문 줄에 답 칸
+        ({"role": "user", "count": 0}, False),
+        # 2.4 답 줄에 blocked 없음
+        ({"role": "assistant", "filters": _F, "count": 1}, False),
+        # 2.5 막지 않은 답 줄에 filters 없음, 조회하지 않았는데(count null) rule
+        ({"role": "assistant", "count": 1, "blocked": False}, False),
+        ({"role": "assistant", "filters": _F, "rule": "입항 후 3일 지나도 수리·반출 아님", "blocked": False}, False),
+        # 2.6 막지 않은 답 줄에 block_reason
+        ({"role": "assistant", "filters": _F, "count": 1, "blocked": False, "block_reason": "무관한 질문"}, False),
+        # 2.7 막힌 답 줄에 이유 없음·빈 이유
+        ({"role": "assistant", "blocked": True}, False),
+        ({"role": "assistant", "blocked": True, "block_reason": ""}, False),
+        # 막힌 답 줄에 조회 칸
+        ({"role": "assistant", "blocked": True, "block_reason": "무관한 질문", "count": 5}, False),
+        ({"role": "assistant", "blocked": True, "block_reason": "무관한 질문", "filters": _F}, False),
+        ({"role": "assistant", "blocked": True, "block_reason": "무관한 질문", "rule": "입항 후 3일 지나도 수리·반출 아님"}, False),
+    ],
+    ids=["user", "answered", "not-queried", "blocked", "user-with-count", "no-blocked", "no-filters", "rule-without-count",
+         "answered-with-reason", "blocked-no-reason", "blocked-empty-reason", "blocked-with-count", "blocked-with-filters",
+         "blocked-with-rule"],
+)
+def test_chat_history_line_rule_examples(fields, ok):
+    if ok:
+        ChatHistoryLine(**_LINE_KEY, text="글", **fields)
+    else:
+        with pytest.raises(ValidationError):
+            ChatHistoryLine(**_LINE_KEY, text="글", **fields)
+
+
+def random_line_fields(rng: random.Random):
+    """role과 다섯 칸을 무작위로 (각 칸 null 포함, block_reason은 '' 포함).
+
+    아무렇게나 고르면 맞는 줄이 드물어서, 절반은 맞는 줄(질문·조회한 답·막힌 답) 하나에서 시작해 칸 하나를 0~1번 바꾼다.
+    """
+    choices = {
+        "filters": [None, ChatFilters(), _F, ChatFilters(unsupported=["수하인 샘플무역"])],
+        "count": [None, 0, 1, rng.randint(2, 500)],
+        "rule": [None, "입항 후 3일 지나도 수리·반출 아님"],
+        "blocked": [None, False, True],
+        "reason": [None, "", "무관한 질문", "프롬프트 공격", " "],
+    }
+    if rng.random() < 0.5:
+        role = rng.choice(["user", "assistant"])
+        fields = {name: rng.choice(values) for name, values in choices.items()}
+    else:
+        role, fields = rng.choice([
+            ("user", dict.fromkeys(choices)),
+            ("assistant", {"filters": rng.choice(choices["filters"][1:]), "count": rng.choice(choices["count"][1:]),
+                           "rule": rng.choice(choices["rule"]), "blocked": False, "reason": None}),
+            ("assistant", {"filters": rng.choice(choices["filters"][1:]), "count": None, "rule": None,
+                           "blocked": False, "reason": None}),
+            ("assistant", {"filters": None, "count": None, "rule": None, "blocked": True,
+                           "reason": rng.choice(choices["reason"][2:])}),
+        ])
+        if rng.random() < 0.5:
+            name = rng.choice(list(choices))
+            fields[name] = rng.choice(choices[name])
+    return role, fields["filters"], fields["count"], fields["rule"], fields["blocked"], fields["reason"]
+
+
+def _line_ok(role, filters, count, rule, blocked, reason) -> bool:
+    """독립 판정: 요구 2.3~2.7 + 조회하지 않은 답(count null)에는 rule 없음, 막힌 답에는 조회 칸 없음."""
+    if role == "user":
+        return all(v is None for v in (filters, count, rule, blocked, reason))
+    if blocked is None:
+        return False
+    if blocked is False:
+        return filters is not None and reason is None and (rule is None or count is not None)
+    return isinstance(reason, str) and reason != "" and filters is None and count is None and rule is None
+
+
+@pytest.mark.parametrize("seed", range(100))
+def test_chat_history_line_null_rules(seed):
+    """Feature: e6-chat-history, Property 1: 기록 줄 null 규칙
+
+    Validates: Requirements 2.3, 2.4, 2.5, 2.6, 2.7, 2.12
+    """
+    rng = random.Random(seed)
+    role, filters, count, rule, blocked, reason = random_line_fields(rng)
+    kwargs = dict(role=role, text="글", filters=filters, count=count, rule=rule, blocked=blocked, block_reason=reason)
+    if _line_ok(role, filters, count, rule, blocked, reason):
+        line = ChatHistoryLine(**_LINE_KEY, **kwargs)
+        assert (line.role, line.blocked, line.block_reason) == (role, blocked, reason)
+    else:
+        with pytest.raises(ValidationError):
+            ChatHistoryLine(**_LINE_KEY, **kwargs)
