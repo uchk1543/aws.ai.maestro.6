@@ -18,7 +18,7 @@ SES 이메일 ID·권한·환경 변수는 `infra/`(PR, PM 실행)로 만든다.
 - 단위 테스트는 AWS를 부르지 않는다. SES는 가짜 `MailSender`로 대신한다.
 - 메일 주소를 저장소에 적지 않는다. 테스트 주소는 `notice@example.com`(보내는 쪽), `owner@example.com`(받는 쪽)만 쓴다.
 - SES 호출은 연결·읽기 타임아웃 5초, `retries={"total_max_attempts": 2, "mode": "standard"}`, 리전 ap-northeast-2.
-- 제목·헤더에는 코드 값(작업 ID, 건수)만 넣는다. 서류 글자는 본문에만, 한 줄·80자 상한.
+- 제목에는 B/L·송장 번호를 첫 낱말·영문·숫자·/._-·40자로 정리해서만 넣는다 (2026-11-21 사용자 요청으로 바꿈). 서류 글자는 본문에만, 한 줄·80자 상한.
 - 주석·로그·docstring은 한국어. 도구를 부를 때 `[tool] send_notice job=… 불일치=N HS미확정=M`을 print한다. 주소는 찍지 않는다.
 - 고치는 곳: `api/`, `tests/unit/test_notify.py`, `tests/unit/test_worker.py`(4번), `infra/`(PR만, 실행은 PM).
   `tools/validate.py`(2번), `tools/hs_request.py`(PM)는 부르기만 한다.

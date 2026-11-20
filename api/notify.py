@@ -1,13 +1,13 @@
-"""확인 요청 메일 (F13 #263). 담당: 서버. 처리 Lambda(api/worker.py)가 작업을 끝낼 때 부른다.
+"""관리자에게 보내는 서류 검증 요청 메일 (F13 #263). 담당: 서버. 처리 Lambda(api/worker.py)가 작업을 끝낼 때 부른다.
 
 언제 쓰나: 작업이 승인 대기(waiting_approval)로 끝났는데 불일치나 HS 미확정 품목이 남았을 때.
-담당자(NOTIFY_TO)에게 코드가 만든 문서를 첨부해 SES로 메일 한 통을 보낸다.
+관리자(NOTIFY_TO, ERP 담당)에게 코드가 만든 문서를 첨부해 SES로 메일 한 통을 보낸다. 관리자가 검토한 뒤 거래처·관세사에게 검증을 요청한다.
   - 불일치가 있으면 불일치 통지 문서 HTML (tools.validate.notice_document, C7 #158)
   - HS 미확정이 있으면 HS 확인 요청서 PDF (tools.hs_request.make_hs_request, X2 #260)
-받는 사람은 내부 담당자다. 두 문서 모두 '사람이 검토한 뒤 전달'이라 관세사·거래처에 바로 보내지 않는다.
+받는 사람은 내부 관리자다. 두 문서 모두 '사람이 검토한 뒤 전달'이라 관세사·거래처에 바로 보내지 않는다.
 
 메일은 코드가 보낸다. 에이전트 도구가 아니고 모델을 부르지 않는다 (agent-design.md 8번).
-제목·헤더에는 코드 값(작업 ID, 건수)만 넣는다. 서류에서 온 글자는 본문에만 데이터로 넣고 한 줄·80자로 자른다.
+제목에는 B/L·송장 번호를 첫 낱말에서 영문·숫자·/._- 만 남겨 넣고, 나머지 서류 글자는 본문에만 한 줄로 넣는다.
 주소는 환경 변수 NOTIFY_FROM·NOTIFY_TO로만 받는다. 단계 기록·로그에는 주소를 쓰지 않는다 (화면에 보인다).
 실패해도 예외를 올리지 않는다. 단계 기록 한 줄(ok=False)만 돌려주고 작업은 그대로 끝난다.
 """
@@ -27,8 +27,16 @@ from tools import hs_request, validate
 from tools.models import ExtractedDocument, HSResult, Issue, Job, Step
 
 NOTIFY_TOOL = "send_notice"
-REVIEW_NOTE = "자동 생성 메일입니다. 첨부 문서를 검토한 뒤 관세사·거래처에 전달하세요."
+SUBJECT_TAG = "[서류 검증 요청]"
+# 본문 고정 문장. 받는 사람은 관리자(ERP 담당)이고, 관리자가 검토한 뒤 거래처·관세사에게 검증을 요청한다
+GREETING = "관리자님, 안녕하세요."
+INTRO = "아래 건의 수입 서류를 대조한 결과 확인이 필요한 사항이 있어, 관련 거래처·관세사에게 검증을 요청드리고자 합니다."
+ACTION = "첨부 문서를 검토하신 뒤 각 담당처에 전달해 주시기 바랍니다."
+FOOTER = "이 메일은 수입 서류 검증 시스템이 자동으로 보냈습니다. 첨부 문서는 사람 검토 전 자동 생성본입니다."
 NONE_MARK = "없음"
+EVIDENCE_LIMIT = 200  # 근거 문장 한 줄 상한 (규칙 문장틀 + 서류 값)
+SUBJECT_NO_LIMIT = 40  # 제목에 넣는 B/L·송장 번호 길이 상한
+_SUBJECT_NO = re.compile(r"[^A-Za-z0-9/._-]")  # 제목에 넣는 번호는 이 글자만 남긴다
 TEXT_LIMIT = 80  # 서류에서 온 글자 한 칸의 길이 상한
 _CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f  ]")  # 줄바꿈·탭·제어 문자 → 공백
 
@@ -100,14 +108,22 @@ def _one_line(text: str | None, limit: int = TEXT_LIMIT) -> str:
     return cleaned or NONE_MARK
 
 
-def _doc_no(docs: list[ExtractedDocument], doc_type: str) -> str | None:
-    """그 종류 서류 중 처음으로 값이 있는 doc_no (적힌 그대로 raw, 없으면 푼 값)."""
+def _first(docs: list[ExtractedDocument], doc_type: str | None, attr: str) -> str | None:
+    """doc_type 서류(None이면 모든 서류) 중 처음으로 값이 있는 칸의 글자 (적힌 그대로 raw, 없으면 푼 값)."""
     for d in docs:
-        if d.doc_type == doc_type and d.doc_no is not None:
-            text = d.doc_no.raw if d.doc_no.raw is not None else d.doc_no.value
+        cell = getattr(d, attr, None) if doc_type is None or d.doc_type == doc_type else None
+        if cell is not None:
+            text = cell.raw if cell.raw is not None else cell.value
             if text:
                 return str(text)
     return None
+
+
+def _subject_no(text: str | None) -> str | None:
+    """제목에 넣을 번호: 첫 낱말에서 영문·숫자·/._- 만 남기고 40자 상한. 서류 글자가 헤더를 바꾸지 못하게 한다."""
+    words = _CONTROL.sub(" ", text or "").split()
+    token = _SUBJECT_NO.sub("", words[0])[:SUBJECT_NO_LIMIT] if words else ""
+    return token or None
 
 
 def _counts(mismatch: list[Issue], pending: list[HSResult]) -> str:
@@ -115,33 +131,74 @@ def _counts(mismatch: list[Issue], pending: list[HSResult]) -> str:
     if mismatch:
         parts.append(f"불일치 {len(mismatch)}건")
     if pending:
-        parts.append(f"HS 미확정 {len(pending)}개")
-    return " · ".join(parts)
+        parts.append(f"HS 확인 {len(pending)}건")
+    return ", ".join(parts)
 
 
-def _compose(job: Job, docs: list[ExtractedDocument], files: list[tuple[str, str, bytes]], *, sender: str, to: str) -> EmailMessage:
-    """메일 한 통. 제목은 코드 값만, 본문은 일반 텍스트, 첨부는 files."""
+def _subject(job: Job, docs: list[ExtractedDocument], mismatch: list[Issue], pending: list[HSResult]) -> str:
+    """'[서류 검증 요청] B/L <번호> / 송장 <번호> - 불일치 N건, HS 확인 M건'. 번호를 못 읽은 쪽은 빼고, 둘 다 없으면 작업 ID."""
+    bl, inv = _subject_no(_first(docs, "bill_of_lading", "doc_no")), _subject_no(_first(docs, "commercial_invoice", "doc_no"))
+    ident = " / ".join(p for p in (bl and f"B/L {bl}", inv and f"송장 {inv}") if p) or f"작업 {job.job_id}"
+    return f"{SUBJECT_TAG} {ident} - {_counts(mismatch, pending)}"
+
+
+def _hs_line(h: HSResult) -> str:
+    """'- 1행 품명 (서류 HS 9401.61, 후보 9401.61-1000 외 2개)'. 서류 글자는 한 줄로 정리한다."""
+    if h.candidates:
+        more = f" 외 {len(h.candidates) - 1}개" if len(h.candidates) > 1 else ""
+        cands = f"후보 {hs_request.format_hs(h.candidates[0].hs)}{more}"
+    else:
+        cands = "후보 없음"
+    return f"- {h.line}행 {_one_line(h.item_name)} (서류 HS {_one_line(h.doc_hs_code)}, {cands})"
+
+
+def _compose(
+    job: Job, docs: list[ExtractedDocument], importer: str | None, files: list[tuple[str, str, bytes]], *, sender: str, to: str
+) -> EmailMessage:
+    """메일 한 통. 관리자에게 거래처(불일치)·관세사(HS) 검증 요청을 부탁하는 일반 텍스트 본문과 첨부 files.
+
+    제목에는 번호를 _subject_no로 정리해서만 넣는다. 서류 글자는 본문에만 한 줄로 넣는다.
+    """
     mismatch, pending = notice_targets(job)
+    names = {kind: name for name, kind, _ in files}
+    checks = [i for i in job.result.issues if i.grade == "확인 필요"] if mismatch else []
     lines = [
-        REVIEW_NOTE,
+        GREETING,
         "",
-        f"작업: {job.job_id}",
-        f"B/L 번호: {_one_line(_doc_no(docs, 'bill_of_lading'))}",
-        f"송장 번호: {_one_line(_doc_no(docs, 'commercial_invoice'))}",
+        INTRO,
+        ACTION,
+        "",
+        "■ 건 정보",
+        f"- 작업 번호: {job.job_id}",
+        f"- B/L 번호: {_one_line(_first(docs, 'bill_of_lading', 'doc_no'))}",
+        f"- 송장 번호: {_one_line(_first(docs, 'commercial_invoice', 'doc_no'))}",
+        f"- 수입자: {_one_line(importer or _first(docs, 'commercial_invoice', 'consignee_name'))}",
+        f"- 수출자: {_one_line(_first(docs, None, 'exporter_name'))}",
     ]
     if mismatch:
-        rules = ", ".join(dict.fromkeys(i.rule_id for i in mismatch))
-        lines.append(f"불일치: {len(mismatch)}건 ({_one_line(rules)})")
+        lines += ["", f"■ 거래처 확인 요청: 서류 간 불일치 {len(mismatch)}건"]
+        lines += [f"- [{_one_line(i.rule_id)}] {_one_line(i.evidence, EVIDENCE_LIMIT)}" for i in mismatch]
+        if checks:
+            lines.append(f"- 원본 확인이 필요한 항목 {len(checks)}건은 첨부한 불일치 통지 문서에 함께 있습니다.")
+        lines.append(f"→ 거래처에 정정한 서류를 다시 보내 주시도록 요청해 주세요. (첨부: {names.get('text/html', NONE_MARK)})")
     if pending:
-        lines.append(f"HS 미확정: {len(pending)}개")
-        lines += [f"  - {h.line}행 {_one_line(h.item_name)}" for h in pending]
-    lines.append("첨부:")
-    lines += [f"  - {name}" for name, _, _ in files]
+        lines += ["", f"■ 관세사 확인 요청: HS 품목분류 {len(pending)}건"]
+        lines += [_hs_line(h) for h in pending]
+        lines.append(
+            "→ 첨부한 HS 확인 요청서로 관세사에게 품목분류 확인을 요청해 주세요. 제품 정보(재질·용도·구성품 등)는 화주에게 받아 함께 전달해 주세요."
+            f" (첨부: {names.get('application/pdf', NONE_MARK)})"
+        )
+    status = (
+        "- 승인 대기입니다. 불일치가 남은 건은 정정한 서류를 다시 올려야 WMS에 등록됩니다."
+        if mismatch
+        else "- 승인 대기입니다. 관세사 확인으로 HS를 확정한 뒤 승인하면 WMS에 등록됩니다."
+    )
+    lines += ["", "■ 처리 상태", status, "", FOOTER]
 
     msg = EmailMessage()
     msg["From"] = sender
     msg["To"] = to
-    msg["Subject"] = f"[확인 요청] 작업 {job.job_id} · {_counts(mismatch, pending)}"
+    msg["Subject"] = _subject(job, docs, mismatch, pending)
     msg.set_content("\n".join(lines) + "\n")
     for name, kind, data in files:
         maintype, subtype = kind.split("/", 1)
@@ -153,13 +210,13 @@ def _compose(job: Job, docs: list[ExtractedDocument], files: list[tuple[str, str
 def build_message(
     job: Job, docs: list[ExtractedDocument], importer: str | None, *, sender: str, to: str, now: datetime | None = None
 ) -> EmailMessage:
-    """확인 요청 메일 한 통을 만든다 (첨부 포함). 모델·AWS 호출 없음.
+    """검증 요청 메일 한 통을 만든다 (첨부 포함). 모델·AWS 호출 없음.
 
     언제: 메일 내용을 따로 보고 싶을 때 (send_notice도 같은 것을 만든다).
     받는 것: job, docs, importer, sender·to(주소), now(문서 만든 시각, 시험용).
-    반환: EmailMessage. 제목 '[확인 요청] 작업 <작업 ID> · 불일치 N건 · HS 미확정 M개'(0인 쪽 뺌).
+    반환: EmailMessage. 제목 '[서류 검증 요청] B/L <번호> / 송장 <번호> - 불일치 N건, HS 확인 M건'(0인 쪽 뺌, 번호가 없으면 작업 ID).
     """
-    return _compose(job, docs, build_attachments(job, docs, importer, now=now), sender=sender, to=to)
+    return _compose(job, docs, importer, build_attachments(job, docs, importer, now=now), sender=sender, to=to)
 
 
 def send_notice(
@@ -192,13 +249,13 @@ def send_notice(
         files = build_attachments(job, docs, importer, now=now)
     except Exception as exc:
         print(f"[error] send_notice job={job.job_id} 첨부 실패 {type(exc).__name__}: {exc}")
-        return Step(tool=NOTIFY_TOOL, summary=f"확인 요청 메일 못 보냄: 첨부를 만들지 못함 ({type(exc).__name__})", ok=False)
+        return Step(tool=NOTIFY_TOOL, summary=f"검증 요청 메일 못 보냄: 첨부를 만들지 못함 ({type(exc).__name__})", ok=False)
     try:
-        raw = _compose(job, docs, files, sender=sender, to=to).as_bytes(policy=SMTP)
+        raw = _compose(job, docs, importer, files, sender=sender, to=to).as_bytes(policy=SMTP)
         message_id = (mail if mail is not None else ses_sender()).send(sender, to, raw)
     except Exception as exc:
         print(f"[error] send_notice job={job.job_id} 보내기 실패 {type(exc).__name__}")
-        return Step(tool=NOTIFY_TOOL, summary=f"확인 요청 메일 못 보냄: {type(exc).__name__}", ok=False)
+        return Step(tool=NOTIFY_TOOL, summary=f"검증 요청 메일 못 보냄: {type(exc).__name__}", ok=False)
     print(f"[notify] job={job.job_id} 보냄 message_id={message_id} 첨부 {len(files)}개")
-    summary = f"담당자에게 확인 요청 메일 보냄 ({_counts(mismatch, pending)}, 첨부 {len(files)}개)"
+    summary = f"관리자에게 검증 요청 메일 보냄 ({_counts(mismatch, pending)}, 첨부 {len(files)}개)"
     return Step(tool=NOTIFY_TOOL, summary=summary, ok=True)

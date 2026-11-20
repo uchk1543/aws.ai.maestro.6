@@ -9,7 +9,7 @@
        ├ 보낼 것 고르기: 불일치 / HS 미확정 (없으면 None)
        ├ 첨부: tools.validate.notice_document → HTML
        │      tools.hs_request.make_hs_request → PDF
-       ├ 메일 만들기: email.message.EmailMessage (제목·헤더는 코드 값만)
+       ├ 메일 만들기: email.message.EmailMessage (제목은 B/L·송장 번호를 정리해서만, 서류 글자는 본문에만)
        └ SES v2 send_email (Raw) ──────────────▶ 담당자 메일함 (NOTIFY_TO)
   → 단계 기록 send_notice 한 줄 → 마지막 저장 (_save)
 ```
@@ -51,7 +51,7 @@ SES 호출 방식
   `handler._notice_name(notice.subject, job.job_id, "html")` 이름, `text/html; charset=utf-8`로.
   HS 미확정이 있으면 `make_hs_request(job, docs, importer=importer, now=now)`를 `hs-request-<작업 ID>.pdf`, `application/pdf`로.
 - `build_message(job, docs, importer, *, sender, to, now=None) -> EmailMessage`
-  제목은 작업 ID와 건수만으로 만든다. 본문은 일반 텍스트이고, 서류 글자는 `_one_line(text, limit=80)`로 정리해서 넣는다
+  제목은 `[서류 검증 요청] B/L <번호> / 송장 <번호> - 불일치 N건, HS 확인 M건`이고 번호는 `_subject_no`(첫 낱말, 영문·숫자·/._-, 40자)로 정리한다. 본문은 관리자에게 거래처·관세사 검증 요청을 부탁하는 문장이다 (2026-11-21 사용자 요청). 본문은 일반 텍스트이고, 서류 글자는 `_one_line(text, limit=80)`로 정리해서 넣는다
   (제어 문자·줄바꿈 → 공백, 공백 하나로, 80자 상한). 첨부는 `add_attachment`.
 - `class MailSender(Protocol)`: `send(self, sender: str, to: str, raw: bytes) -> str` (SES MessageId). `tools/wms.py`의 어댑터와 같은 방식이다.
 - `ses_sender() -> MailSender`: `boto3.client("sesv2", region_name=AWS_REGION 또는 ap-northeast-2, config=Config(connect_timeout=5, read_timeout=5, retries={"total_max_attempts": 2, "mode": "standard"}))`.
@@ -94,7 +94,7 @@ if result.status == "waiting_approval" and read:
 
 ### 보안과 주의
 
-- 서류 글자는 본문에만 넣고, 제목·헤더에는 코드 값(작업 ID, 건수)만 넣는다. 서류에 `\r\nBcc: …` 같은 글자가 있어도 헤더가 늘지 않는다.
+- 서류 글자는 본문에만 넣고, 제목에는 B/L·송장 번호의 첫 낱말에서 영문·숫자·/._- 만 남겨 넣는다. 서류에 `\r\nBcc: …` 같은 글자가 있어도 헤더가 늘지 않는다.
 - 첨부 HTML은 `notice_document`가 이미 이스케이프한다. PDF는 `make_hs_request`가 데이터로만 넣는다.
 - 메일 주소는 환경 변수로만 받는다. 단계 기록·로그·테스트에 실제 주소가 없다.
 - 받는 주소의 도메인 SPF에 SES가 없으면(DMARC 없음), 같은 주소로 보내고 받을 때 스팸함에 갈 수 있다. 첫 발송 때 확인하고,
@@ -106,7 +106,7 @@ if result.status == "waiting_approval" and read:
 `tests/unit/test_notify.py` (새, 4번)
 - 보낼 것 고르기: 불일치만, HS 미확정만, 둘 다, 확인 필요·참고만(None), `done`(None)
 - 첨부: 이름·MIME 형식·내용 (HTML에 규칙 ID, PDF는 `%PDF`로 시작), 둘 다면 메일 한 통에 첨부 두 개
-- 제목: 코드 값만, 0인 쪽 빠짐. 서류 글자에 `\r\nBcc:`가 있어도 헤더 수가 같고 본문은 한 줄
+- 제목: B/L·송장 번호와 건수, 0인 쪽 빠짐, 번호 없으면 작업 ID. 서류 글자에 `\r\nBcc:`가 있어도 헤더 수가 같고 본문은 한 줄
 - 설정 없음: `NOTIFY_TO` 없으면 None이고 보내지 않음
 - 실패: 첨부 실패·SES 실패 → `ok=False`와 오류 종류, 예외 없음. 단계 요약에 `@`가 없음
 - `ses_sender`: 서울 리전, 타임아웃 5초, `total_max_attempts` 2

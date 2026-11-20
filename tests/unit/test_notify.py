@@ -21,7 +21,7 @@ MISMATCH = Issue(
 )
 CHECK = Issue(rule_id="X-QT-02", grade="확인 필요", cells=[], evidence="총수량을 읽지 못했습니다.")
 ENV = {"NOTIFY_FROM": "notice@example.com", "NOTIFY_TO": "owner@example.com"}
-REVIEW_NOTE = "자동 생성 메일입니다. 첨부 문서를 검토한 뒤 관세사·거래처에 전달하세요."
+INV = "QDT/26/0289"
 
 
 class FakeMail:
@@ -90,45 +90,78 @@ def test_pending_only_attaches_pdf():
 def test_both_one_mail_two_attachments():
     step, mail = send(job_of(issues=[MISMATCH], hs=[pending()]))
     assert [a[0] for a in attachments(parsed(mail))] == [f"notice-{BL}.html", f"hs-request-{JOB}.pdf"]
-    assert step == Step(tool="send_notice", summary="담당자에게 확인 요청 메일 보냄 (불일치 1건 · HS 미확정 1개, 첨부 2개)", ok=True)
+    assert step == Step(tool="send_notice", summary="관리자에게 검증 요청 메일 보냄 (불일치 1건, HS 확인 1건, 첨부 2개)", ok=True)
     assert mail.calls[0][:2] == ("notice@example.com", "owner@example.com")
     msg = parsed(mail)
     assert (msg["From"], msg["To"]) == ("notice@example.com", "owner@example.com")
 
 
-def test_subject_uses_code_values_only():
+def test_subject_names_shipment_and_counts():
+    """실무 메일처럼 B/L·송장 번호와 건수를 제목에 쓴다. 0인 쪽은 뺀다."""
     _, both = send(job_of(issues=[MISMATCH], hs=[pending()]))
     _, only = send(job_of(issues=[MISMATCH]))
     _, hs_only = send(job_of(hs=[pending()]))
-    assert parsed(both)["Subject"] == f"[확인 요청] 작업 {JOB} · 불일치 1건 · HS 미확정 1개"
-    assert parsed(only)["Subject"] == f"[확인 요청] 작업 {JOB} · 불일치 1건"
-    assert parsed(hs_only)["Subject"] == f"[확인 요청] 작업 {JOB} · HS 미확정 1개"
+    assert parsed(both)["Subject"] == f"[서류 검증 요청] B/L {BL} / 송장 {INV} - 불일치 1건, HS 확인 1건"
+    assert parsed(only)["Subject"] == f"[서류 검증 요청] B/L {BL} / 송장 {INV} - 불일치 1건"
+    assert parsed(hs_only)["Subject"] == f"[서류 검증 요청] B/L {BL} / 송장 {INV} - HS 확인 1건"
+
+
+def test_subject_without_numbers_uses_job_id():
+    _, mail = send(job_of(hs=[pending()]), the_docs=[])
+    assert parsed(mail)["Subject"] == f"[서류 검증 요청] 작업 {JOB} - HS 확인 1건"
 
 
 def test_header_injection_is_ignored():
+    """제목에는 번호의 첫 낱말만 영문·숫자·/._- 로 넣는다. 서류 글자의 줄바꿈으로 헤더가 늘지 않는다."""
     the_docs = docs()
     bl = the_docs[2]
     the_docs[2] = bl.model_copy(update={"doc_no": bl.doc_no.model_copy(update={"raw": "BL-1\r\nBcc: evil@example.com", "value": None})})
     _, mail = send(job_of(issues=[MISMATCH]), the_docs)
     msg = parsed(mail)
     assert msg["Bcc"] is None
-    assert msg["Subject"] == f"[확인 요청] 작업 {JOB} · 불일치 1건"
-    assert "B/L 번호: BL-1 Bcc: evil@example.com" in body_of(msg).splitlines()  # 한 줄로 정리된 데이터
+    assert msg["Subject"] == f"[서류 검증 요청] B/L BL-1 / 송장 {INV} - 불일치 1건"
+    assert "- B/L 번호: BL-1 Bcc: evil@example.com" in body_of(msg).splitlines()  # 본문에는 한 줄로 정리된 데이터
 
 
-def test_body_lists_values_and_review_note():
+def test_body_reads_like_request_to_manager():
+    """관리자에게 거래처·관세사 검증 요청을 부탁하는 메일. 불일치는 거래처, HS는 관세사 몫으로 나눠 적는다."""
     _, mail = send(job_of(issues=[MISMATCH, CHECK], hs=[pending()]))
+    lines = body_of(parsed(mail)).splitlines()
+    for line in (
+        notify.GREETING,
+        notify.INTRO,
+        notify.ACTION,
+        f"- 작업 번호: {JOB}",
+        f"- B/L 번호: {BL}",
+        f"- 송장 번호: {INV}",
+        f"- 수입자: {IMPORTER}",
+        "- 수출자: QINGDAO TRADING CO.",
+        "■ 거래처 확인 요청: 서류 간 불일치 1건",
+        "- [X-WT-01] 상업송장 총중량 6,250kg과 포장명세서 6,520kg이 다릅니다.",
+        "- 원본 확인이 필요한 항목 1건은 첨부한 불일치 통지 문서에 함께 있습니다.",
+        f"→ 거래처에 정정한 서류를 다시 보내 주시도록 요청해 주세요. (첨부: notice-{BL}.html)",
+        "■ 관세사 확인 요청: HS 품목분류 1건",
+        "- 1행 WOODEN DINING CHAIR, OAK FRAME (서류 HS 9401.61, 후보 9401.61-1000 외 2개)",
+        f"→ 첨부한 HS 확인 요청서로 관세사에게 품목분류 확인을 요청해 주세요. 제품 정보(재질·용도·구성품 등)는 화주에게 받아 함께 전달해 주세요. (첨부: hs-request-{JOB}.pdf)",
+        "- 승인 대기입니다. 불일치가 남은 건은 정정한 서류를 다시 올려야 WMS에 등록됩니다.",
+        notify.FOOTER,
+    ):
+        assert line in lines, line
+
+
+def test_hs_only_body_has_no_supplier_section():
+    _, mail = send(job_of(hs=[pending(candidates=[])]))
     body = body_of(parsed(mail))
-    for text in (REVIEW_NOTE, JOB, f"B/L 번호: {BL}", "송장 번호: QDT/26/0289", "X-WT-01", "1행 WOODEN DINING CHAIR, OAK FRAME",
-                 f"notice-{BL}.html", f"hs-request-{JOB}.pdf"):
-        assert text in body
-    assert "X-QT-02" not in body  # 확인 필요는 첨부 문서에만 (불일치 규칙만 본문에)
+    assert "■ 거래처 확인 요청" not in body
+    assert "- 1행 WOODEN DINING CHAIR, OAK FRAME (서류 HS 9401.61, 후보 없음)" in body.splitlines()
+    assert "- 승인 대기입니다. 관세사 확인으로 HS를 확정한 뒤 승인하면 WMS에 등록됩니다." in body.splitlines()
 
 
 def test_missing_values_are_written_as_none():
-    _, mail = send(job_of(hs=[pending(name=None)]), the_docs=[])
-    body = body_of(parsed(mail))
-    assert "B/L 번호: 없음" in body and "송장 번호: 없음" in body and "1행 없음" in body
+    _, mail = send(job_of(hs=[pending(name=None, doc_hs=None)]), the_docs=[])
+    lines = body_of(parsed(mail)).splitlines()
+    for line in ("- B/L 번호: 없음", "- 송장 번호: 없음", "- 수출자: 없음", "- 1행 없음 (서류 HS 없음, 후보 9401.61-1000 외 2개)"):
+        assert line in lines, line
 
 
 def test_long_document_text_is_cut():
