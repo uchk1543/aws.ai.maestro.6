@@ -22,7 +22,7 @@ from tests.unit.fakes import MemoryHSHistory, MemoryWms
 from tests.unit.test_report_shipment import TODAY, MemoryWriter
 from tools.models import (
     Cell, DeclarationDraft, DeclarationField, ExtractedDocument, ExtractedItem, Issue, Job, OcrLine, OcrResult, RawDocument, Shipment,
-    StatsResponse, WmsState,
+    JobListResponse, StatsResponse, WmsState,
 )
 from tools.ocr import PageImage
 
@@ -1554,3 +1554,91 @@ def test_notice_running_job_is_409(fakes, lambda_client, classifier):
 @pytest.mark.parametrize(("job_id", "fmt", "status"), [("job-00000000", None, 404), ("nope", None, 404), ("job-00000000", "pdf", 400)])
 def test_notice_bad_requests(fakes, job_id, fmt, status):
     assert get_notice(job_id, fmt)["statusCode"] == status
+
+
+# ---------------------------------------------------------------------------
+# #252 대시보드: 다음 할 일별 작업 수 (GET /stats todo) 와 작업 목록 (GET /jobs?next_action=)
+# ---------------------------------------------------------------------------
+def get_jobs(kind=None):
+    event = {"requestContext": {"http": {"method": "GET"}}, "rawPath": "/api/jobs",
+             "queryStringParameters": {"next_action": kind} if kind else None}
+    res = handler.lambda_handler(event, None)
+    return res["statusCode"], json.loads(res["body"])
+
+
+def _issue252(rule_id, grade):
+    return Issue(rule_id=rule_id, grade=grade, cells=[], evidence=f"{rule_id} 근거")
+
+
+def _put252(fakes, job_id, status, *, issues=(), hs_status=None, wms_state=None, created_at=0, bl=None, importer=None):
+    from tools.models import HSResult, JobResult
+
+    result = None
+    if status in ("waiting_approval", "done"):
+        hs = [HSResult(line=1, status=hs_status, by="history" if hs_status == "자동 확정" else None,
+                       hs_code="8507609000" if hs_status == "자동 확정" else None)] if hs_status else []
+        result = JobResult(issues=list(issues), hs=hs, wms=wms_state)
+    keep = {"created_at": created_at}
+    if bl:
+        doc = ExtractedDocument(doc_type="bill_of_lading", file=f"uploads/{job_id}/bl.pdf", doc_no=Cell(raw=bl, value=bl))
+        keep["docs"] = json.dumps([doc.model_dump(mode="json")])
+    if importer:
+        keep["importer"] = importer
+    handler.save_job(Job(job_id=job_id, status=status, result=result), keep=keep)
+
+
+@pytest.fixture
+def mixed252(fakes):
+    _put252(fakes, "job-0000f001", "waiting_approval", issues=[_issue252("X-WT-01", "불일치"), _issue252("DOC-LATER", "참고")],
+            hs_status="사람 확인 필요", created_at=100, bl="BL-A", importer="샘플무역")
+    _put252(fakes, "job-0000f002", "waiting_approval", issues=[_issue252("X-WT-01", "불일치")], created_at=300, bl="BL-B")
+    _put252(fakes, "job-0000f003", "waiting_approval", issues=[_issue252("X-QTY-01", "확인 필요")],
+            hs_status="사람 확인 필요", created_at=200)
+    _put252(fakes, "job-0000f004", "waiting_approval", issues=[_issue252("X-QTY-01", "확인 필요")], hs_status="자동 확정")
+    _put252(fakes, "job-0000f005", "failed")
+    _put252(fakes, "job-0000f006", "running")
+    _put252(fakes, "job-0000f007", "done", hs_status="자동 확정", wms_state=WmsState(status="등록됨", by="auto", wms_id="W-1"))
+    return fakes
+
+
+def test_stats_counts_jobs_by_next_action_once_each(mixed252):
+    status, body = call("GET", "/api/stats")
+    assert status == 200
+    todo = StatsResponse.model_validate(body).todo
+    assert (todo.fix_docs, todo.choose_hs, todo.approve, todo.reupload, todo.wait) == (2, 1, 1, 1, 1)
+    # 작업 하나는 정확히 한 칸: 합 = 승인 대기 + 실패 + 처리 중 (끝난 작업은 세지 않는다)
+    assert todo.fix_docs + todo.choose_hs + todo.approve + todo.reupload + todo.wait == todo.waiting_approval + 1 + 1
+    # 옛 칸은 그대로
+    assert (todo.waiting_approval, todo.mismatch_jobs) == (4, 2)
+
+
+def test_stats_top_rules_skip_note_and_carry_human_name(mixed252):
+    _, body = call("GET", "/api/stats")
+    res = StatsResponse.model_validate(body)
+    assert "DOC-LATER" not in {r.rule_id for r in res.top_rules}  # '참고'는 할 일이 아니다
+    names = {r.rule_id: r.name for r in res.top_rules}
+    assert names["X-WT-01"] == "서류끼리 서류 전체 총중량이 같은지"
+    assert res.auto.rule.startswith("불일치·확인 필요가 없고")
+
+
+def test_jobs_list_by_next_action_matches_stats_count(mixed252):
+    _, stats_body = call("GET", "/api/stats")
+    todo = stats_body["todo"]
+    for kind in handler.NEXT_KINDS:
+        status, body = get_jobs(kind)
+        assert status == 200, kind
+        items = JobListResponse.model_validate(body).items
+        assert len(items) == todo[kind], kind  # 카드 숫자와 펼친 목록 줄 수가 같다
+        assert all(i.next_action.kind == kind for i in items)
+    _, body = get_jobs("fix_docs")
+    first, second = body["items"]  # 최근 작업 먼저
+    assert (first["job_id"], first["bl_no"], first["consignee"], first["mismatch"]) == ("job-0000f002", "BL-B", None, 1)
+    assert (second["bl_no"], second["consignee"], second["hs_pending"]) == ("BL-A", "샘플무역", 1)
+    assert second["next_action"]["message"] == "불일치 1건: 서류를 고쳐 다시 올려야 등록할 수 있습니다"
+
+
+def test_jobs_list_without_filter_skips_done_and_rejects_bad_kind(mixed252):
+    _, body = get_jobs()
+    assert "job-0000f007" not in {i["job_id"] for i in body["items"]} and len(body["items"]) == 6
+    status, body = get_jobs("late")
+    assert status == 400 and "next_action" in body["error"]

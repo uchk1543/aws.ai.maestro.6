@@ -49,6 +49,7 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 | `GET /api/jobs/{id}/notice?format=md\|html` | - | 불일치 통지 문서 파일 (`content-disposition: attachment`, `notice-<B/L 또는 작업 ID>.md\|html`, 기본 html). 처리 중이면 409 (#155, 문서는 C7 `NoticeDocument`) |
 | `GET /api/jobs/{id}/notice?format=md\|html` | - | 불일치 통지 문서 내려받기 (F9 #155, 아직 없음. 문서 내용은 아래 `NoticeDocument`, 예시 `docs/examples/notice.json`, C7 #158) |
 | `GET /api/stats` | - | `docs/examples/stats.json` (대시보드 통계, F11 #195) |
+| `GET /api/jobs?next_action=<종류>` | - | `docs/examples/jobs.json` (다음 할 일이 같은 작업 목록, #252) |
 
 불일치 통지 문서 (C7 #158. 모양은 `tools/models.py`의 `NoticeDocument`, 만드는 함수는 `tools/validate.py`의 `notice_document(job_id, docs, issues)`)
 - `subject`: `[불일치 확인 요청] B/L <번호> / 송장 <번호>`. 번호를 못 읽은 쪽은 빼고, 둘 다 없으면 작업 ID
@@ -101,8 +102,15 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 대시보드 통계 (`GET /api/stats`, F11 #195. 모양은 `tools/models.py`의 `StatsResponse`)
 - 모델 호출 없이 코드가 team06-jobs·team06-shipments를 센다. 화면은 다시 세지 않는다. 날짜는 한국 시간
 - `todo`: 승인 대기 작업, 그중 불일치가 남은 작업, HS를 사람이 골라야 하는 품목, 분류 못 한 서류(문서 분류 내역의 unknown), 통관 지연 화물
+  - 다음 할 일별 **작업 수** (#252): `fix_docs`·`choose_hs`·`approve`·`reupload`·`wait`. 작업마다 `next_action`(아래 약속 2 값 목록)을 정해 정확히 한 칸에 센다. 끝난 작업(`none`)은 세지 않는다. 합 = 승인 대기 + 실패 + 대기·처리 중 작업 수
 - `flow`: 통관 상태 6개(진행 순서)별 화물 수. `delayed`: 통관 지연 화물(입항 후 지난 날 수가 큰 순서, 10건까지)
-- `auto`: 처리가 끝난 작업(승인 대기 + 끝남)과 그중 WMS에 자동 등록된 작업 수. `top_rules`: 걸린 문제 수가 많은 규칙 5개
+- `auto`: 처리를 마친 작업(승인 대기 + 끝남. 승인 대기는 사람이 볼 일이 남은 작업)과 그중 WMS에 자동 등록된 작업 수, 자동 등록 조건 문장 `rule`(#252)
+- `top_rules`: 걸린 문제 수가 많은 규칙 5개. 불일치·확인 필요만 센다('참고'는 뺌). `name`은 사람 말 이름(`tools/rules/rules.csv`의 description, #252)
+
+작업 목록 (`GET /api/jobs?next_action=<종류>`, #252. 모양은 `tools/models.py`의 `JobListResponse`)
+- 대시보드 카드를 누르면 그 자리에 펼치는 목록. `next_action`은 `fix_docs`·`choose_hs`·`approve`·`reupload`·`wait` 중 하나, 그 밖은 400. 없으면 끝난 작업을 뺀 전부
+- 줄마다 `job_id`·`status`·`bl_no`(선하증권 raw)·`consignee`(수입자)·`created_at`(한국 시간 `YYYY-MM-DD HH:MM`)·`next_action`(GET /jobs/{id}와 같음)·`mismatch`(남은 불일치)·`hs_pending`(고를 HS 품목). 최근 작업 먼저, 50건까지
+- 개수는 `GET /api/stats`의 `todo` 같은 칸과 같은 규칙이다. 화면은 줄을 누르면 `#/jobs/{id}`로 간다
 - 통계에서 문서 분류 내역으로 갈 때 `GET /api/documents`에 거르기를 붙인다: `job_status`, `grade`(그 등급의 문제가 남은 작업), `rule_id`(그 규칙에 걸린 작업), `hs=pending`(HS를 사람이 골라야 하는 작업). 거르기가 있으면 `counts`도 그 안에서 센다
   - `grade`·`hs=pending`은 모든 상태의 작업에서 찾는다. `todo.mismatch_jobs`·`todo.hs_pending`은 승인 대기 작업만 세므로, 숫자와 목록을 맞추려면 `job_status=waiting_approval`을 함께 붙인다
 

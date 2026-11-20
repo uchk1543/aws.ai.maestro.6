@@ -724,6 +724,13 @@ class TodoCounts(_Strict):
     hs_pending: int = Field(description="승인 대기 작업에서 사람이 HS를 골라야 하는 품목 수")
     unclassified: int = Field(description="분류 못 한 서류 수 (문서 분류 내역의 unknown)")
     delayed: int = Field(description="통관 지연 화물 수 (docs/schema.md 화물 기록 규칙)")
+    # 다음 할 일(Job.next_action)별 작업 수 (#252). 작업 하나는 정확히 한 칸에 들어가고, 끝난 작업은 세지 않는다.
+    # 합 = 승인 대기 + 실패 + 대기·처리 중 작업 수. 위 칸들은 옛 화면을 위해 그대로 둔다
+    fix_docs: int = Field(default=0, description="불일치가 남아 서류를 고쳐 다시 올려야 하는 작업 수")
+    choose_hs: int = Field(default=0, description="불일치는 없고 사람이 HS를 골라야 하는 작업 수")
+    approve: int = Field(default=0, description="확인 필요만 남았거나 승인만 남은 작업 수")
+    reupload: int = Field(default=0, description="처리에 실패해 다시 올려야 하는 작업 수")
+    wait: int = Field(default=0, description="대기·처리 중인 작업 수")
 
 
 class FlowStage(_Strict):
@@ -748,8 +755,9 @@ class DelayedShipment(_Strict):
 class AutoRate(_Strict):
     """자동 처리율의 분자·분모 (화면이 비율을 그린다)."""
 
-    finished: int = Field(description="처리가 끝난 작업 수 (승인 대기 + 끝남)")
+    finished: int = Field(description="처리를 마친 작업 수 (승인 대기 + 끝남. 승인 대기는 사람이 볼 일이 남은 작업)")
     auto: int = Field(description="그중 사람 손 없이 WMS에 자동 등록된 작업 수")
+    rule: str = Field(default="", description="자동 등록 조건 문장 (화면이 자동 처리율 아래에 그대로 보인다, #252)")
 
 
 class RuleCount(_Strict):
@@ -759,6 +767,9 @@ class RuleCount(_Strict):
     grade: Grade = Field(description="이 규칙으로 가장 많이 나온 등급")
     count: int = Field(description="걸린 문제 수")
     example: str = Field(description="예시 근거 문장 (같은 규칙으로 처음 센 것. 작업 순서는 정해지지 않는다)")
+    name: str | None = Field(
+        default=None, description="사람 말 이름 (tools/rules/rules.csv의 description, 그 등급 줄). 표에 없으면 null (#252)"
+    )
 
 
 class StatsResponse(_Strict):
@@ -771,7 +782,28 @@ class StatsResponse(_Strict):
     delay_rule: str = Field(description="통관 지연 기준 문장")
     docs_by_type: dict[DocType, int] = Field(description="종류별 서류 수 (문서 분류 내역 counts와 같다)")
     auto: AutoRate = Field(description="자동 처리율")
-    top_rules: list[RuleCount] = Field(default_factory=list, description="자주 걸린 오류 규칙 상위 5개")
+    top_rules: list[RuleCount] = Field(
+        default_factory=list, description="자주 걸린 오류 규칙 상위 5개. 불일치·확인 필요만 센다 ('참고'는 뺌, #252)"
+    )
+
+
+class JobSummary(_Strict):
+    """작업 목록 한 줄 (GET /jobs?next_action=, #252). 대시보드 카드를 누르면 그 자리에 펼친다."""
+
+    job_id: str = Field(description="작업 ID")
+    status: JobStatus = Field(description="작업 상태")
+    bl_no: str | None = Field(default=None, description="선하증권 B/L 번호 raw. 읽지 않았으면 null")
+    consignee: str | None = Field(default=None, description="수입자 (상업송장 수하인). 모르면 null")
+    created_at: str = Field(description="작업을 만든 시각, 한국 시간 'YYYY-MM-DD HH:MM'")
+    next_action: NextAction = Field(description="다음 할 일 (GET /jobs/{id}의 next_action과 같은 규칙)")
+    mismatch: int = Field(default=0, description="남은 불일치 건수")
+    hs_pending: int = Field(default=0, description="사람이 골라야 하는 HS 품목 수")
+
+
+class JobListResponse(_Strict):
+    """GET /jobs 응답 (#252). 최근 작업 먼저, 50건까지."""
+
+    items: list[JobSummary] = Field(default_factory=list, description="작업 목록")
 
 
 # ---------------------------------------------------------------------------

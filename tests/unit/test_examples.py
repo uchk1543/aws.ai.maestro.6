@@ -12,6 +12,7 @@ from tools.models import (
     ExtractedDocument,
     Job,
     JobFilesResponse,
+    JobListResponse,
     NoticeDocument,
     Shipment,
     StatsResponse,
@@ -29,6 +30,7 @@ CASES = [
     ("notice.json", NoticeDocument),
     ("stats.json", StatsResponse),
     ("chat_history.json", ChatHistoryResponse),
+    ("jobs.json", JobListResponse),
 ]
 
 
