@@ -30,7 +30,7 @@ function resolve(hash: string): { page: ReactNode; active: MenuKey | null } {
   }
   // 조건이 바뀌면 화면을 새로 연다 (대시보드에서 다른 통계를 눌렀을 때)
   if (path === "/documents") return { page: <DocHistoryPage key={hash} params={params} />, active: "documents" };
-  if (path === "/dashboard") return { page: <DashboardPage />, active: "dashboard" };
+  if (path === "/dashboard") return { page: <DashboardPage open={params.open} />, active: "dashboard" };
   if (path === "/chat") return { page: <ChatPage key={hash} ask={params.q} />, active: "chat" };
   return { page: <UploadPage />, active: "upload" };
 }

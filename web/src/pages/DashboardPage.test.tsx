@@ -1,19 +1,38 @@
-// G15 대시보드: 서버 숫자 그대로, 통계를 누르면 연관된 문서 분류 내역·AI chat 으로, 애니메이션 ON/OFF
-import { fireEvent, screen, within } from "@testing-library/react";
+// G15 대시보드 + #252: 할 일은 작업 단위(next_action), 카드를 누르면 그 자리에 작업 목록, 줄을 누르면 작업 화면.
+// AI chat 으로 질문을 자동으로 보내는 클릭은 없다. 옛 서버(새 칸 없음)에서는 예전 타일과 문서 분류 내역 이동.
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "../api";
+import jobsDraft from "../fixtures/jobs.draft.json";
 import statsDraft from "../fixtures/stats.draft.json";
 import { renderWithQuery } from "../test-utils";
-import type { StatsResponse } from "../types";
-import { DashboardPage, FX_KEY, initialFx, stageAt } from "./DashboardPage";
+import type { JobListResponse, StatsResponse } from "../types";
+import { DashboardPage, FX_KEY, hasNextCounts, initialFx, todoTotal } from "./DashboardPage";
 
 vi.mock("../api", async (importOriginal) => {
   const real = await importOriginal<typeof import("../api")>();
-  return { ...real, getStats: vi.fn() };
+  return { ...real, getStats: vi.fn(), getJobs: vi.fn() };
 });
 
 const stats = statsDraft as unknown as StatsResponse;
+const jobs = jobsDraft as unknown as JobListResponse;
+/** 옛 서버(#252 PR A 전): 다음 할 일별 칸·이름·조건 문장이 없다 */
+const oldStats: StatsResponse = {
+  ...stats,
+  todo: {
+    waiting_approval: 1,
+    mismatch_jobs: 1,
+    hs_pending: 1,
+    unclassified: 2,
+    delayed: 4,
+  },
+  auto: { finished: 3, auto: 2 },
+  top_rules: [
+    ...stats.top_rules.map(({ name, ...r }) => (void name, r)),
+    { rule_id: "DOC-LATER", grade: "참고", count: 9, example: "선하증권은 아직 읽지 않습니다." },
+  ],
+};
 
 function hashParams() {
   const [path, query = ""] = decodeURIComponent(window.location.hash.replace(/^#/, "")).split("?");
@@ -22,12 +41,94 @@ function hashParams() {
 
 beforeEach(() => {
   vi.mocked(api.getStats).mockReset().mockResolvedValue(stats);
-  window.localStorage.removeItem(FX_KEY);
+  vi.mocked(api.getJobs)
+    .mockReset()
+    .mockImplementation((kind) => Promise.resolve({ items: jobs.items.filter((j) => j.next_action.kind === kind) }));
+  window.localStorage.setItem(FX_KEY, "off");
+  window.location.hash = "#/dashboard";
 });
 
 describe("DashboardPage", () => {
-  it("지금 할 일 다섯 가지를 서버 숫자 그대로 보여 준다 (단순 보기)", async () => {
-    window.localStorage.setItem(FX_KEY, "off");
+  it("할 일 타일은 모두 작업 단위로, 다음 할 일마다 하나씩 (#252)", async () => {
+    renderWithQuery(<DashboardPage />);
+
+    const tiles = within(await screen.findByRole("list", { name: "지금 할 일" })).getAllByRole("button");
+    expect(tiles.map((t) => t.getAttribute("aria-label"))).toEqual([
+      "서류 다시 받기 1건 보기",
+      "HS 고르기 1건 보기",
+      "승인하기 1건 보기",
+      "처리 실패 1건 보기",
+      "처리 중 0건 보기",
+    ]);
+    expect(tiles[0]).toHaveClass("alert"); // 서류를 고쳐야 하는 작업이 있으면 빨강
+    expect(tiles.every((t) => t.getAttribute("aria-expanded") === "false")).toBe(true);
+  });
+
+  it("카드를 누르면 그 자리에 작업 목록이 펼쳐지고, 줄을 누르면 작업 화면으로 간다", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<DashboardPage />);
+
+    const tile = await screen.findByRole("button", { name: "HS 고르기 1건 보기" });
+    await user.click(tile);
+    expect(tile).toHaveAttribute("aria-expanded", "true");
+    expect(hashParams()).toEqual({ path: "/dashboard", params: { open: "choose_hs" } }); // 뒤로 오면 다시 펼친다
+    expect(api.getJobs).toHaveBeenCalledWith("choose_hs");
+
+    const panel = await screen.findByRole("region", { name: "HS 고르기 작업 목록" });
+    const row = await within(panel).findByRole("button", { name: /B\/L SMLNCAN26003548/ });
+    expect(row).toHaveTextContent("샘플트레이딩코리아");
+    expect(row).toHaveTextContent("HS 1개를 고르세요");
+
+    await user.click(row);
+    expect(hashParams().path).toBe("/jobs/job-1a2b");
+  });
+
+  it("같은 카드를 다시 누르거나 닫기를 누르면 목록이 닫힌다. 주소의 open 으로 펼친 채 시작한다", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<DashboardPage open="fix_docs" />);
+
+    expect(await screen.findByRole("region", { name: "서류 다시 받기 작업 목록" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "목록 닫기" }));
+    expect(screen.queryByRole("region", { name: /작업 목록/ })).not.toBeInTheDocument();
+    expect(hashParams()).toEqual({ path: "/dashboard", params: {} });
+
+    await user.click(screen.getByRole("button", { name: "승인하기 1건 보기" }));
+    expect(await screen.findByRole("region", { name: "승인하기 작업 목록" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "승인하기 1건 보기" }));
+    expect(screen.queryByRole("region", { name: /작업 목록/ })).not.toBeInTheDocument();
+  });
+
+  it("작업 목록 경로가 아직 없으면(404) 문서 분류 내역으로 가는 길을 준다", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.getJobs).mockRejectedValue(new api.ApiError(404, "없는 경로입니다"));
+    renderWithQuery(<DashboardPage open="fix_docs" />);
+
+    await user.click(await screen.findByRole("button", { name: "문서 분류 내역에서 보기" }));
+    expect(hashParams()).toEqual({ path: "/documents", params: { job_status: "waiting_approval", grade: "불일치" } });
+  });
+
+  it("AI chat 으로 질문을 자동으로 보내는 클릭이 없다: 통관 흐름은 누르지 않는다", async () => {
+    renderWithQuery(<DashboardPage />);
+
+    expect(await screen.findByLabelText("심사 중 4건")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "심사 중 4건" })).not.toBeInTheDocument();
+    expect(screen.getByText("SMLNCAN26003548")).toBeInTheDocument(); // 지연 목록은 같은 화면에
+    expect(screen.getByText("8일째")).toBeInTheDocument();
+  });
+
+  it("자동 처리율은 분모를 바로 적고 자동 등록 조건을 붙인다. 오류는 사람 말 이름을 크게", async () => {
+    renderWithQuery(<DashboardPage />);
+
+    expect(await screen.findByText("처리를 마친 작업 3건(승인 대기 포함) 중 2건이 사람 손 없이 WMS에 등록됐습니다")).toBeInTheDocument();
+    expect(screen.getByText("67%")).toBeInTheDocument();
+    expect(screen.getByText(/모든 품목의 HS가 정해진 작업만/)).toBeInTheDocument();
+    const rule = screen.getByRole("button", { name: /서류끼리 서류 전체 총중량이 같은지/ });
+    expect(rule).toHaveTextContent("X-WT-01");
+  });
+
+  it("옛 서버면 예전 타일을 쓰고, 통관 지연은 AI chat 대신 같은 화면으로, '참고' 규칙은 뺀다", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.getStats).mockResolvedValue(oldStats);
     renderWithQuery(<DashboardPage />);
 
     const tiles = within(await screen.findByRole("list", { name: "지금 할 일" })).getAllByRole("button");
@@ -38,101 +139,43 @@ describe("DashboardPage", () => {
       "분류 못 한 서류 2건 보기",
       "통관 지연 화물 4건 보기",
     ]);
-    expect(tiles[1]).toHaveClass("alert"); // 불일치가 남으면 빨강
-    expect(screen.queryByText("부산항 통관 현황")).not.toBeInTheDocument();
-  });
+    await user.click(tiles[4]);
+    expect(hashParams().path).toBe("/dashboard");
+    expect(screen.queryByText(/DOC-LATER/)).not.toBeInTheDocument();
+    expect(screen.getByText(/불일치·확인 필요가 없고/)).toBeInTheDocument(); // 서버 문장이 없으면 화면 문장
 
-  it("통관 흐름 · 지연 화물 · 종류별 서류 · 자동 처리율 · 자주 걸린 오류를 보여 준다", async () => {
-    window.localStorage.setItem(FX_KEY, "off");
-    renderWithQuery(<DashboardPage />);
-
-    expect(await screen.findByRole("button", { name: "심사 중 4건" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "반출 29건" })).toBeInTheDocument();
-    expect(screen.getByText("SMLNCAN26003548")).toBeInTheDocument();
-    expect(screen.getByText("8일째")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "분류 못 함 2장" })).toBeInTheDocument();
-    expect(screen.getByText("끝난 작업 3건 중 2건이 사람 손 없이 WMS에 등록됐습니다")).toBeInTheDocument();
-    expect(screen.getByText("67%")).toBeInTheDocument(); // 2/3 (서버 두 숫자의 비율만 그린다)
-    expect(screen.getByText(/사람이 승인한 작업 포함/)).toBeInTheDocument(); // 목록이 숫자보다 넓다는 안내 (#201 리뷰)
-    expect(screen.getByRole("button", { name: /X-WT-01/ })).toHaveTextContent("1건");
-  });
-
-  it("서류 통계를 누르면 그 조건의 문서 분류 내역으로 간다", async () => {
-    const user = userEvent.setup();
-    window.localStorage.setItem(FX_KEY, "off");
-    renderWithQuery(<DashboardPage />);
-
-    await user.click(await screen.findByRole("button", { name: "불일치 남은 작업 1건 보기" }));
+    await user.click(tiles[1]);
     expect(hashParams()).toEqual({ path: "/documents", params: { job_status: "waiting_approval", grade: "불일치" } });
-
-    await user.click(screen.getByRole("button", { name: "HS 고를 품목 1건 보기" }));
-    expect(hashParams().params).toEqual({ job_status: "waiting_approval", hs: "pending" });
-
-    await user.click(screen.getByRole("button", { name: "분류 못 한 서류 2건 보기" }));
-    expect(hashParams()).toEqual({ path: "/documents", params: { type: "unknown" } });
-
-    await user.click(screen.getByRole("button", { name: /X-WT-01/ }));
-    expect(hashParams().params).toEqual({ rule_id: "X-WT-01" });
-
-    await user.click(screen.getByRole("button", { name: "포장명세서 3장" }));
-    expect(hashParams().params).toEqual({ type: "packing_list" });
   });
 
-  it("화물 통계를 누르면 AI chat 질문으로 간다", async () => {
-    const user = userEvent.setup();
-    window.localStorage.setItem(FX_KEY, "off");
+  it("영상 위 '확인할 일'은 할 일 타일의 합이고, 단계 칩은 숫자만 (지금 단계를 짚지 않는다)", async () => {
+    window.localStorage.removeItem(FX_KEY);
     renderWithQuery(<DashboardPage />);
 
-    await user.click(await screen.findByRole("button", { name: "통관 지연 화물 4건 보기" }));
-    expect(hashParams()).toEqual({ path: "/chat", params: { q: "지금 통관이 늦어지고 있는 화물 전부 보여줘" } });
+    expect(await screen.findByText("확인할 일 4건이 들어와 있습니다")).toBeInTheDocument();
+    const stages = screen.getByRole("list", { name: "통관 단계별 화물" });
+    expect(within(stages).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["입항7", "수입신고9", "심사 중4", "검사 중5", "수리22", "반출29"]);
+    expect(within(stages).queryAllByRole("listitem").some((li) => li.hasAttribute("aria-current"))).toBe(false);
+  });
 
-    await user.click(screen.getByRole("button", { name: "심사 중 4건" }));
-    expect(hashParams().params).toEqual({ q: "심사 중 화물 전체 알려줘" });
+  it("todoTotal · hasNextCounts", () => {
+    expect([hasNextCounts(stats), todoTotal(stats)]).toEqual([true, 4]);
+    expect([hasNextCounts(oldStats), todoTotal(oldStats)]).toEqual([false, 1 + 2 + 4]);
   });
 
   it("오른쪽 위 ON/OFF 로 부산항 장면을 켜고 끄고, 고른 값을 기억한다", async () => {
     const user = userEvent.setup();
+    window.localStorage.removeItem(FX_KEY);
     renderWithQuery(<DashboardPage />);
 
     const toggle = screen.getByRole("button", { name: /애니메이션/ });
     expect(toggle).toHaveAttribute("aria-pressed", "true"); // 처음은 ON
     expect(await screen.findByText("부산항 통관 현황")).toBeInTheDocument();
-    expect(await screen.findByText("확인할 일 7건이 들어와 있습니다")).toBeInTheDocument();
 
     await user.click(toggle);
     expect(toggle).toHaveAttribute("aria-pressed", "false");
-    expect(toggle).toHaveTextContent("애니메이션 OFF");
     expect(screen.queryByText("부산항 통관 현황")).not.toBeInTheDocument();
     expect(window.localStorage.getItem(FX_KEY)).toBe("off");
-  });
-
-  it("부산항 영상이 지나는 통관 단계를 영상 시간에 맞춰 짚고, 단계마다 화물 수를 붙인다", async () => {
-    renderWithQuery(<DashboardPage />);
-
-    await screen.findByText("확인할 일 7건이 들어와 있습니다");
-    const stages = screen.getByRole("list", { name: "영상 속 통관 단계" });
-    expect(within(stages).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
-      "입항7",
-      "수입신고9",
-      "심사 중4",
-      "검사 중5",
-      "수리22",
-      "반출29",
-    ]);
-    expect(within(stages).getByText("입항").closest("li")).toHaveAttribute("aria-current", "step");
-
-    const intro = screen.getByTestId("port-intro");
-    Object.defineProperty(intro, "currentTime", { value: 12, configurable: true });
-    fireEvent.timeUpdate(intro);
-    expect(within(stages).getByText("심사 중").closest("li")).toHaveAttribute("aria-current", "step");
-    expect(within(stages).getByText("수입신고").closest("li")).toHaveClass("done");
-
-    fireEvent.ended(intro); // 되풀이 구간은 모두 지난 단계
-    expect(within(stages).getAllByRole("listitem").every((li) => li.classList.contains("done"))).toBe(true);
-  });
-
-  it("stageAt 은 영상 시간을 단계 번호로 바꾼다", () => {
-    expect([0, 3.9, 4, 11, 15.5, 17, 18.5, 24].map(stageAt)).toEqual([0, 0, 1, 2, 3, 4, 5, 5]);
   });
 
   it("움직임 줄이기 설정이면 처음부터 OFF", () => {
@@ -148,6 +191,6 @@ describe("DashboardPage", () => {
   it("서버 오류 문장을 보여 준다", async () => {
     vi.mocked(api.getStats).mockRejectedValue(new api.ApiError(404, "없는 경로입니다"));
     renderWithQuery(<DashboardPage />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("없는 경로입니다");
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("없는 경로입니다"));
   });
 });

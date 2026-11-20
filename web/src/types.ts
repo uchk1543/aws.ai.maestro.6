@@ -265,7 +265,19 @@ export interface DocumentFilters {
 // GET /api/stats (대시보드, F11 #195). 숫자는 서버가 센 값 그대로 쓴다
 export interface StatsResponse {
   today: string;
-  todo: { waiting_approval: number; mismatch_jobs: number; hs_pending: number; unclassified: number; delayed: number };
+  todo: {
+    waiting_approval: number;
+    mismatch_jobs: number;
+    hs_pending: number;
+    unclassified: number;
+    delayed: number;
+    /** 다음 할 일별 작업 수 (#252). 옛 서버는 주지 않는다 (그때는 옛 타일로 그린다) */
+    fix_docs?: number;
+    choose_hs?: number;
+    approve?: number;
+    reupload?: number;
+    wait?: number;
+  };
   flow: { status: string; count: number }[];
   delayed: {
     bl_no: string;
@@ -278,6 +290,23 @@ export interface StatsResponse {
   }[];
   delay_rule: string;
   docs_by_type: Record<DocType, number>;
-  auto: { finished: number; auto: number };
-  top_rules: { rule_id: string; grade: Grade; count: number; example: string }[];
+  auto: { finished: number; auto: number; rule?: string };
+  /** name: 사람 말 이름 (#252, rules.csv description) */
+  top_rules: { rule_id: string; grade: Grade; count: number; example: string; name?: string | null }[];
+}
+
+// GET /api/jobs?next_action= (#252). 대시보드 카드를 누르면 그 자리에 펼치는 작업 목록
+export type TodoKind = "fix_docs" | "choose_hs" | "approve" | "reupload" | "wait";
+export interface JobSummary {
+  job_id: string;
+  status: JobStatus;
+  bl_no: string | null;
+  consignee: string | null;
+  created_at: string;
+  next_action: NextAction;
+  mismatch: number;
+  hs_pending: number;
+}
+export interface JobListResponse {
+  items: JobSummary[];
 }

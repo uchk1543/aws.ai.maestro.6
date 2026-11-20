@@ -1,12 +1,14 @@
 // G15 대시보드: 지금 할 일 · 통관 흐름 · 서류 처리 (GET /api/stats, F11 #195).
-// 숫자는 서버가 센 값 그대로 쓴다. 화면은 다시 세지 않는다(비율만 그린다). 통계를 누르면 연관된 문서 분류 내역(서류)이나
-// AI chat 질문(화물)으로 간다. 오른쪽 위 ON/OFF: ON은 부산항 장면(Blender 렌더) 위에 통계가 컨테이너처럼 올라오고 숫자가 차오른다.
+// 숫자는 서버가 센 값 그대로 쓴다. 화면은 다시 세지 않는다(비율만 그린다).
+// #252: 할 일 타일은 '작업' 하나에 다음 할 일 하나(next_action)로 센다. 카드를 누르면 그 자리에 작업 목록이 펼쳐지고
+//       줄을 누르면 작업 화면으로 간다. 서버가 새 칸·작업 목록을 아직 주지 않으면 옛 타일과 문서 분류 내역 이동을 쓴다.
+//       AI chat 에 질문을 자동으로 보내는 클릭은 없다. 오른쪽 위 ON/OFF: ON은 부산항 장면(Blender 렌더).
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { getStats } from "../api";
+import { ApiError, getJobs, getStats } from "../api";
 import { Icon } from "../components/Icon";
 import { navigate } from "../route";
-import { DOC_TYPES, type StatsResponse } from "../types";
+import { DOC_TYPES, type StatsResponse, type TodoKind } from "../types";
 import { KIND_LABEL } from "./DocHistoryPage";
 
 export const FX_KEY = "team06-dashboard-fx";
@@ -50,11 +52,56 @@ interface Todo {
   hint: string;
   value: number;
   alert?: boolean;
+  /** 그 자리에 목록을 펼치는 타일이면 펼친 상태 (#252) */
+  expanded?: boolean;
   go: () => void;
 }
 
-function todosOf(s: StatsResponse): Todo[] {
+export const TODO_KINDS: TodoKind[] = ["fix_docs", "choose_hs", "approve", "reupload", "wait"];
+
+/** 다음 할 일별 타일 (#252). 단위는 모두 '작업' */
+export const KIND_TILE: Record<TodoKind, { label: string; hint: string; alert?: boolean }> = {
+  fix_docs: { label: "서류 다시 받기", hint: "불일치가 남아 서류를 고쳐 다시 올려야 함", alert: true },
+  choose_hs: { label: "HS 고르기", hint: "사람이 HS를 골라야 함" },
+  approve: { label: "승인하기", hint: "확인한 뒤 승인하면 WMS 등록" },
+  reupload: { label: "처리 실패", hint: "서류를 다시 올려야 함" },
+  wait: { label: "처리 중", hint: "끝나면 할 일로 옮겨 감" },
+};
+
+/** 작업 목록 API 가 없을 때(배포 전) 대신 여는 문서 분류 내역 거르기 */
+const FALLBACK: Record<TodoKind, Record<string, string>> = {
+  fix_docs: { job_status: "waiting_approval", grade: "불일치" },
+  choose_hs: { job_status: "waiting_approval", hs: "pending" },
+  approve: { job_status: "waiting_approval" },
+  reupload: { job_status: "failed" },
+  wait: { job_status: "running" },
+};
+
+/** 서버가 다음 할 일별 작업 수를 주는지 (#252 PR A 뒤) */
+export function hasNextCounts(s: StatsResponse): boolean {
+  return typeof s.todo.fix_docs === "number";
+}
+
+/** 영상 위 "확인할 일 N건": 새 서버면 할 일 타일의 합(작업 수), 옛 서버면 예전 셈 */
+export function todoTotal(s: StatsResponse): number {
+  if (hasNextCounts(s)) return TODO_KINDS.reduce((n, k) => n + (s.todo[k] ?? 0), 0);
+  return s.todo.waiting_approval + s.todo.unclassified + s.todo.delayed;
+}
+
+function scrollToDelayed() {
+  document.getElementById("dash-delayed")?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+}
+
+function todosOf(s: StatsResponse, open: TodoKind | null, toggle: (k: TodoKind) => void): Todo[] {
   const t = s.todo;
+  if (hasNextCounts(s)) {
+    return TODO_KINDS.map((kind) => {
+      const tile = KIND_TILE[kind];
+      const value = t[kind] ?? 0;
+      return { key: kind, label: tile.label, hint: tile.hint, value, alert: Boolean(tile.alert) && value > 0, expanded: open === kind, go: () => toggle(kind) };
+    });
+  }
+  // 옛 서버: 예전 타일. 통관 지연은 AI chat 대신 같은 화면의 지연 목록으로 내려간다 (#252)
   return [
     { key: "approve", label: "승인 대기", hint: "작업", value: t.waiting_approval, go: () => navigate("/documents", { job_status: "waiting_approval" }) },
     {
@@ -67,7 +114,7 @@ function todosOf(s: StatsResponse): Todo[] {
     },
     { key: "hs", label: "HS 고를 품목", hint: "사람 확인 필요", value: t.hs_pending, go: () => navigate("/documents", { job_status: "waiting_approval", hs: "pending" }) },
     { key: "unknown", label: "분류 못 한 서류", hint: "종류를 정하지 못함", value: t.unclassified, go: () => navigate("/documents", { type: "unknown" }) },
-    { key: "delayed", label: "통관 지연 화물", hint: s.delay_rule, value: t.delayed, go: () => navigate("/chat", { q: "지금 통관이 늦어지고 있는 화물 전부 보여줘" }) },
+    { key: "delayed", label: "통관 지연 화물", hint: s.delay_rule, value: t.delayed, go: scrollToDelayed },
   ];
 }
 
@@ -75,7 +122,14 @@ function TodoTile({ todo, fx, order }: { todo: Todo; fx: boolean; order: number 
   const shown = useCountUp(todo.value, fx, 350 + order * 120);
   return (
     <li className="todo-tile-wrap" style={{ "--i": order } as CSSProperties}>
-      <button type="button" className={todo.alert ? "todo-tile alert" : "todo-tile"} onClick={todo.go} aria-label={`${todo.label} ${todo.value}건 보기`}>
+      <button
+        type="button"
+        className={["todo-tile", todo.alert && "alert", todo.expanded && "open"].filter(Boolean).join(" ")}
+        onClick={todo.go}
+        aria-label={`${todo.label} ${todo.value}건 보기`}
+        aria-expanded={todo.expanded === undefined ? undefined : todo.expanded}
+        aria-controls={todo.expanded ? "dash-jobs" : undefined}
+      >
         <span className="todo-label">{todo.label}</span>
         <span className="todo-value">
           {shown}
@@ -87,45 +141,16 @@ function TodoTile({ todo, fx, order }: { todo: Todo; fx: boolean; order: number 
   );
 }
 
-/**
- * 인트로 영상에서 통관 단계가 시작하는 때(초). 영상은 컨테이너 하나를 따라간다:
- * 배 입항 → 안벽 크레인 하역 → 트럭으로 장치장 사이 이동 → 검사대 → 게이트 반출 → 항구 전체로 빠짐.
- * 영상을 다시 렌더하면 이 시간도 함께 고친다 (AWS_개인/video/blender/dash_port/build_scene.py 의 프레임 ÷ 24).
- */
-export const STAGE_TIMES: { status: string; from: number }[] = [
-  { status: "입항", from: 0 },
-  { status: "수입신고", from: 4 },
-  { status: "심사 중", from: 11 },
-  { status: "검사 중", from: 15.5 },
-  { status: "수리", from: 17 },
-  { status: "반출", from: 18.5 },
-];
-
-/** 영상 t초에 보이는 단계 번호. */
-export function stageAt(t: number): number {
-  let at = 0;
-  STAGE_TIMES.forEach((s, i) => {
-    if (t >= s.from) at = i;
-  });
-  return at;
-}
-
-/** 부산항 장면: 컨테이너 하나가 입항부터 반출까지 가는 인트로를 한 번, 그다음 항구 전체 항공샷을 되풀이한다. */
+/** 부산항 장면: 컨테이너 하나가 입항부터 반출까지 가는 인트로를 한 번, 그다음 항구 전체 항공샷을 되풀이한다.
+ * 영상 위 통관 단계 칩은 단계별 화물 수만 보인다. 영상 시간에 맞춰 '지금 단계'를 짚지 않는다 (상태로 오해된다, #252). */
 function PortHero({ stats }: { stats: StatsResponse | undefined }) {
   const [phase, setPhase] = useState<"intro" | "loop">("intro");
-  const [stage, setStage] = useState(0);
   const loopRef = useRef<HTMLVideoElement>(null);
-  const total = stats ? stats.todo.waiting_approval + stats.todo.unclassified + stats.todo.delayed : null;
-  const countOf = (status: string) => stats?.flow.find((f) => f.status === status)?.count;
+  const total = stats ? todoTotal(stats) : null;
 
   function toLoop() {
     setPhase("loop");
     void loopRef.current?.play?.()?.catch?.(() => undefined);
-  }
-
-  function stageClass(i: number): string {
-    if (phase === "loop" || i < stage) return "done";
-    return i === stage ? "now" : "";
   }
 
   return (
@@ -139,7 +164,6 @@ function PortHero({ stats }: { stats: StatsResponse | undefined }) {
         muted
         playsInline
         preload="auto"
-        onTimeUpdate={(e) => setStage(stageAt(e.currentTarget.currentTime))}
         onEnded={toLoop}
         onError={toLoop}
         aria-hidden="true"
@@ -152,26 +176,76 @@ function PortHero({ stats }: { stats: StatsResponse | undefined }) {
         muted
         loop
         playsInline
-        preload="auto"
+        preload="metadata"
         aria-hidden="true"
       />
       <div className="port-shade" />
       <div className="port-copy">
-        <p className="port-date">{stats ? stats.today : " "}</p>
+        <p className="port-date">{stats ? stats.today : " "}</p>
         <p className="port-title">부산항 통관 현황</p>
         <p className="port-sub">{total === null ? "불러오는 중" : `확인할 일 ${total}건이 들어와 있습니다`}</p>
       </div>
-      {/* 영상 속 컨테이너가 지금 지나는 통관 단계. 숫자는 그 단계의 화물 수(서버 값) */}
-      <ol className="port-stages" aria-label="영상 속 통관 단계">
-        {STAGE_TIMES.map((s, i) => (
-          <li key={s.status} className={stageClass(i)} aria-current={stageClass(i) === "now" ? "step" : undefined}>
-            <span className="port-stage-dot" aria-hidden="true" />
-            <span className="port-stage-name">{s.status}</span>
-            {countOf(s.status) !== undefined && <b className="port-stage-count">{countOf(s.status)}</b>}
-          </li>
-        ))}
-      </ol>
+      {stats && (
+        <ol className="port-stages" aria-label="통관 단계별 화물">
+          {stats.flow.map((f) => (
+            <li key={f.status}>
+              <span className="port-stage-name">{f.status}</span>
+              <b className="port-stage-count">{f.count}</b>
+            </li>
+          ))}
+        </ol>
+      )}
     </div>
+  );
+}
+
+/** 카드를 누르면 그 자리에 펼치는 작업 목록 (#252). 줄을 누르면 작업 화면으로 간다. */
+function JobsPanel({ kind, count, onClose }: { kind: TodoKind; count: number; onClose: () => void }) {
+  const query = useQuery({ queryKey: ["jobs", kind], queryFn: () => getJobs(kind), retry: false });
+  const noRoute = query.error instanceof ApiError && (query.error.status === 404 || query.error.status === 501);
+  const tile = KIND_TILE[kind];
+  return (
+    <section id="dash-jobs" className={`dash-jobs dash-jobs-${kind}`} aria-label={`${tile.label} 작업 목록`}>
+      <div className="dash-jobs-head">
+        <h2>
+          {tile.label} <span className="count">{count}건</span>
+        </h2>
+        <button type="button" className="dash-jobs-close" aria-label="목록 닫기" onClick={onClose}>
+          <Icon name="close" size={18} />
+        </button>
+      </div>
+      {query.isPending && <p className="hint">작업 목록을 불러오는 중…</p>}
+      {noRoute && (
+        <p className="hint">
+          작업 목록을 아직 볼 수 없습니다.{" "}
+          <button type="button" className="link" onClick={() => navigate("/documents", FALLBACK[kind])}>
+            문서 분류 내역에서 보기
+          </button>
+        </p>
+      )}
+      {query.error && !noRoute && (
+        <p className="error" role="alert">
+          {query.error.message}
+        </p>
+      )}
+      {query.data && query.data.items.length === 0 && <p className="empty">해당하는 작업이 없습니다.</p>}
+      {query.data && query.data.items.length > 0 && (
+        <ul className="dash-job-list">
+          {query.data.items.map((j) => (
+            <li key={j.job_id}>
+              <button type="button" className="dash-job" onClick={() => navigate(`/jobs/${encodeURIComponent(j.job_id)}`)}>
+                <span className="dash-job-main">
+                  <strong>{j.bl_no ? `B/L ${j.bl_no}` : j.job_id}</strong>
+                  <span className="hint">{[j.consignee ?? "수입자 모름", j.created_at].join(" · ")}</span>
+                </span>
+                <span className="dash-job-next">{j.next_action.message}</span>
+                <Icon name="chevron" size={18} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -180,28 +254,20 @@ function FlowPanel({ stats, fx }: { stats: StatsResponse; fx: boolean }) {
   return (
     <section className="dash-panel" aria-labelledby="flow-title">
       <h2 id="flow-title">통관 흐름</h2>
-      <p className="hint dash-note">단계를 누르면 그 화물을 AI chat으로 찾아봅니다</p>
+      <p className="hint dash-note">통관 단계별 화물 수 · 화물을 찾으려면 AI chat에 물어보세요</p>
       <ol className="flow">
         {stats.flow.map((f, i) => (
-          <li key={f.status}>
-            <button
-              type="button"
-              className="flow-row"
-              style={{ "--i": i } as CSSProperties}
-              onClick={() => navigate("/chat", { q: `${f.status} 화물 전체 알려줘` })}
-              aria-label={`${f.status} ${f.count}건`}
-            >
-              <span className="flow-name">{f.status}</span>
-              <span className="flow-bar">
-                <span className="flow-fill" style={{ width: `${(f.count / max) * 100}%` }} />
-              </span>
-              <span className="flow-count">{f.count}</span>
-            </button>
+          <li key={f.status} className="flow-row static" style={{ "--i": i } as CSSProperties} aria-label={`${f.status} ${f.count}건`}>
+            <span className="flow-name">{f.status}</span>
+            <span className="flow-bar">
+              <span className="flow-fill" style={{ width: `${(f.count / max) * 100}%` }} />
+            </span>
+            <span className="flow-count">{f.count}</span>
           </li>
         ))}
       </ol>
 
-      <h3 className="dash-sub">
+      <h3 className="dash-sub" id="dash-delayed">
         통관 지연 <span className="count">{stats.todo.delayed}건</span>
       </h3>
       <p className="hint dash-note">{stats.delay_rule}</p>
@@ -248,24 +314,27 @@ function AutoRing({ auto, finished, fx }: { auto: number; finished: number; fx: 
   );
 }
 
+const AUTO_RULE = "불일치·확인 필요가 없고 모든 품목의 HS가 정해진 작업만 사람 손 없이 WMS에 등록합니다";
+
 function DocsPanel({ stats, fx }: { stats: StatsResponse; fx: boolean }) {
   const max = Math.max(1, ...DOC_TYPES.map((t) => stats.docs_by_type[t] ?? 0));
+  // '참고'는 할 일이 아니라 뺀다 (옛 서버는 섞어서 준다, #252)
+  const rules = stats.top_rules.filter((r) => r.grade !== "참고");
   return (
     <section className="dash-panel" aria-labelledby="docs-title">
       <h2 id="docs-title">서류 처리</h2>
-      <p className="hint dash-note">누르면 그 서류를 문서 분류 내역에서 봅니다</p>
+      <p className="hint dash-note">종류·오류를 누르면 그 서류를 문서 분류 내역에서 봅니다</p>
 
-      <button type="button" className="auto-box" onClick={() => navigate("/documents", { job_status: "done" })}>
+      <div className="auto-box">
         <AutoRing auto={stats.auto.auto} finished={stats.auto.finished} fx={fx} />
         <span className="auto-text">
           <strong>자동 처리율</strong>
           <span className="hint">
-            끝난 작업 {stats.auto.finished}건 중 {stats.auto.auto}건이 사람 손 없이 WMS에 등록됐습니다
+            처리를 마친 작업 {stats.auto.finished}건(승인 대기 포함) 중 {stats.auto.auto}건이 사람 손 없이 WMS에 등록됐습니다
           </span>
-          {/* 목록(job_status=done)에는 사람이 승인해 끝난 작업도 들어가 숫자와 다를 수 있다 (#201 리뷰) */}
-          <span className="hint auto-link-note">누르면 처리가 끝난 작업의 서류를 봅니다 (사람이 승인한 작업 포함)</span>
+          <span className="hint auto-link-note">{stats.auto.rule || AUTO_RULE}</span>
         </span>
-      </button>
+      </div>
 
       <h3 className="dash-sub">종류별 서류</h3>
       <ul className="kinds">
@@ -289,17 +358,20 @@ function DocsPanel({ stats, fx }: { stats: StatsResponse; fx: boolean }) {
       </ul>
 
       <h3 className="dash-sub">자주 걸린 오류</h3>
-      {stats.top_rules.length === 0 ? (
+      {rules.length === 0 ? (
         <p className="empty">걸린 오류가 없습니다.</p>
       ) : (
         <ol className="rules">
-          {stats.top_rules.map((r) => (
+          {rules.map((r) => (
             <li key={r.rule_id}>
               <button type="button" className="rule-row" onClick={() => navigate("/documents", { rule_id: r.rule_id })}>
-                <span className={r.grade === "불일치" ? "grade grade-mismatch" : r.grade === "참고" ? "grade grade-note" : "grade"}>{r.grade}</span>
+                <span className={r.grade === "불일치" ? "grade grade-mismatch" : "grade"}>{r.grade}</span>
                 <span className="rule-main">
-                  <code>{r.rule_id}</code>
-                  <span className="hint">{r.example}</span>
+                  <strong className="rule-name">{r.name || r.example}</strong>
+                  <span className="hint">
+                    {r.name ? `${r.example} · ` : ""}
+                    <code>{r.rule_id}</code>
+                  </span>
                 </span>
                 <span className="rule-count">{r.count}건</span>
               </button>
@@ -311,10 +383,21 @@ function DocsPanel({ stats, fx }: { stats: StatsResponse; fx: boolean }) {
   );
 }
 
-export function DashboardPage() {
+/** open: 주소(#/dashboard?open=…)로 온 펼친 카드. 작업 화면에서 뒤로 오면 같은 목록이 펼쳐져 있다 (#252) */
+export function DashboardPage({ open: openParam }: { open?: string } = {}) {
   const [fx, setFx] = useState(initialFx);
+  const [open, setOpen] = useState<TodoKind | null>(() =>
+    TODO_KINDS.includes(openParam as TodoKind) ? (openParam as TodoKind) : null,
+  );
   const query = useQuery({ queryKey: ["stats"], queryFn: getStats, refetchInterval: STATS_REFRESH_MS });
   const stats = query.data;
+
+  function toggleOpen(kind: TodoKind) {
+    const next = open === kind ? null : kind;
+    setOpen(next);
+    // 새 기록을 쌓지 않고 주소만 바꾼다 (뒤로 가기가 대시보드 안을 돌지 않게)
+    window.history.replaceState(null, "", next ? `#/dashboard?open=${next}` : "#/dashboard");
+  }
 
   function toggle() {
     setFx((on) => {
@@ -354,10 +437,13 @@ export function DashboardPage() {
         <>
           <h2 className="visually-hidden">지금 할 일</h2>
           <ul className="todo-tiles" aria-label="지금 할 일">
-            {todosOf(stats).map((todo, i) => (
+            {todosOf(stats, open, toggleOpen).map((todo, i) => (
               <TodoTile key={todo.key} todo={todo} fx={fx} order={i} />
             ))}
           </ul>
+          {open && hasNextCounts(stats) && (
+            <JobsPanel kind={open} count={stats.todo[open] ?? 0} onClose={() => toggleOpen(open)} />
+          )}
           <div className="dash-grid">
             <FlowPanel stats={stats} fx={fx} />
             <DocsPanel stats={stats} fx={fx} />

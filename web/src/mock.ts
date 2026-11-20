@@ -7,6 +7,8 @@ import jobExample from "../../docs/examples/job_waiting_approval.json";
 import documentsDraft from "./fixtures/documents.draft.json";
 // 임시(제안 중): F11(#195)이 합쳐지면 docs/examples/stats.json 으로 바꾼다
 import statsDraft from "./fixtures/stats.draft.json";
+// 임시: #252 PR A(작업 목록 API)가 합쳐지면 docs/examples/jobs.json 으로 바꾼다
+import jobsDraft from "./fixtures/jobs.draft.json";
 import { ApiError } from "./api";
 import { fileViewOf } from "./mockDocs";
 import { nextActionOf } from "./nextAction";
@@ -23,6 +25,7 @@ import type {
   HSChoice,
   Job,
   JobFilesResponse,
+  JobListResponse,
   StatsResponse,
   UploadRequestFile,
   UploadsResponse,
@@ -216,6 +219,11 @@ export async function mockRequest(method: string, path: string, body: unknown): 
   if (method === "GET" && chatRoute) return { messages: chatLines(decodeURIComponent(chatRoute[1])) };
   const [pathname, search = ""] = path.split("?");
   if (method === "GET" && pathname === "/api/documents") return documents(new URLSearchParams(search));
+  if (method === "GET" && pathname === "/api/jobs") {
+    const kind = new URLSearchParams(search).get("next_action");
+    const items = (jobsDraft as unknown as JobListResponse).items.filter((j) => !kind || j.next_action.kind === kind);
+    return copy({ items });
+  }
   if (method === "GET" && pathname === "/api/stats") {
     const { _note, ...stats } = statsDraft as StatsResponse & { _note?: string };
     void _note;

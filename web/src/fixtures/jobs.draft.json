@@ -1,0 +1,61 @@
+{
+  "_note": "임시: #252 PR A가 합쳐지면 docs/examples/jobs.json 모양과 같다 (개발용 가짜 작업 목록)",
+  "items": [
+    {
+      "job_id": "job-7c1e",
+      "status": "waiting_approval",
+      "bl_no": "BL-2026-0001",
+      "consignee": "샘플무역",
+      "created_at": "2026-11-20 14:05",
+      "next_action": {
+        "kind": "fix_docs",
+        "message": "불일치 1건: 서류를 고쳐 다시 올려야 등록할 수 있습니다",
+        "count": 1
+      },
+      "mismatch": 1,
+      "hs_pending": 1
+    },
+    {
+      "job_id": "job-1a2b",
+      "status": "waiting_approval",
+      "bl_no": "SMLNCAN26003548",
+      "consignee": "샘플트레이딩코리아",
+      "created_at": "2026-11-20 11:40",
+      "next_action": {
+        "kind": "choose_hs",
+        "message": "HS 1개를 고르세요",
+        "count": 1
+      },
+      "mismatch": 0,
+      "hs_pending": 1
+    },
+    {
+      "job_id": "job-3c4d",
+      "status": "waiting_approval",
+      "bl_no": "PSS2611979784",
+      "consignee": "BUSAN TECH CO., LTD.",
+      "created_at": "2026-11-20 09:12",
+      "next_action": {
+        "kind": "approve",
+        "message": "확인 필요 1건을 확인한 뒤 승인하세요",
+        "count": 1
+      },
+      "mismatch": 0,
+      "hs_pending": 0
+    },
+    {
+      "job_id": "job-5e6f",
+      "status": "failed",
+      "bl_no": null,
+      "consignee": null,
+      "created_at": "2026-11-19 17:30",
+      "next_action": {
+        "kind": "reupload",
+        "message": "처리하지 못했습니다. 서류를 다시 올려 주세요",
+        "count": null
+      },
+      "mismatch": 0,
+      "hs_pending": 0
+    }
+  ]
+}

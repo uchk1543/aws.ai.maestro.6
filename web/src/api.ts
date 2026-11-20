@@ -14,7 +14,9 @@ import type {
   HSChoice,
   Job,
   JobFilesResponse,
+  JobListResponse,
   StatsResponse,
+  TodoKind,
   JobFile,
   UploadRequestFile,
   UploadsResponse,
@@ -101,6 +103,11 @@ export function getDocuments(
 /** 대시보드 통계 (F11 #195). 숫자는 서버가 센다. */
 export function getStats(): Promise<StatsResponse> {
   return request("GET", "/api/stats");
+}
+
+/** 다음 할 일이 같은 작업 목록 (#252). 대시보드 카드를 누르면 그 자리에 펼친다. 개수는 통계의 같은 칸과 같다. */
+export function getJobs(kind: TodoKind): Promise<JobListResponse> {
+  return request("GET", `/api/jobs?${new URLSearchParams({ next_action: kind }).toString()}`);
 }
 
 /** 서류 보기: 작업에 올라온 서류의 원본 주소·쪽 그림·칸 위치·읽은 칸 (G11, docs/schema.md GET /api/jobs/{id}/files #156·#189). */

@@ -1,25 +1,102 @@
 {
   "_note": "임시 가짜 데이터 (G15 #196). GET /api/stats 모양 그대로 (F11 #195, PR #198). 합쳐지면 docs/examples/stats.json 으로 바꾼다. 서류 수는 documents.draft.json 과 같게, 화물·회사명·번호는 모두 가상 값",
   "today": "2026-11-20",
-  "todo": { "waiting_approval": 1, "mismatch_jobs": 1, "hs_pending": 1, "unclassified": 2, "delayed": 4 },
+  "todo": {
+    "waiting_approval": 3,
+    "mismatch_jobs": 1,
+    "hs_pending": 1,
+    "unclassified": 2,
+    "delayed": 4,
+    "fix_docs": 1,
+    "choose_hs": 1,
+    "approve": 1,
+    "reupload": 1,
+    "wait": 0
+  },
   "flow": [
-    { "status": "입항", "count": 7 },
-    { "status": "수입신고", "count": 9 },
-    { "status": "심사 중", "count": 4 },
-    { "status": "검사 중", "count": 5 },
-    { "status": "수리", "count": 22 },
-    { "status": "반출", "count": 29 }
+    {
+      "status": "입항",
+      "count": 7
+    },
+    {
+      "status": "수입신고",
+      "count": 9
+    },
+    {
+      "status": "심사 중",
+      "count": 4
+    },
+    {
+      "status": "검사 중",
+      "count": 5
+    },
+    {
+      "status": "수리",
+      "count": 22
+    },
+    {
+      "status": "반출",
+      "count": 29
+    }
   ],
   "delayed": [
-    { "bl_no": "SMLNCAN26003548", "consignee": "샘플트레이딩코리아", "item": "자기 식기", "arrived_at": "2026-11-12", "customs_status": "검사 중", "days": 8, "job_id": null },
-    { "bl_no": "EXSHSZX26003601", "consignee": "이그잼플유통", "item": "운동화", "arrived_at": "2026-11-14", "customs_status": "심사 중", "days": 6, "job_id": null },
-    { "bl_no": "SOCLHPH26003612", "consignee": "샘플트레이딩코리아", "item": "남성 셔츠", "arrived_at": "2026-11-16", "customs_status": "수입신고", "days": 4, "job_id": null },
-    { "bl_no": "BL-2026-0001", "consignee": "샘플무역", "item": "리튬이온 배터리팩", "arrived_at": "2026-11-17", "customs_status": "심사 중", "days": 3, "job_id": "job-7c1e" }
+    {
+      "bl_no": "SMLNCAN26003548",
+      "consignee": "샘플트레이딩코리아",
+      "item": "자기 식기",
+      "arrived_at": "2026-11-12",
+      "customs_status": "검사 중",
+      "days": 8,
+      "job_id": null
+    },
+    {
+      "bl_no": "EXSHSZX26003601",
+      "consignee": "이그잼플유통",
+      "item": "운동화",
+      "arrived_at": "2026-11-14",
+      "customs_status": "심사 중",
+      "days": 6,
+      "job_id": null
+    },
+    {
+      "bl_no": "SOCLHPH26003612",
+      "consignee": "샘플트레이딩코리아",
+      "item": "남성 셔츠",
+      "arrived_at": "2026-11-16",
+      "customs_status": "수입신고",
+      "days": 4,
+      "job_id": null
+    },
+    {
+      "bl_no": "BL-2026-0001",
+      "consignee": "샘플무역",
+      "item": "리튬이온 배터리팩",
+      "arrived_at": "2026-11-17",
+      "customs_status": "심사 중",
+      "days": 3,
+      "job_id": "job-7c1e"
+    }
   ],
   "delay_rule": "입항 후 3일 지나도 수리·반출 아님",
-  "docs_by_type": { "bill_of_lading": 2, "certificate_of_origin": 1, "commercial_invoice": 4, "packing_list": 3, "unknown": 2 },
-  "auto": { "finished": 3, "auto": 2 },
+  "docs_by_type": {
+    "bill_of_lading": 2,
+    "certificate_of_origin": 1,
+    "commercial_invoice": 4,
+    "packing_list": 3,
+    "unknown": 2
+  },
+  "auto": {
+    "finished": 3,
+    "auto": 2,
+    "rule": "불일치·확인 필요가 없고 모든 품목의 HS가 정해진 작업만 사람 손 없이 WMS에 등록합니다"
+  },
   "top_rules": [
-    { "rule_id": "X-WT-01", "grade": "불일치", "count": 1, "example": "상업송장 1행 총중량 6,250kg과 포장명세서 6,520kg이 다릅니다." }
+    {
+      "rule_id": "X-WT-01",
+      "grade": "불일치",
+      "count": 1,
+      "example": "상업송장 1행 총중량 6,250kg과 포장명세서 6,520kg이 다릅니다.",
+      "name": "서류끼리 서류 전체 총중량이 같은지"
+    }
   ]
 }
