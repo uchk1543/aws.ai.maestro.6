@@ -26,7 +26,8 @@ ROOT = Path(__file__).resolve().parents[2]
 SHIPMENTS = [Shipment.model_validate(r) for r in json.loads((ROOT / "samples/data/shipments.json").read_text(encoding="utf-8"))]
 STORE = MemoryShipments(SHIPMENTS)
 TTL = 604800
-SESSION_CHARS = string.ascii_letters + string.digits + "-"
+SESSION_FIRST = string.ascii_letters + string.digits
+SESSION_CHARS = SESSION_FIRST + "-"
 LINE_FIELDS = ["session_id", "ts", "role", "text", "filters", "count", "rule", "blocked", "block_reason"]
 FILTER_KEYS = {"status", "period", "date_from", "date_to", "unsupported"}
 MS_2026 = 1795219200123  # 2026-11-21 09:00:00.123 KST
@@ -114,18 +115,20 @@ def random_message(rng: random.Random) -> str:
 
 def random_session_id(rng: random.Random) -> str:
     n = rng.choice([1, 64, rng.randint(1, 64)])
-    return "".join(rng.choice(SESSION_CHARS) for _ in range(n))
+    return rng.choice(SESSION_FIRST) + "".join(rng.choice(SESSION_CHARS) for _ in range(n - 1))
 
 
 def random_session_value(rng: random.Random):
-    """형식 안 값, 빈 문자열, 65자 이상, 나쁜 글자 하나 낀 값, 비문자열 중 하나."""
-    kind = rng.randrange(5)
+    """형식 안 값, 빈 문자열, 65자 이상, 나쁜 글자 하나 낀 값, '-'로 시작하는 값, 비문자열 중 하나."""
+    kind = rng.randrange(6)
     if kind == 0:
         return random_session_id(rng)
     if kind == 1:
         return ""
     if kind == 2:
-        return "".join(rng.choice(SESSION_CHARS) for _ in range(rng.randint(65, 100)))
+        return "".join(rng.choice(SESSION_FIRST) for _ in range(rng.randint(65, 100)))
+    if kind == 5:
+        return "-" + random_session_id(rng)[: rng.randint(0, 63)]
     if kind == 3:
         good = random_session_id(rng)[:63]
         i = rng.randint(0, len(good))
@@ -134,7 +137,7 @@ def random_session_value(rng: random.Random):
 
 
 def random_filters(rng: random.Random) -> ChatFilters:
-    status = rng.choice([None, DELAY_STATUS, "심사 중", "검사 중", "입항", "수리", "반출", "수입신고"])
+    status = rng.choice([None, DELAY_STATUS, "심사 중", "검사 중", "입항", "수리", "반출", "수입신고", "보류"])
     period = rng.choice([None, "today", "this_week", "last_week", "range"])
     dates = {}
     if period == "range":
@@ -179,6 +182,8 @@ def random_valid_line(rng: random.Random, session_id: str, ts: str) -> ChatHisto
         return ChatHistoryLine(
             session_id=session_id, ts=ts, role="assistant", text=random_text(rng), filters=random_filters(rng),
             count=rng.choice([0, 1, rng.randint(2, 10_000)]), rule=rng.choice([None, DELAY_RULE]), blocked=False,
+        ) if rng.random() < 0.7 else ChatHistoryLine(
+            session_id=session_id, ts=ts, role="assistant", text=random_text(rng), filters=random_filters(rng), blocked=False,
         )
     return ChatHistoryLine(session_id=session_id, ts=ts, role="assistant", text=random_text(rng), blocked=True,
                            block_reason=random_reason(rng))
@@ -201,11 +206,20 @@ def _kst_stamp_oracle(ms: int) -> str:
 
 
 def _session_valid(v) -> bool:
-    return isinstance(v, str) and 1 <= len(v) <= 64 and all(c in SESSION_CHARS for c in v)
+    return isinstance(v, str) and 1 <= len(v) <= 64 and v[0] in SESSION_FIRST and all(c in SESSION_CHARS for c in v)
+
+
+KNOWN_STATUSES = {"입항", "수입신고", "심사 중", "검사 중", "수리", "반출", "통관 지연"}
+
+
+def _expected_queried(res: ChatResponse) -> bool:
+    """독립 판정: 못 담는 조건 없음, 상태나 기간 있음, 상태가 있으면 값 목록 안."""
+    f = res.filters
+    return not f.unsupported and bool(f.status or f.period) and (f.status is None or f.status in KNOWN_STATUSES)
 
 
 def _expected_rule(res: ChatResponse) -> str | None:
-    return DELAY_RULE if res.filters.status == DELAY_STATUS and not res.filters.unsupported else None
+    return DELAY_RULE if _expected_queried(res) and res.filters.status == "통관 지연" else None
 
 
 # ---------------------------------------------------------------------------
@@ -293,7 +307,8 @@ def test_turn_lines_content(seed, chat_table, monkeypatch):
     assert user == ChatHistoryLine(session_id=session_id, ts=handler.history_ts(ms, tag, 0), role="user", text=message.strip())
     assert reply == ChatHistoryLine(
         session_id=session_id, ts=handler.history_ts(ms, tag, 1), role="assistant", text=res.answer,
-        filters=res.filters, count=len(res.rows), rule=_expected_rule(res), blocked=False, block_reason=None,
+        filters=res.filters, count=len(res.rows) if _expected_queried(res) else None, rule=_expected_rule(res),
+        blocked=False, block_reason=None,
     )
     assert [i["expires_at"] for i in items] == [ms // 1000 + TTL] * 2
 
@@ -442,7 +457,7 @@ def test_two_turns_then_get_returns_four_lines(chat_table):
     assert lines[1]["count"] == 4 and lines[1]["filters"]["status"] == "심사 중" and lines[1]["blocked"] is False
 
 
-BAD_SESSION_IDS = ["", "a" * 65, "a b", "a_b", "가나", "abc\n", 3, True, ["s1"], {}]
+BAD_SESSION_IDS = ["", "-", "-abc", "a" * 65, "a b", "a_b", "가나", "abc\n", 3, True, ["s1"], {}]
 
 
 @pytest.mark.parametrize("value", BAD_SESSION_IDS, ids=repr)
@@ -454,7 +469,7 @@ def test_bad_session_id_is_400(value, chat_table, monkeypatch):
     assert calls == [] and chat_table.queries == [] and chat_table.items == {}
 
 
-@pytest.mark.parametrize("value", ["a" * 65, "a_b", "a%20b"])
+@pytest.mark.parametrize("value", ["-", "a" * 65, "a_b", "a%20b"])
 def test_bad_session_id_in_route_is_400(value, chat_table):
     assert get(value) == (400, {"error": handler.SESSION_ID_ERROR})
     assert chat_table.queries == []
@@ -480,6 +495,39 @@ def test_delay_rule_only_for_delay_status(chat_table, monkeypatch):
         assert post({"session_id": session_id, "message": "통관 지연 화물 알려줘"})[0] == 200
         reply = handler._history_line(stored(chat_table, session_id)[1])
         assert reply.rule == rule and reply.blocked is False
+
+
+def _failing_parser(question, prompt):
+    from agent.query_agent import ReadError
+
+    raise ReadError("가짜 모델 실패")
+
+
+@pytest.mark.parametrize(
+    ("parser", "message"),
+    [
+        (_failing_parser, "심사 중 화물 알려줘"),  # 조건을 못 만듦
+        (parser_of(), "화물 현황 알려줘"),  # 화물 질문인데 조건 없음 → 되묻기
+        (parser_of(status="수입신고", unsupported=["수하인 샘플무역"]), "샘플무역 화물"),  # 못 담는 조건
+        (parser_of(status="보류"), "보류된 화물"),  # 화물 기록에 없는 상태
+    ],
+    ids=["read-error", "ask-back", "unsupported", "unknown-status"],
+)
+def test_unqueried_answer_has_no_count(parser, message, chat_table, monkeypatch):
+    """조회하지 않은 답은 count·rule이 null이다. 0건 조회(count 0)와 구분한다."""
+    monkeypatch.setattr(query_agent, "_strands_parser", parser)
+    status, body = post({"session_id": "s1", "message": message})
+    assert status == 200 and body["rows"] == [] and body["blocked"] is None
+    reply = handler._history_line(stored(chat_table, "s1")[1])
+    assert (reply.blocked, reply.count, reply.rule) == (False, None, None) and reply.filters is not None
+    assert "count" not in stored(chat_table, "s1")[1]
+
+
+def test_zero_row_query_has_count_zero(chat_table, monkeypatch):
+    parser = parser_of(status="검사 중", period="range", date_from="2000-01-01", date_to="2000-01-02")
+    monkeypatch.setattr(query_agent, "_strands_parser", parser)
+    assert post({"session_id": "s1", "message": "2000년 1월 검사 중 화물"})[0] == 200
+    assert handler._history_line(stored(chat_table, "s1")[1]).count == 0
 
 
 def test_same_ms_two_turns_keep_four_lines(chat_table, monkeypatch):
@@ -553,7 +601,28 @@ def test_chat_store_config(monkeypatch):
     assert isinstance(store, handler.DynamoChatHistory) and store.table == "table"
     assert (got["service"], got["table"]) == ("dynamodb", "team06-chat")
     config = got["config"]
-    assert (config.connect_timeout, config.read_timeout, config.retries) == (5, 5, {"max_attempts": 2})
+    assert (config.connect_timeout, config.read_timeout, config.retries) == (2, 2, {"max_attempts": 2})
+    assert handler.CHAT_PUT_WORST_S == 8
+
+
+def test_slow_answer_skips_history_within_deadline(chat_table, monkeypatch, capsys):
+    """답이 늦으면 기록이 API Gateway 30초를 넘기지 않게 건너뛴다. 답은 그대로 200이다."""
+    clock = iter([100.0, 100.0 + handler.CHAT_DEADLINE_S - handler.CHAT_PUT_WORST_S + 0.5])
+    monkeypatch.setattr(handler, "_monotonic", lambda: next(clock))
+    status, body = post({"session_id": "s1", "message": "심사 중 화물"})
+    assert status == 200 and len(body["rows"]) == 4
+    assert chat_table.items == {}
+    assert "[warn] chat-history session=s1 role=user 시간 부족으로 건너뜀" in capsys.readouterr().out
+
+
+def test_time_left_for_question_only(chat_table, monkeypatch, capsys):
+    """질문 줄을 쓴 뒤 시간이 모자라면 답 줄은 쓰지 않는다."""
+    limit = handler.CHAT_DEADLINE_S - handler.CHAT_PUT_WORST_S
+    clock = iter([0.0, limit, limit + 1])
+    monkeypatch.setattr(handler, "_monotonic", lambda: next(clock))
+    assert post({"session_id": "s1", "message": "심사 중 화물"})[0] == 200
+    assert [i["role"] for i in stored(chat_table, "s1")] == ["user"]
+    assert "role=assistant 시간 부족으로 건너뜀" in capsys.readouterr().out
 
 
 # ---------------------------------------------------------------------------

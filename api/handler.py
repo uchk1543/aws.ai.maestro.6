@@ -35,6 +35,7 @@ from tools import declaration, hs, report, wms
 from tools.models import (
     DOC_TYPE_KO,
     Cell,
+    ChatFilters,
     ChatHistoryLine,
     ChatHistoryResponse,
     ChatResponse,
@@ -240,8 +241,9 @@ def _hs_known(code: str) -> bool:
 
 
 class DynamoChatHistory:
-    """대화 기록(team06-chat)의 DynamoDB판. 키: session_id(파티션) + ts(정렬). 칸: infra/README.md "테이블" + block_reason.
+    """대화 기록(team06-chat)의 DynamoDB판. 키: session_id(파티션) + ts(정렬). 칸·ts 형식은 docs/schema.md 약속 2 "대화 기록".
 
+    infra/README.md "테이블"의 team06-chat 줄을 넓힌 것이다: ts는 17자리 뒤에 '#<16진수 8자리>#<0|1>'를 붙이고, block_reason 칸을 더한다.
     한 줄 = 최상위 칸 session_id, ts, role, text, expires_at(초, TTL 7일). 답 줄은 blocked와
     값이 있는 filters(map)·count·rule·block_reason을 더한다. null은 칸을 쓰지 않는다.
     읽을 때 count(Decimal)는 int로, 없는 칸은 null로 되돌린다. 형식: docs/schema.md 약속 2.
@@ -297,13 +299,26 @@ def _whole(value) -> int | None:
     return int(value)
 
 
+CHAT_DB_TIMEOUT_S = 2  # 대화 기록 연결·읽기 타임아웃. 기록은 답 뒤에 붙는 부가 일이라 짧게 (API Gateway 30초)
+CHAT_DB_ATTEMPTS = 2  # 재시도 1회 (team.md)
+CHAT_PUT_WORST_S = 2 * CHAT_DB_TIMEOUT_S * CHAT_DB_ATTEMPTS  # put_item 한 번이 가장 오래 걸리는 시간 (8초)
+
+
 @cache
 def _chat_store() -> DynamoChatHistory:
+    """대화 기록 저장소 (POST /chat 기록, GET /chat/{session_id} 조회).
+
+    받는 것: 환경 변수 CHAT_TABLE(team06-chat). 반환: DynamoChatHistory.
+    CHAT_TABLE이 없으면 boto3를 만들기 전에 KeyError를 낸다 (@cache는 예외를 저장하지 않아 다음 요청에 다시 시도한다).
+    타임아웃은 CHAT_DB_TIMEOUT_S초, 재시도 1회. import할 때는 아무것도 만들지 않는다.
+    """
     name = os.environ["CHAT_TABLE"]  # 먼저 읽는다. 없으면 boto3를 만들기 전에 KeyError
     import boto3
     from botocore.config import Config
 
-    config = Config(connect_timeout=5, read_timeout=5, retries={"max_attempts": 2})
+    config = Config(
+        connect_timeout=CHAT_DB_TIMEOUT_S, read_timeout=CHAT_DB_TIMEOUT_S, retries={"max_attempts": CHAT_DB_ATTEMPTS}
+    )
     return DynamoChatHistory(boto3.resource("dynamodb", config=config).Table(name))
 
 
@@ -654,11 +669,14 @@ def approve_job(job_id: str, body) -> dict:
 
 
 MAX_QUESTION = 500  # 현황 질문 길이 한도
-SESSION_ID = re.compile(r"[A-Za-z0-9-]{1,64}")  # fullmatch로 쓴다. '$'는 끝 줄바꿈 앞에서도 맞는다
-SESSION_ID_ERROR = "session_id는 영문·숫자·-로 64자까지입니다"
+# fullmatch로 쓴다('$'는 끝 줄바꿈 앞에서도 맞는다). 첫 글자는 영문·숫자: '-' 하나는 answer·로그의 익명 표시다
+SESSION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,63}")
+SESSION_ID_ERROR = "session_id는 영문·숫자로 시작하고 영문·숫자·-로 64자까지입니다"
 HISTORY_LIMIT = 50  # GET /chat/{session_id}가 읽는 줄 수 (Turn이 아니라 줄)
 HISTORY_ERROR = "대화 기록을 불러오지 못했습니다"
 CHAT_TTL_SECONDS = 7 * 24 * 60 * 60  # 604800. team06-chat expires_at (infra/create.sh가 TTL을 켰다)
+# 요청을 받은 뒤 이 초가 지나기 전에 기록을 끝낼 수 없으면 쓰지 않는다. API Gateway는 30초에 끊는다
+CHAT_DEADLINE_S = 25
 
 KST_OFFSET = timezone(timedelta(hours=9))  # 한국 시간. 1988년 뒤 서머타임이 없어 고정 +9 (ts 글자 순서 = 시간 순서)
 _EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
@@ -689,14 +707,22 @@ def _request_tag() -> str:
     return uuid.uuid4().hex[:8]
 
 
+def _monotonic() -> float:
+    """요청이 얼마나 걸렸는지 잴 때 쓰는 초 (time.monotonic). 테스트가 바꿔 끼운다."""
+    return time.monotonic()
+
+
 def chat(body) -> dict:
     """POST /chat. 현황 질문에 답하고, session_id가 있으면 질문·답 한 줄씩 7일 남긴다 (E5·E6 #157). 형식: docs/schema.md 약속 2
 
     받는 것: {"session_id", "message"}. message는 비지 않은 글자 500자까지.
-      session_id는 영문·숫자·-로 1~64자. 칸이 없거나 null이면 답만 하고 기록은 남기지 않는다 (Query_Agent에는 '-').
+      session_id는 영문·숫자로 시작하고 영문·숫자·-로 1~64자. 칸이 없거나 null이면 답만 하고 기록은 남기지 않는다
+      (Query_Agent에는 '-').
     반환: 200 ChatResponse / 400 요청 형식. 기록 저장이 실패해도 본문은 같은 200이다 ([warn] chat-history 로그만).
+      답이 늦어 CHAT_DEADLINE_S 안에 기록을 끝낼 수 없으면 기록을 건너뛴다 (API Gateway 30초 안에 답한다).
       가드레일(E7 #152)은 answer 안에서 돈다. 막힌 답(ChatResponse.blocked)은 blocked true와 그 이유로 남긴다.
     """
+    started = _monotonic()
     message = body.get("message") if isinstance(body, dict) else None
     session_id = body.get("session_id") if isinstance(body, dict) else None
     if not isinstance(message, str) or not message.strip():
@@ -712,26 +738,47 @@ def chat(body) -> dict:
     ms, tag = _now_ms(), _request_tag()
     res = answer(question, session_id or "-", store=dynamo_shipments())
     if session_id is not None:
-        _save_turn(session_id, ms, tag, question, res)
+        _save_turn(session_id, ms, tag, question, res, started)
     return _response(200, res.model_dump(mode="json", by_alias=True))
 
 
 def _session_ok(value) -> bool:
+    """POST /chat·GET /chat/{session_id}의 session_id 검사. 받는 것: 아무 값. 반환: 문자열이고 SESSION_ID 형식이면 True."""
     return isinstance(value, str) and SESSION_ID.fullmatch(value) is not None
 
 
+def _queried(filters: ChatFilters) -> bool:
+    """answer가 실제로 화물 기록을 조회했는지 응답 조건으로 가린다 (agent/query_agent.py answer의 분기와 같다).
+
+    조회하지 않는 답: 못 담는 조건(unsupported)이 있음, 상태·기간이 모두 없음(되묻기·조건을 못 만듦),
+    상태가 화물 기록 값 목록에 없음. 조회했으면 응답 상태는 값 목록의 표기로 맞춰져 있다.
+    """
+    from agent.query_agent import STATUSES
+
+    if filters.unsupported or not (filters.status or filters.period):
+        return False
+    return filters.status is None or filters.status in (*STATUSES, DELAY_STATUS)
+
+
 def _reply_fields(res: ChatResponse) -> dict:
-    """답 줄의 filters·count·rule·blocked·block_reason. 막힌 답이면 이유만, 그 밖은 조건·건수·규칙."""
+    """답 줄의 filters·count·rule·blocked·block_reason.
+
+    막힌 답이면 이유만. 막지 않은 답은 조건을 남기고, 실제로 조회했을 때만 건수(rows 수)와 규칙 문장을 남긴다.
+    조회하지 않은 답(되묻기·읽기 실패 등)의 count를 0으로 쓰면 0건 조회와 구분할 수 없다.
+    """
     if res.blocked is not None:  # E7: 막으면 모델·조회 없이 정해 둔 답과 이유를 준다
         return {"blocked": True, "block_reason": res.blocked}
-    # 규칙 문장은 통관 지연으로 조회했을 때만. 못 담는 조건(unsupported)이 있으면 조회하지 않았다 (#165)
-    delayed = res.filters.status == DELAY_STATUS and not res.filters.unsupported
-    return {"filters": res.filters, "count": len(res.rows), "rule": DELAY_RULE if delayed else None, "blocked": False}
+    if not _queried(res.filters):
+        return {"filters": res.filters, "blocked": False}
+    rule = DELAY_RULE if res.filters.status == DELAY_STATUS else None
+    return {"filters": res.filters, "count": len(res.rows), "rule": rule, "blocked": False}
 
 
-def _save_turn(session_id: str, ms: int, tag: str, question: str, res: ChatResponse) -> None:
+def _save_turn(session_id: str, ms: int, tag: str, question: str, res: ChatResponse, started: float) -> None:
     """한 Turn의 질문 줄(#0)과 답 줄(#1)을 같은 expires_at(요청 초 + 7일)으로 남긴다. 예외를 내지 않는다 (기록은 부가 기능).
 
+    받는 것: started = 요청을 받은 _monotonic() 초. put 한 번이 가장 오래 걸려도(CHAT_PUT_WORST_S)
+      CHAT_DEADLINE_S 안에 끝나지 않으면 그 줄부터 쓰지 않는다 (API Gateway 30초 안에 답하려고).
     저장소를 못 만들거나 줄을 못 만들면 둘 다 건너뛴다. 질문 줄 쓰기가 실패해도 답 줄은 쓴다.
     """
     expires_at = ms // 1000 + CHAT_TTL_SECONDS
@@ -747,6 +794,10 @@ def _save_turn(session_id: str, ms: int, tag: str, question: str, res: ChatRespo
         print(f"[warn] chat-history session={session_id} 기록 못 함 {type(exc).__name__}: {exc}")
         return
     for line in lines:
+        elapsed = _monotonic() - started
+        if elapsed + CHAT_PUT_WORST_S > CHAT_DEADLINE_S:
+            print(f"[warn] chat-history session={session_id} role={line.role} 시간 부족으로 건너뜀 ({elapsed:.1f}초 지남)")
+            return
         try:
             store.put(line, expires_at)
         except Exception as exc:
