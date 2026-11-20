@@ -4,6 +4,7 @@
 """
 
 import csv
+import math
 import re
 from collections.abc import Callable
 from pathlib import Path
@@ -45,6 +46,7 @@ class _Row(NamedTuple):
     name_ko: str
     name_en: str
     text: str
+    category: str = ""  # 성질통합분류(상위 분류). 이름이 '기타'뿐인 줄이 무슨 물건인지 알려 준다
 
 
 def _norm(text: str) -> str:
@@ -58,13 +60,17 @@ def _has(text: str, piece: str) -> bool:
 
 
 def _tokens(term: str) -> list[str]:
-    """검색어를 단어로 쪼갠다. 한 글자와 너무 흔한 말은 뺀다."""
+    """검색어를 단어로 쪼갠다. 한 글자, 너무 흔한 말, 숫자가 든 단어(10, 50L, M10X50)는 뺀다. 표 이름에 거의 없어 잡음만 된다."""
     words = _TOKEN_SPLIT.split(term.lower())
-    return [w for w in words if len(w) >= 2 and w not in _STOPWORDS]
+    return [w for w in words if len(w) >= 2 and w not in _STOPWORDS and not re.search(r"\d", w)]
 
 
 def _candidate(row: _Row, reason: str) -> HSCandidate:
-    return HSCandidate(hs=row.hsk, name=f"{row.name_ko} ({row.name_en})", reason=reason)
+    name = f"{row.name_ko} ({row.name_en})"
+    return HSCandidate(hs=row.hsk, name=f"{name} [{row.category}]" if row.category else name, reason=reason)
+
+
+
 
 
 class CsvHSTable:
@@ -73,33 +79,69 @@ class CsvHSTable:
     def __init__(self, rows: list[_Row]) -> None:
         self._rows = sorted(rows, key=lambda r: r.hsk)
         self._by_code = {r.hsk: r for r in self._rows}
+        self._words = [frozenset(r.text.split()) for r in self._rows]
+        self._vocab = frozenset(w for ws in self._words for w in ws if w.isascii())
+        self._hit_cache: dict[str, dict[int, float]] = {}
+        self._prefix: dict[str, frozenset[str]] = {}
+
+    def _word_match(self, tok: str, text: str, words: frozenset[str]) -> float:
+        """단어 하나가 표 한 줄에 맞는 정도. 영문은 같은 단어(복수형 s·es 포함)면 1, 단어 앞부분만 같으면 0.3,
+        한글은 어디서든 들어 있으면 1. 안 맞으면 0. ('ion'이 'lions'에, 'plate'가 'platessa'에 세게 맞지 않게)"""
+        if not tok.isascii():
+            return 1.0 if tok in text else 0.0
+        if tok in words or tok + "s" in words or tok + "es" in words:
+            return 1.0
+        starts = self._prefix.get(tok)
+        if starts is None:
+            starts = self._prefix[tok] = frozenset(w for w in self._vocab if w.startswith(tok))
+        return 0.3 if not words.isdisjoint(starts) else 0.0
+
+    def _hits(self, tok: str) -> dict[int, float]:
+        """단어 하나가 맞는 줄(번호 → 맞는 정도). 한 번 구하면 기억해 둔다."""
+        got = self._hit_cache.get(tok)
+        if got is None:
+            got = {}
+            for i, (row, words) in enumerate(zip(self._rows, self._words)):
+                m = self._word_match(tok, row.text, words)
+                if m > 0:
+                    got[i] = m
+            self._hit_cache[tok] = got
+        return got
+
+    def _weight(self, tok: str) -> float:
+        """단어의 무게. 표에 드문 단어일수록 크다(log). 'white'처럼 흔한 단어는 작고, 'melamine'처럼 드문 단어는 크다."""
+        n = len(self._hits(tok))
+        return max(math.log((len(self._rows) + 1) / (n + 1)), 0.1)
 
     def search(self, terms: list[str], limit: int = MAX_CANDIDATES) -> list[HSCandidate]:
         """검색어로 HS 후보를 찾는다. 언제: recommend_hs 3단계.
         받는 것: terms(모델이 뽑은 한글·영문 검색어), limit(상한, 30을 넘기지 않는다).
-        반환: 점수 높은 순 후보. 구절이 통째로 들어 있으면 100점, 단어 하나가 들어 있으면 10점씩이고, 검색어마다 더한다.
-        점수가 같으면 부호 순이다. 하나도 안 맞으면 빈 목록이다.
+        반환: 점수 높은 순 후보. 검색어의 단어마다 (맞는 정도 × 단어 무게)를 더하고, 단어가 둘 이상인 구절이 통째로 들어 있으면
+        10점을 더한다. 검색어마다 더한다. 점수가 같으면 부호 순이다. 하나도 안 맞으면 빈 목록이다.
+        표 이름에는 상위 분류(예: 가구, 일차전지 및 축전지)도 들어 있어 '기타'뿐인 줄도 찾을 수 있다.
         """
         limit = max(0, min(limit, MAX_CANDIDATES))
-        queries = []
+        score: dict[int, float] = {}
+        matched: dict[int, list[str]] = {}
         for term in terms:
-            phrase = _norm(term).strip()
             toks = _tokens(term)
-            if toks:
-                queries.append((term.strip(), phrase, toks))
-        scored: list[tuple[int, _Row, list[str]]] = []
-        for row in self._rows:
-            score, hit = 0, []
-            for term, phrase, toks in queries:
-                found = sum(1 for t in toks if _has(row.text, t))
-                if not found:
-                    continue
-                score += (100 if _has(row.text, phrase) else 0) + 10 * found
-                hit.append(term)
-            if score:
-                scored.append((score, row, hit))
-        scored.sort(key=lambda s: (-s[0], s[1].hsk))
-        return [_candidate(row, f"HS부호 표 품목명이 검색어와 맞음: {', '.join(hit)}") for _, row, hit in scored[:limit]]
+            if not toks:
+                continue
+            phrase = _norm(term).strip() if len(toks) > 1 else ""
+            per_row: dict[int, float] = {}
+            for t in toks:
+                w = self._weight(t)
+                for i, m in self._hits(t).items():
+                    per_row[i] = per_row.get(i, 0.0) + m * w
+            for i, got in per_row.items():
+                if phrase and _has(self._rows[i].text, phrase):
+                    got += 10
+                score[i] = score.get(i, 0.0) + got
+                matched.setdefault(i, []).append(term.strip())
+        ranked = sorted(score, key=lambda i: (-score[i], i))  # 줄 번호는 부호 순이다
+        return [
+            _candidate(self._rows[i], f"HS부호 표 품목명이 검색어와 맞음: {', '.join(matched[i])}") for i in ranked[:limit]
+        ]
 
     def under(self, prefix6: str) -> list[HSCandidate]:
         """서류에 적힌 HS 앞 6자리 아래의 10자리 코드를 모두 낸다. 언제: recommend_hs 3단계, 서류에 HS가 있을 때.
@@ -120,7 +162,10 @@ def load_hs_table(path: Path = DEFAULT_HS_CSV) -> CsvHSTable:
     """HS부호 CSV를 읽어 표를 만든다. 언제: 시작할 때 한 번. 받는 것: CSV 경로. 반환: CsvHSTable."""
     with open(path, encoding="utf-8", newline="") as fh:
         rows = [
-            _Row(r["hsk"], r["name_ko"], r["name_en"], _norm(r["name_ko"] + " " + r["name_en"]))
+            _Row(
+                r["hsk"], r["name_ko"], r["name_en"],
+                _norm(r["name_ko"] + " " + r["name_en"] + " " + r.get("category", "")), r.get("category", ""),
+            )
             for r in csv.DictReader(fh)
         ]
     return CsvHSTable(rows)
