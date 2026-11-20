@@ -49,6 +49,9 @@ class FakeTable:
         item = self.items.get(Key["job_id"])
         return {"Item": item} if item else {}
 
+    def scan(self, **kwargs):  # 문서 분류 내역(#143). 한 쪽에 다 준다
+        return {"Items": list(self.items.values())}
+
 
 class FakeLambda:
     """boto3 lambda 클라이언트 대신. invoke 인자를 calls에 남긴다. 실제 처리는 process()가 한다."""
@@ -767,6 +770,115 @@ def test_approve_wms_failure_is_502_and_job_unchanged(wms_fakes, monkeypatch):
     status, body = post_approve()
     assert status == 502 and "다시 승인" in body["error"]
     assert table.items[APPROVE_JOB] == before
+
+
+# ---------------------------------------------------------------------------
+# GET /documents 문서 분류 내역 (G10 #143)
+# ---------------------------------------------------------------------------
+from tools.models import Classification, DocumentsResponse  # noqa: E402
+
+CLASS_OF = {
+    "invoice.pdf": ("commercial_invoice", "제목 COMMERCIAL INVOICE, Unit Price·Amount 칸"),
+    "packing_list.pdf": ("packing_list", "제목 PACKING LIST (N.W./G.W.) 칸"),
+    "memo.pdf": ("unknown", "제목 없음"),
+}
+
+
+def get_documents(doc_type, cursor=None):
+    query = {"doc_type": doc_type} if doc_type is not None else None
+    if cursor is not None:
+        query["cursor"] = cursor
+    event = {"requestContext": {"http": {"method": "GET"}}, "rawPath": "/api/documents", "queryStringParameters": query}
+    res = handler.lambda_handler(event, None)
+    return res["statusCode"], json.loads(res["body"])
+
+
+@pytest.fixture
+def classifier(monkeypatch):
+    def fake(blocks, prompt):
+        name = blocks[0]["document"]["source"]["bytes"].decode().rsplit("/", 1)[-1]
+        if name == "broken.pdf":
+            raise RuntimeError("분류 모델 오류")
+        doc_type, reason = CLASS_OF[name]
+        return Classification(doc_type=doc_type, reason=reason)
+
+    monkeypatch.setattr(extract, "_strands_classifier", fake)
+
+
+def post_untyped(*names, typed=()):
+    body = {"files": [{"key": f"uploads/s1/{n}", "doc_type": CLASS_OF[n][0] if n in typed else None} for n in names]}
+    status, res = call("POST", "/api/jobs", body)
+    assert status == 200
+    return res["job_id"]
+
+
+def test_documents_follow_real_run_job_classification(fakes, lambda_client, classifier):
+    """실제 run_job이 남긴 classify_document 기록에서 종류·근거를 읽는다. 문장 형식이 바뀌면 이 테스트가 깨진다."""
+    job_id = post_untyped("invoice.pdf", "packing_list.pdf", "memo.pdf")
+    item = fakes.items[job_id]
+    assert json.loads(item["files"])[0] == {"key": "uploads/s1/invoice.pdf", "doc_type": None}
+    assert isinstance(item["created_at"], int)
+    process(lambda_client)
+
+    status, body = get_documents("commercial_invoice")
+    assert status == 200
+    res = DocumentsResponse.model_validate(body)
+    assert res.counts == {"bill_of_lading": 0, "certificate_of_origin": 0, "commercial_invoice": 1, "packing_list": 1, "unknown": 1}
+    [rec] = res.items
+    assert (rec.job_id, rec.key, rec.file_name) == (job_id, "uploads/s1/invoice.pdf", "invoice.pdf")
+    assert (rec.classified_by, rec.reason) == ("model", CLASS_OF["invoice.pdf"][1])
+    assert rec.doc_no == "INV-2026-001" and rec.job_status == "waiting_approval"
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}", rec.created_at) and res.next_cursor is None
+    [memo] = DocumentsResponse.model_validate(get_documents("unknown")[1]).items
+    assert (memo.file_name, memo.reason, memo.doc_no) == ("memo.pdf", "제목 없음", None)
+
+
+def test_documents_user_typed_and_failed_classification(fakes, lambda_client, classifier):
+    post_untyped("invoice.pdf", "broken.pdf", typed=("invoice.pdf",))
+    process(lambda_client)
+
+    [typed] = DocumentsResponse.model_validate(get_documents("commercial_invoice")[1]).items
+    assert typed.classified_by == "user" and typed.reason == "올릴 때 사용자가 고른 종류"
+    [failed] = DocumentsResponse.model_validate(get_documents("unknown")[1]).items
+    assert failed.file_name == "broken.pdf" and failed.reason.startswith("분류 실패: 모델 호출 실패: RuntimeError")
+
+
+def test_documents_skip_files_not_classified_yet(fakes, lambda_client, classifier):
+    post_untyped("invoice.pdf")  # 처리 Lambda를 아직 돌리지 않았다 (queued)
+    status, body = get_documents("unknown")
+    assert status == 200 and body["items"] == [] and sum(body["counts"].values()) == 0
+
+
+def test_documents_pages_newest_first(fakes, lambda_client, classifier, monkeypatch):
+    monkeypatch.setattr(handler, "DOC_PAGE", 1)
+    times = iter([1795000000, 1795000600])
+    monkeypatch.setattr(handler.time, "time", lambda: next(times, 1795000600))
+    first, second = post_untyped("invoice.pdf"), post_untyped("invoice.pdf")
+    process(lambda_client)
+
+    page1 = get_documents("commercial_invoice")[1]
+    page2 = get_documents("commercial_invoice", page1["next_cursor"])[1]
+    assert [page1["items"][0]["job_id"], page2["items"][0]["job_id"]] == [second, first]
+    assert page1["next_cursor"] == "1" and page2["next_cursor"] is None
+
+
+def test_documents_old_job_without_files_uses_read_doc_type(fakes):
+    """#143 전 작업은 files·created_at 칸이 없고, 종류를 정해 올려 분류 기록도 없다. 읽은 서류의 종류를 쓴다."""
+    doc = ExtractedDocument(doc_type="commercial_invoice", file="uploads/old/invoice.pdf", doc_no=Cell(raw="INV-OLD", value="INV-OLD"))
+    fakes.items["job-0000aaaa"] = {
+        "job_id": "job-0000aaaa", "updated_at": 1795000000,
+        "data": Job(job_id="job-0000aaaa", status="waiting_approval").model_dump_json(),
+        "docs": handler._DOCS.dump_json([doc]).decode(),
+    }
+    body = get_documents("commercial_invoice")[1]
+    [rec] = body["items"]
+    assert (rec["file_name"], rec["classified_by"], rec["doc_no"]) == ("invoice.pdf", "user", "INV-OLD")
+    assert body["counts"]["unknown"] == 0
+
+
+@pytest.mark.parametrize(("doc_type", "cursor"), [(None, None), ("invoice", None), ("packing_list", "abc")])
+def test_documents_bad_query_is_400(fakes, doc_type, cursor):
+    assert get_documents(doc_type, cursor)[0] == 400
 
 
 # ---------------------------------------------------------------------------

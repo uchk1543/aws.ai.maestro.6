@@ -25,12 +25,22 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { level: 1, name: UPLOAD_HEADING })).toBeInTheDocument();
   });
 
-  it("위에 앱 이름을 적고, 메뉴는 두 개(파일 업로드 · AI chat)뿐이다", () => {
+  it("위에 앱 이름을 적고, 메뉴는 세 개(파일 업로드 · 문서 분류 내역 · AI chat)다", () => {
     renderWithQuery(<App />);
 
     expect(screen.getByText(APP_NAME)).toBeInTheDocument();
     const nav = screen.getByRole("navigation", { name: "메뉴" });
-    expect(Array.from(nav.querySelectorAll("button")).map((b) => b.textContent)).toEqual(["파일 업로드", "AI chat"]);
+    expect(Array.from(nav.querySelectorAll("button")).map((b) => b.textContent)).toEqual(["파일 업로드", "문서 분류 내역", "AI chat"]);
+  });
+
+  it("메뉴 '문서 분류 내역'은 #/documents 를 연다", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<App />);
+
+    await user.click(screen.getByRole("button", { name: "문서 분류 내역" }));
+    expect(window.location.hash).toBe("#/documents");
+    expect(await screen.findByRole("heading", { level: 1, name: "문서 분류 내역" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "문서 분류 내역" })).toHaveAttribute("aria-current", "page");
   });
 
   it("모르는 주소는 업로드 화면", async () => {

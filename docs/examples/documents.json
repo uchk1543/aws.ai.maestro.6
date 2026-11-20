@@ -1,0 +1,36 @@
+{
+  "counts": {
+    "bill_of_lading": 1,
+    "certificate_of_origin": 0,
+    "commercial_invoice": 2,
+    "packing_list": 1,
+    "unknown": 1
+  },
+  "items": [
+    {
+      "job_id": "job-3ec5c0f3",
+      "key": "uploads/dd01ed134a5c46708c3644e07f933f55/2-invoice.pdf",
+      "file_name": "2-invoice.pdf",
+      "doc_type": "commercial_invoice",
+      "classified_by": "model",
+      "reason": "제목 COMMERCIAL INVOICE, U/PRICE·AMOUNT 칸과 합계 금액 칸 있음",
+      "doc_no": "SAMPLE-INV-0256",
+      "consignee": "SAMPLE HOME LIVING CO., LTD.",
+      "job_status": "done",
+      "created_at": "2026-11-20 16:31"
+    },
+    {
+      "job_id": "job-54b91d55",
+      "key": "uploads/57cf9759770f41c993fd42eff17e61d7/1-invoice.pdf",
+      "file_name": "1-invoice.pdf",
+      "doc_type": "commercial_invoice",
+      "classified_by": "user",
+      "reason": "올릴 때 사용자가 고른 종류",
+      "doc_no": "SAMPLE-INV-0259",
+      "consignee": "SAMPLE TRADING KOREA CO., LTD.",
+      "job_status": "waiting_approval",
+      "created_at": "2026-11-20 15:58"
+    }
+  ],
+  "next_cursor": null
+}

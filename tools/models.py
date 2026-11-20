@@ -461,6 +461,32 @@ class ChatResponse(_Strict):
     rows: list[Shipment] = Field(default_factory=list, description="조회 결과")
 
 
+ClassifiedBy = Literal["model", "user"]
+
+
+class DocumentRecord(_Strict):
+    """GET /documents 의 서류 한 장 (문서 분류 내역, G10 #143)."""
+
+    job_id: str = Field(description="서류가 올라온 작업 ID")
+    key: str = Field(description="S3 키. 예: 'uploads/<묶음>/1-invoice.pdf'")
+    file_name: str = Field(description="키의 마지막 조각 (화면에 보이는 이름)")
+    doc_type: DocType = Field(description="분류 결과. 분류 못 함·분류 실패는 unknown")
+    classified_by: ClassifiedBy = Field(description="model = 에이전트가 분류, user = 올릴 때 사용자가 고름")
+    reason: str = Field(description="분류 근거 (단계 기록의 classify_document 그대로). 사용자가 골랐으면 그렇게 적는다")
+    doc_no: str | None = Field(default=None, description="읽은 서류 번호 raw. 읽지 않았으면 null")
+    consignee: str | None = Field(default=None, description="읽은 수하인 raw. 읽지 않았으면 null")
+    job_status: JobStatus = Field(description="작업 상태")
+    created_at: str = Field(description="작업을 만든 시각, 한국 시간 'YYYY-MM-DD HH:MM'")
+
+
+class DocumentsResponse(_Strict):
+    """GET /documents 응답 (G10 #143). counts 는 전체 작업 기준 종류별 서류 수다."""
+
+    counts: dict[DocType, int] = Field(description="종류별 서류 수. 화면은 다시 세지 않는다")
+    items: list[DocumentRecord] = Field(default_factory=list, description="고른 종류의 서류, 최근 작업 먼저")
+    next_cursor: str | None = Field(default=None, description="다음 쪽 커서. 마지막 쪽이면 null")
+
+
 # ---------------------------------------------------------------------------
 # 역할 사이 약속 (협업 뼈대). 담당끼리 주고받는 모양이다. 바꾸면 단톡에 알린다.
 # ---------------------------------------------------------------------------

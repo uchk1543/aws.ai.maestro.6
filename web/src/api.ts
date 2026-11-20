@@ -7,6 +7,8 @@ import type {
   ChatResponse,
   ChooseHsResponse,
   CreateJobResponse,
+  DocType,
+  DocumentsResponse,
   HSChoice,
   Job,
   JobFile,
@@ -77,6 +79,13 @@ export function approveJob(jobId: string, approver: string): Promise<ApproveResp
 /** 현황 채팅에 질문을 보낸다. session_id 로 서버가 대화를 이어 간다. */
 export function sendChat(req: ChatRequest): Promise<ChatResponse> {
   return request("POST", "/api/chat", req);
+}
+
+/** 문서 분류 내역: 한 종류의 서류 목록과 종류별 건수 (G10, 서버 약속은 제안 중). cursor 는 앞 응답의 next_cursor. */
+export function getDocuments(docType: DocType, cursor: string | null = null): Promise<DocumentsResponse> {
+  const query = new URLSearchParams({ doc_type: docType });
+  if (cursor) query.set("cursor", cursor);
+  return request("GET", `/api/documents?${query.toString()}`);
 }
 
 /** 브라우저가 type 을 모르는 파일은 이 값으로 보낸다. */

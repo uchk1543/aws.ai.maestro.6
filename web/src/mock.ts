@@ -3,6 +3,8 @@
 // 판정·신고서 채우기는 흉내 내지 않는다. 사람이 고른 값을 상태에 반영하는 것만 한다.
 import chatExample from "../../docs/examples/chat_response.json";
 import jobExample from "../../docs/examples/job_waiting_approval.json";
+// 임시(제안 중): 서버 약속이 합쳐지면 docs/examples/documents.json 으로 바꾼다
+import documentsDraft from "./fixtures/documents.draft.json";
 import { ApiError } from "./api";
 import type {
   ApproveResponse,
@@ -10,6 +12,9 @@ import type {
   ChatResponse,
   ChooseHsResponse,
   CreateJobResponse,
+  DocType,
+  DocumentRecord,
+  DocumentsResponse,
   HSChoice,
   Job,
   UploadRequestFile,
@@ -91,6 +96,20 @@ export function clearMockMismatches(): void {
   if (finalJob.result) finalJob.result.issues = finalJob.result.issues.filter((i) => i.grade !== "불일치");
 }
 
+const DOCS_PAGE = 3;
+const DOC_TYPE_SET = new Set<string>(["commercial_invoice", "packing_list", "bill_of_lading", "certificate_of_origin", "unknown"]);
+
+/** GET /api/documents: 임시 가짜 데이터에서 그 종류만 골라 한 쪽(3건)씩 준다. counts 는 파일에 적힌 값 그대로. */
+function documents(query: URLSearchParams): DocumentsResponse {
+  const docType = query.get("doc_type") ?? "";
+  if (!DOC_TYPE_SET.has(docType)) throw new ApiError(400, "doc_type은 commercial_invoice, packing_list, bill_of_lading, certificate_of_origin, unknown 중 하나입니다");
+  const draft = documentsDraft as { counts: Record<DocType, number>; items: DocumentRecord[] };
+  const all = draft.items.filter((d) => d.doc_type === docType);
+  const start = Number(query.get("cursor") ?? "0") || 0;
+  const end = start + DOCS_PAGE;
+  return { counts: copy(draft.counts), items: copy(all.slice(start, end)), next_cursor: end < all.length ? String(end) : null };
+}
+
 /** api.ts 의 request 대신 불린다. 서버와 같은 경로·모양으로 답한다. */
 export async function mockRequest(method: string, path: string, body: unknown): Promise<unknown> {
   await wait(DELAY_MS);
@@ -113,6 +132,8 @@ export async function mockRequest(method: string, path: string, body: unknown): 
     // 가짜는 질문과 상관없이 예시 답을 준다
     return copy(chatExample as ChatResponse);
   }
+  const [pathname, search = ""] = path.split("?");
+  if (method === "GET" && pathname === "/api/documents") return documents(new URLSearchParams(search));
   const route = path.match(/^\/api\/jobs\/([^/]+)(?:\/([a-z]+))?$/);
   if (route) {
     const jobId = decodeURIComponent(route[1]);
