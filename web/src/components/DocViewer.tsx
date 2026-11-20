@@ -71,7 +71,14 @@ export function DocViewer({
         </p>
       )}
       {file.pages.length === 0 ? (
-        <p className="empty">이 서류의 그림이 없습니다.</p>
+        // 쪽 그림이 없으면(PDF를 아직 그리지 않은 서버) 원본을 그대로 띄운다. 박스는 그리지 않는다
+        file.url && file.content_type === "application/pdf" ? (
+          <iframe className="viewer-original" src={file.url} title={`${file.file_name} 원본`} />
+        ) : file.url && file.content_type?.startsWith("image/") ? (
+          <img className="viewer-original" src={file.url} alt={`${file.file_name} 원본`} />
+        ) : (
+          <p className="empty">이 서류의 그림이 없습니다.</p>
+        )
       ) : (
         file.pages.map((page, i) => {
           const pageNo = i + 1;

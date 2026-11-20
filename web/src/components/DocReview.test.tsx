@@ -2,10 +2,11 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
+import jobFilesExample from "../../../docs/examples/job_files.json";
 import jobExample from "../../../docs/examples/job_waiting_approval.json";
 import draft from "../fixtures/documents.draft.json";
 import { fileViewOf } from "../mockDocs";
-import type { DocumentRecord, Issue, Job } from "../types";
+import { DOC_TYPE_KO, type DocumentRecord, type Issue, type Job, type JobFilesResponse } from "../types";
 import { DocReview, locate } from "./DocReview";
 import { boxStyle } from "./DocViewer";
 
@@ -81,5 +82,24 @@ describe("DocReview", () => {
     expect(pop).toHaveTextContent("6,250.00 KGS");
     expect(pop).toHaveTextContent("상업송장 1행 총중량 6,250kg과 포장명세서 6,520kg이 다릅니다.");
     expect(pop).toHaveTextContent("포장명세서 6,520.00 KGS");
+  });
+
+  it("쪽 그림이 없으면 원본 주소를 그대로 띄운다 (PDF 는 iframe, 이미지는 img)", () => {
+    const pdf = { ...files[0], pages: [], marks: [], url: "https://s3.test/inv.pdf", content_type: "application/pdf" };
+    const png = { ...files[1], pages: [], marks: [], url: "https://s3.test/pl.png", content_type: "image/png" };
+    const { unmount } = render(<DocReview issues={issues} files={[pdf, png]} />);
+    expect(screen.getByTitle("invoice.pdf 원본")).toHaveAttribute("src", "https://s3.test/inv.pdf");
+    unmount();
+
+    render(<DocReview issues={[{ ...issues[0], cells: [issues[0].cells[1]] }]} files={[pdf, png]} />);
+    expect(screen.getByRole("img", { name: "packing.pdf 원본" })).toHaveAttribute("src", "https://s3.test/pl.png");
+  });
+
+  it("서버 예시(docs/examples/job_files.json, F7)를 그대로 받아 그린다", () => {
+    const real = (jobFilesExample as unknown as JobFilesResponse).files;
+    render(<DocReview issues={issues} files={real} />);
+    expect(screen.getByRole("tablist", { name: "서류" })).toBeInTheDocument();
+    // 탭 글자 = 서류 종류 + 오류 칸 수(있을 때)
+    expect(screen.getAllByRole("tab").map((t) => t.textContent?.replace(/\d+$/, ""))).toEqual(real.map((f) => DOC_TYPE_KO[f.doc_type]));
   });
 });

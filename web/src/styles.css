@@ -1824,3 +1824,16 @@ table.cells tr.suspect td {
     display: none;
   }
 }
+
+/* 쪽 그림이 없을 때 원본 그대로 (PDF 는 iframe) */
+.viewer-original {
+  display: block;
+  width: 100%;
+  background: #fff;
+  border: 0;
+}
+
+iframe.viewer-original {
+  height: 70vh;
+  min-height: 420px;
+}

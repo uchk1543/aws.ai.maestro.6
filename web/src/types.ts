@@ -197,12 +197,24 @@ export interface DocPage {
   width: number;
   height: number;
 }
+export interface ReadField {
+  field: string;
+  label: string;
+  raw: string | null;
+  value: string | number | null;
+  unit: string | null;
+  unreadable: string | null;
+}
 export interface JobFileView {
   key: string;
   file_name: string;
   doc_type: DocType;
   classified_by: ClassifiedBy;
   reason: string;
+  // F7(#156): 원본 주소(미리 서명된 GET)와 형식, 읽은 칸. 가짜 응답(mockDocs)에는 없을 수 있다
+  url?: string;
+  content_type?: string;
+  fields?: ReadField[];
   pages: DocPage[];
   marks: DocMark[];
 }
