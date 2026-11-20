@@ -1,7 +1,7 @@
 """query_shipments. 담당: 판독. 규칙: .kiro/steering/agent-design.md 9번, 형식: docs/schema.md
 
 작업: e2e-plan.md E4 (P1). 모델은 질문을 조건(ChatFilters)으로 바꾸기만 하고, 기간 계산·조회·건수·정렬은 여기서 코드가 한다.
-통관 지연 기준은 검증 담당이 docs/schema.md에 정한다 (E1, #29). 확정 전에는 데이터셋(data/seed, eval/queries.csv)을 만든 값을 쓴다.
+통관 지연 기준은 검증 담당이 docs/schema.md에 정한다 (E1, #29·#114). 데이터셋 생성기(samples/make_extra.py)와 같은 값이다.
 """
 
 from datetime import date, timedelta
@@ -9,7 +9,7 @@ from typing import Protocol
 
 from tools.models import ChatFilters, PeriodResolved, QueryResult, Shipment
 
-# 통관 지연: 입항 후 DELAY_DAYS일이 지나도 수리·반출이 아님 (E1 확정 전 값, #29)
+# 통관 지연: (오늘 − 입항일) ≥ DELAY_DAYS일이고 수리·반출이 아님. 입항일 당일이 0일 (E1, #29 · docs/schema.md)
 DELAY_STATUS = "통관 지연"
 DELAY_DAYS = 3
 CLEARED = ("수리", "반출")
@@ -48,8 +48,8 @@ def resolve_period(filters: ChatFilters, today: date) -> PeriodResolved | None:
 
 
 def is_delayed(row: Shipment, today: date) -> bool:
-    """통관 지연인지. 입항 후 DELAY_DAYS일이 지났는데 수리·반출이 아니면 지연."""
-    return (today - row.arrived_at).days > DELAY_DAYS and row.customs_status not in CLEARED
+    """통관 지연인지. 입항일 당일이 0일이고, DELAY_DAYS일째부터 수리·반출이 아니면 지연 (11/17 입항 → 11/20부터)."""
+    return (today - row.arrived_at).days >= DELAY_DAYS and row.customs_status not in CLEARED
 
 
 def _same_status(a: str, b: str) -> bool:

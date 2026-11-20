@@ -53,8 +53,10 @@ def ship(arrived: date, status: str, bl: str = "BL-1") -> Shipment:
 
 def test_delay_rule_boundary():
     today = date(2026, 11, 21)
-    assert not is_delayed(ship(date(2026, 11, 18), "심사 중"), today)  # 3일째는 아직 아님
-    assert is_delayed(ship(date(2026, 11, 17), "심사 중"), today)
+    # E1: 입항일 당일이 0일, 3일째부터 지연 (11/17 입항 → 11/20부터)
+    assert not is_delayed(ship(date(2026, 11, 17), "심사 중"), date(2026, 11, 19))
+    assert is_delayed(ship(date(2026, 11, 17), "심사 중"), date(2026, 11, 20))
+    assert is_delayed(ship(date(2026, 11, 18), "심사 중"), today)
     assert not is_delayed(ship(date(2026, 11, 1), "반출"), today)
 
 
