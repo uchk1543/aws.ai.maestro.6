@@ -6,7 +6,32 @@
 from tools.models import DeclarationDraft, ExtractedDocument, HSResult, Issue
 
 # (신고서 칸 이름, 출처 "서류.칸") 목록. C4에서 채운다. 예: ("품명", "commercial_invoice.items[0].name")
-DECLARATION_FIELDS: list[tuple[str, str]] = []
+# docs/schema.md '신고서 초안 칸' 표와 같다 (tests/unit/test_declaration_fields.py가 맞는지 본다). 서류 전체 칸 13개, 품목 칸 10개.
+DECLARATION_FIELDS: list[tuple[str, str]] = [
+    ("B/L 번호", "bill_of_lading.bl_no"),
+    ("선기명", "bill_of_lading.vessel_voyage"),
+    ("수입자", "commercial_invoice.consignee_name"),
+    ("해외공급자", "commercial_invoice.exporter_name"),
+    ("적출국", "bill_of_lading.port_loading"),
+    ("총중량(kg)", "packing_list.total_gross_kg"),
+    ("총포장갯수", "packing_list.total_packages"),
+    ("포장종류", "packing_list"),
+    ("인도조건", "commercial_invoice.incoterms"),
+    ("통화", "commercial_invoice"),
+    ("결제금액", "commercial_invoice.total_amount"),
+    ("결제방법", "commercial_invoice.payment_term"),
+    ("원산지증명서 유무", "certificate_of_origin"),
+    ("품명", "commercial_invoice.items[0].name"),
+    ("세번부호", "hs[0].hs_code"),
+    ("수량", "commercial_invoice.items[0].qty"),
+    ("단위", "commercial_invoice.items[0].qty"),
+    ("순중량(kg)", "packing_list.items[0].net_kg"),
+    ("단가", "commercial_invoice.items[0].unit_price"),
+    ("금액", "commercial_invoice.items[0].amount"),
+    ("원산지", "commercial_invoice.origin"),
+    ("협정", "certificate_of_origin"),
+    ("원산지결정기준", "certificate_of_origin.items[0].origin_criterion"),
+]
 
 DRAFT_NOTICE = "사람 검토 전 초안"
 
