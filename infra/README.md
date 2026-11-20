@@ -1,9 +1,28 @@
 # infra: 뼈대 리소스와 배포 (담당: PM, 배포 단독. 4번 서버는 PR로 고칠 수 있다)
 
 리소스는 이 폴더의 스크립트로만 만든다. 콘솔이나 MCP로 즉석에서 만들거나 바꾸지 않는다.
-리전은 ap-northeast-2, 이름은 모두 `team06-`으로 시작한다.
+리전은 ap-northeast-2, 이름은 모두 `team06-`으로 시작한다 (CloudFront는 전역 서비스라 예외).
 
-## 리소스 목록
+## 목표 구조 (#67, 스크립트는 F1·F3·F4·F5에서 고친다)
+```
+CloudFront `team06-web` ─┬ /*     → S3 `team06-web-<계정ID>` (화면 빌드 파일, OAC로만 읽기)
+                         └ /api/* → API Gateway HTTP API `team06-api` (요청 제한으로 비용 상한)
+                                      → Lambda `team06-api` (api/handler.py)
+                                          → 비동기 호출 → Lambda `team06-worker` (run_job)
+S3 `team06-docs-<계정ID>` (서류, 미리 서명된 URL) · DynamoDB `team06-jobs` 외
+```
+
+| 바뀌는 것 | 지금 스크립트 | 목표 | 작업 |
+|---|---|---|---|
+| 입구 | Lambda Function URL (공개) | CloudFront → API Gateway HTTP API | F1 |
+| Lambda | 1개 `team06-agent` | 2개: `team06-api`(짧은 요청), `team06-worker`(서류 처리, 제한 시간 300초) | F3 |
+| 실행 역할 | 1개 | 2개, API Lambda에 `lambda:InvokeFunction`(worker만) 추가 | F4 |
+| 화면 | 없음 | S3 + CloudFront, 기본 주소 사용 | F5 |
+
+- 아래 "리소스 목록"과 "실행 순서"는 지금 스크립트(Function URL 뼈대) 기준이다. 목표 구조로 바꾸면 이 표와 함께 고친다.
+- IAM 역할을 만들 권한이 없어서 어느 구조든 대회 측 답변(역할 ARN 또는 이름 규칙)이 먼저다.
+
+## 리소스 목록 (지금 스크립트)
 | 종류 | 이름 | 설정 |
 |---|---|---|
 | IAM 역할 | `team06-agent-role` | Lambda 신뢰 정책(`trust-lambda.json`), 인라인 정책 3개 |

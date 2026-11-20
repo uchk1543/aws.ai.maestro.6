@@ -4,6 +4,8 @@ inclusion: always
 # 6팀 규칙
 ## AWS
 - 리전은 ap-northeast-2 하나만 쓴다. 리소스 이름은 team06- 으로 시작한다.
+  CloudFront는 전역 서비스라 예외다. 사용자 지정 도메인은 쓰지 않는다(인증서를 us-east-1에 만들어야 해서). CloudFront 기본 주소를 쓴다.
+- 배포 구조: CloudFront(/* → S3 화면, /api/* → API Gateway HTTP API) → API Lambda → 처리 Lambda(비동기). docs/schema.md 약속 2.
 - Bedrock 모델 ID는 환경 변수 MODEL_ID로 읽는다. 코드에 모델 ID를 적지 않는다.
 - 액세스 키를 코드, 설정 파일, 테스트에 적지 않는다. 로컬은 aws login을 쓴다.
 - Lambda 실행 역할에는 필요한 권한만 붙인다. AdministratorAccess를 쓰지 않는다.

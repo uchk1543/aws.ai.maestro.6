@@ -14,6 +14,9 @@ curl POST /jobs {"files":[{"key","doc_type"}]}
 curl GET /jobs/{id} → 저장된 Job 그대로
 ```
 
+> 2026-11-20 배포 구조를 CloudFront → API Gateway(HTTP API) → API Lambda → 처리 Lambda(비동기)로 바꾸기로 했다 (#67, `infra/README.md` 목표 구조).
+> 아래는 뼈대(Function URL, 동기 처리) 기준 기록이다.
+
 ## 결정
 - 오늘 밤 POST /jobs 안에서 끝까지 처리한다 (동기). 응답은 처음부터 `{"job_id"}` → GET 조회 형식이다.
 - 뼈대에서는 doc_type을 요청에 반드시 넣는다. null이면 400. 분류는 Spec 1에서 만든다.

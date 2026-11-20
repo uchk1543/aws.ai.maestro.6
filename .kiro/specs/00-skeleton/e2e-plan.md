@@ -9,9 +9,9 @@ PM이 만든 회의 자료다. Spec이 아니다. 각 담당은 이 표에서 �
 ```
 [데이터셋]  서류 제작 · 정답지 · 가상 화물 기록
      │
-[화면] 업로드 ──▶ [API] 업로드 URL ──▶ S3
+[화면] 업로드 ──▶ CloudFront /api ──▶ API Gateway ──▶ [API Lambda] 업로드 URL ──▶ S3
      │                                  │
-     └──▶ [API] 작업 생성 ──▶ [문서 처리 Agent]
+     └──▶ [API Lambda] 작업 생성(job_id 바로) ──비동기──▶ [처리 Lambda: 문서 처리 Agent]
                                  ├ 분류 → 읽기(+OCR) → 대조 → 다시 확인
                                  ├ HS 추천·확정
                                  ├ 신고서 초안
@@ -19,7 +19,8 @@ PM이 만든 회의 자료다. Spec이 아니다. 각 담당은 이 표에서 �
                                                        │
                                      조건 충족 → [가상 WMS] 자동 등록
                                      예외     → [화면] 사람이 HS 선택·승인
-[화면] 진행·결과 ◀── [API] 작업 조회 (2초마다)
+[화면] 진행·결과 ◀── [API Lambda] 작업 조회 (2초마다)
+(화면 파일은 CloudFront → S3. 화면과 API는 같은 주소)
 [화면] 현황 채팅 ──▶ [현황 조회 Agent] ──▶ 화물 기록 조회·집계
 [평가] 정답지로 채점 ──▶ [발표] 숫자 · 시나리오 · 영상 · PDF
 ```
@@ -56,7 +57,7 @@ PM이 만든 회의 자료다. Spec이 아니다. 각 담당은 이 표에서 �
 |---|---|---|---|---|---|---|
 | C1 | HS 후보 검색 (검색어 → HS 표 → 최대 30개) | tools/hs.py | 후보 밖 코드는 버림 | 검증 | P1 | 없음 |
 | C2 | 자동 확정 조건과 확정 이력 | tools/hs.py, team06-hs-history | 두 번째부터 자동, 틀린 자동 확정 0건 | 검증 (+서버 테이블) | P1 | 없음 |
-| C3 | 사람 선택 반영 POST /jobs/{id}/hs | api/ | 초안 다시 채움, 이력 저장 | 서버 | P1 | 없음 |
+| C3 | 사람 선택 반영 POST /api/jobs/{id}/hs | api/ | 초안 다시 채움, 이력 저장 | 서버 | P1 | 없음 |
 | C4 | 신고서 칸 목록과 출처 정하기 | docs/schema.md | 칸마다 서류·칸 | 검증 | P1 | 없음 |
 | C5 | draft_declaration (표) | tools/declaration.py | 문제 남은 칸은 비움 | 검증 | P1 | 없음 |
 | C6 | 신고서 PDF (한글 글꼴) | tools/declaration.py | 여유가 있을 때 | 검증 | P2 | 없음 |
@@ -66,7 +67,7 @@ PM이 만든 회의 자료다. Spec이 아니다. 각 담당은 이 표에서 �
 |---|---|---|---|---|---|---|
 | D1 | 가상 WMS (테이블 + 어댑터) | tools/wms.py, infra/ | 멱등 키(B/L + 작업 ID), 테이블 생성은 PM | 서버 | P1 | 없음 |
 | D2 | 자동 등록 조건 (리포트 직후, HS 선택 후 재검사) | tools/wms.py | 문제 없는 건은 사람 손 없이 등록 | 서버 | P1 | 없음 |
-| D3 | 승인 POST /jobs/{id}/approve | api/ | 불일치가 남았으면 409 | 서버 | P1 | 없음 |
+| D3 | 승인 POST /api/jobs/{id}/approve | api/ | 불일치가 남았으면 409 | 서버 | P1 | 없음 |
 | D4 | ERP용 CSV 내보내기 | tools/wms.py | 시간이 모자라면 가장 먼저 뺌 | 서버 | P2 | 없음 |
 
 ### E. 현황 조회 (기능 ⑤)
@@ -76,24 +77,24 @@ PM이 만든 회의 자료다. Spec이 아니다. 각 담당은 이 표에서 �
 | E2 | 화물 기록 테이블과 시드 넣기 | infra/, team06-shipments | A5 데이터가 들어감 | PM | P1 | 없음 |
 | E3 | 작업 끝나면 화물 기록 쓰기·상태 고치기 | tools/report.py, tools/wms.py | 처리한 건이 조회에 나옴 | 판독 + 서버 | P1 | 없음 |
 | E4 | query_shipments (조건 → 조회·집계, 한국 시간 기간 계산) | tools/query.py | 건수는 코드가 셈 | 판독 | P1 | 없음 |
-| E5 | 현황 조회 Agent + POST /chat | agent/query_agent.py, api/ | chat_response 형식, 0건이면 0건 | 판독 (+서버 경로) | P1 | 없음 |
+| E5 | 현황 조회 Agent + POST /api/chat | agent/query_agent.py, api/ | chat_response 형식, 0건이면 0건 | 판독 (+서버 경로) | P1 | 없음 |
 
 ### F. API와 인프라
 | ID | 작업 | 산출물 | 끝난 기준 | 제안 담당 | 단계 | 상태 |
 |---|---|---|---|---|---|---|
-| F1 | 뼈대 배포 (권한 받은 뒤) | infra/ | curl {"ok": true} | PM | 오늘 밤~금 아침 | 권한 대기 |
-| F2 | POST /uploads (미리 서명된 URL) | api/ | 화면에서 S3로 직접 올림 | 서버 | P0 | 없음 |
-| F3 | 비동기 처리 (POST는 바로 job_id, 처리는 뒤에서) | api/, infra/ | 화면 코드는 그대로 | 서버 | P1 | 없음 |
-| F4 | 권한 추가 (Textract, 새 테이블) | infra/policy-*.json | 필요한 것만 | PM | P1 | 없음 |
-| F5 | 화면 호스팅 | infra/ | 데모 주소 하나 | PM + 화면 | P0~P1 | 없음 |
-| F6 | 합치는 시각마다 배포, 8장 점검 | infra/ | team06- 밖·서울 밖 리소스 없음 | PM | 계속 | 없음 |
+| F1 | 뼈대 배포: CloudFront · API Gateway(HTTP API) · Lambda (권한 받은 뒤) | infra/ | curl <CloudFront 주소>/api/ → {"ok": true} | PM | 오늘 밤~금 아침 | 권한 대기 |
+| F2 | POST /api/uploads (미리 서명된 URL) | api/ | 화면에서 S3로 직접 올림 | 서버 | P0 | 없음 |
+| F3 | 비동기 처리: API Lambda → 처리 Lambda (POST는 바로 job_id) | api/, infra/ | API Gateway 30초 안에 응답, 화면 코드는 그대로 | 서버 | P0 | 없음 |
+| F4 | 권한 추가 (Textract, 새 테이블, Lambda 사이 호출) | infra/policy-*.json | 실행 역할 2개, 필요한 것만 | PM | P1 | 없음 |
+| F5 | 화면 호스팅: CloudFront + S3 | infra/ | CloudFront 주소에서 화면, /api/*는 API Gateway | PM + 화면 | P0~P1 | 없음 |
+| F6 | 합치는 시각마다 배포, 8장 점검 | infra/ | team06- 밖·서울 밖 리소스 없음 (CloudFront는 전역 예외) | PM | 계속 | 없음 |
 
 ### G. 화면 (web/)
 | ID | 작업 | 쓰는 API·예시 | 끝난 기준 | 제안 담당 | 단계 | 상태 |
 |---|---|---|---|---|---|---|
-| G1 | 기술·구조 정하기 | - | 정한 내용을 web/README.md에 | 화면 | 금 오전 | 없음 |
-| G2 | 업로드 화면 (서류 종류 고치기 포함) | POST /uploads, POST /jobs | 여러 장 올림 | 화면 | P0 | 없음 |
-| G3 | 진행 화면 | GET /jobs/{id} steps | 2초마다 갱신 | 화면 | P0 | 없음 |
+| G1 | 기술·구조 정하기 | - | 정한 내용을 web/README.md에, 결과물은 S3에 올릴 정적 빌드 파일 | 화면 | 금 오전 | 없음 |
+| G2 | 업로드 화면 (서류 종류 고치기 포함) | POST /api/uploads, POST /api/jobs | 여러 장 올림 | 화면 | P0 | 없음 |
+| G3 | 진행 화면 | GET /api/jobs/{id} steps | 2초마다 갱신 | 화면 | P0 | 없음 |
 | G4 | 결과: 오류 목록 | result.issues | 등급·근거·칸·raw | 화면 | P0 | 없음 |
 | G5 | 결과: HS 선택 | result.hs, POST /jobs/{id}/hs | 후보 3개에서 고름 | 화면 | P1 | 없음 |
 | G6 | 결과: 신고서 초안 표 | result.declaration_draft | 비운 칸 표시, "사람 검토 전 초안" | 화면 | P1 | 없음 |
@@ -172,10 +173,10 @@ PM이 만든 회의 자료다. Spec이 아니다. 각 담당은 이 표에서 �
 
 ## 6. 회의에서 정해야 할 것
 1. 1번~5번에 누구를 둘지, PM과 대리 승인자 (TEAM.md 1번 표)
-2. 화면 기술과 호스팅 위치 (예: S3 정적 호스팅, Amplify Hosting). 공개 URL이므로 비용 상한도 함께
-3. 비동기 처리 방식 (예: Lambda 비동기 호출, SQS)
+2. 화면 기술 (3번). 호스팅은 CloudFront + S3로 정함 (#67)
+3. 비동기 처리 방식: API Lambda → 처리 Lambda 비동기 호출로 정함 (#67). 실패 재시도·SQS는 필요하면 4번이 제안
 4. P0 대조 규칙 3개 (2번이 고름)
 5. 신고서 칸 목록, 통관 상태 값, 통관 지연 기준 (검증)
 6. 데이터셋 규모와 dev/test 나누기 (A1 담당)
 7. 프론트·발표 몫의 Spec 폴더를 둘지 (지금 .kiro/specs/README.md에는 Spec 1~3만 있다)
-8. 공개 Function URL을 데모 끝까지 인증 없이 둘지
+8. 공개 API(CloudFront → API Gateway)를 데모 끝까지 인증 없이 둘지. API Gateway 요청 제한(throttling)으로 비용 상한
