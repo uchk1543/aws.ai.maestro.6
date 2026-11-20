@@ -244,3 +244,16 @@ def test_p1_oracle_포장명세서_총포장수는_심기_전_값():
 def test_p1_oracle_상업송장_줄_금액은_심기_전_총금액():
     inv = {d.doc_type: d for d in oracle_docs(with_p1=True)["D053"]}["commercial_invoice"]
     assert inv.total_amount.value == 29701 and inv.items[0].amount.value == 29710
+
+
+def test_p1_oracle_스타일_2_상업송장에는_품목_HS가_찍힌다():
+    inv = {d.doc_type: d for d in oracle_docs(with_p1=True)["D067"]}["commercial_invoice"]
+    assert inv.items[1].hs_code.raw == "6402.19"  # 심은 헷갈리는 HS (X-HS-01)
+    assert sum(it.amount.value for it in inv.items) == inv.total_amount.value  # 2행부터 줄 금액 0이라 X-SUM-01 합이 그대로
+
+
+def test_p1_oracle_HS_대조는_서류끼리_다른_세트만_잡는다():
+    from tools.validate import cross_check
+
+    found = {k for k, v in oracle_docs(with_p1=True).items() for i in cross_check(v) if i.rule_id == "X-HS-01" and i.grade != "참고"}
+    assert found == {"D061", "D067"}  # D015·D062는 서류끼리 같은 헷갈리는 HS라 대조로는 못 잡는다

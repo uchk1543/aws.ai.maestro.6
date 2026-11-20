@@ -4,6 +4,7 @@ P0 규칙 셋(X-INV-01 송장 번호, X-QTY-01 총수량, X-WT-01 총중량)은 
 P1 규칙(FB06 #163)은 X-PKG-01 총포장수(서류끼리), X-CNTR-01 컨테이너 번호 체크 디지트와 X-SUM-01 줄 금액 합(서류 한 장 안)이다.
 현장 칸 규칙(B13 #229)은 X-MARK-01 화인(선하증권↔포장명세서), X-PKG-02 컨테이너 줄 포장 수 합과 X-PKG-03 품목별 포장 수 합(서류 한 장 안)이다.
 운임·원산지·소급 발급 규칙(FB06 #163)은 X-FRT-01 인코텀즈와 운임 조건, X-OC-01 제조품의 WO 기준, X-RETRO-01 발급 기한이다. 모두 '확인 필요'다.
+X-HS-01(FB06 #163)은 상업송장과 원산지증명서의 품목 행 HS를 짧은 쪽 자릿수까지 비교한다. '확인 필요'이고, 옛 HS 코드는 '참고'다.
 규칙 문장틀과 허용 오차는 tools/rules/rules.csv, 비교 전에 맞추는 표기(단위 별칭, 번호·품명 정리)는
 tools/rules/units.csv, tools/rules/text_rules.csv 에 있다.
 """
@@ -590,6 +591,76 @@ def _check_retroactive(docs: list[ExtractedDocument]) -> list[Issue]:
                 Issue(rule_id="X-RETRO-01", grade="확인 필요", cells=[issue_cell, departure_cell], evidence=base["template"].format(reason=reason))
             )
     return issues
+HS_CSV = Path(__file__).resolve().parent.parent / "data" / "hs" / "hs_codes.csv"
+_HS_SIDES = ("commercial_invoice", "certificate_of_origin")
+
+
+@cache
+def _current_hs6() -> frozenset[str]:
+    """관세청 HS부호 표(HS2022 기준)에 있는 6자리 소호 목록. 표가 없으면 빈 집합(그때는 옛 코드를 가리지 않는다).
+    tools/hs.py가 이 모듈을 가져오므로 그쪽 표를 쓰지 않고 CSV의 부호 열만 직접 읽는다."""
+    if not HS_CSV.exists():
+        print(f"[cross_check] HS부호 표가 없어 옛 HS 코드를 가리지 않음: {HS_CSV}")
+        return frozenset()
+    return frozenset(row["hsk"][:6] for row in _read_csv(HS_CSV) if len(row.get("hsk", "")) >= 6)
+
+
+def _hs_digits(cell: Cell | None) -> str:
+    return re.sub(r"\D", "", _cell_text(cell))
+
+
+def _check_hs_codes(docs: list[ExtractedDocument]) -> list[Issue]:
+    """X-HS-01: 같은 품목 행의 HS 코드가 상업송장과 원산지증명서에서 같은지. 자릿수가 다르면 짧은 쪽까지만 비교한다.
+
+    행은 서류에 적힌 행 번호로 짝짓는다. 한쪽에 HS 칸이 없으면(스타일 1 송장 등) 그 행은 보지 않는다.
+    한쪽이 지금 HS부호 표에 없는 옛 코드(예: 한-중 FTA의 HS2012 '8541.40')면 비교하지 않고 '참고'로 남긴다.
+    다르면 '확인 필요'다. 협정마다 HS 버전이 달라 대조만으로 틀렸다고 확정할 수 없다 (agent-design.md 3번).
+    서류끼리 같은 헷갈리는 HS(trap_all_docs)는 이 규칙으로 못 잡는다. 품명으로 판단하는 recommend_hs 몫이다.
+    """
+    by_type = {t: next((d for d in docs if d.doc_type == t), None) for t in _HS_SIDES}
+    if any(d is None for d in by_type.values()):
+        return []
+    rows = {t: {it.line: (n, it) for n, it in enumerate(d.items)} for t, d in by_type.items()}
+    current = _current_hs6()
+    check, note = _rule("X-HS-01", "확인 필요")["template"], _rule("X-HS-01", "참고")["template"]
+    issues: list[Issue] = []
+    for line in sorted(set(rows["commercial_invoice"]) & set(rows["certificate_of_origin"])):
+        sides = {t: rows[t][line] for t in _HS_SIDES}
+        if any(_is_absent(it.hs_code) for _, it in sides.values()):
+            continue
+        cells = {
+            t: IssueCell(doc=t, field=f"items[{n}].hs_code", raw=it.hs_code.raw if it.hs_code else None)
+            for t, (n, it) in sides.items()
+        }
+        codes = {t: _hs_digits(it.hs_code) for t, (_, it) in sides.items()}
+        short = [t for t in _HS_SIDES if len(codes[t]) < 6]
+        if short:
+            t = short[0]
+            reason = _unread_reason(f"{DOC_TYPE_KO[t]} HS", sides[t][1].hs_code, "가 6자리 미만이라 비교할 수 없음")
+            issues.append(Issue(rule_id="X-HS-01", grade="확인 필요", cells=[cells[t]], evidence=check.format(line=line, reason=reason)))
+            continue
+        retired = [t for t in _HS_SIDES if current and codes[t][:6] not in current]
+        if retired:
+            t = retired[0]
+            evidence = note.format(line=line, doc=DOC_TYPE_KO[t], val=cells[t].raw or codes[t])
+            issues.append(Issue(rule_id="X-HS-01", grade="참고", cells=[cells[t]], evidence=evidence))
+            continue
+        k = min(len(codes["commercial_invoice"]), len(codes["certificate_of_origin"]))
+        if codes["commercial_invoice"][:k] == codes["certificate_of_origin"][:k]:
+            continue
+        a, b = (cells[t].raw or codes[t] for t in _HS_SIDES)
+        reason = f"상업송장 {a}와 원산지증명서 {b}가 앞 {k}자리에서 다름"
+        issues.append(
+            Issue(
+                rule_id="X-HS-01",
+                grade="확인 필요",
+                cells=[cells["commercial_invoice"], cells["certificate_of_origin"]],
+                evidence=check.format(line=line, reason=reason),
+            )
+        )
+    return issues
+
+
 # 서류 한 장 안에서 판정하는 규칙(rules.csv의 rule_id → 판정 함수). 나머지는 서류끼리 비교(_check_rule)
 _SINGLE_DOC_RULES: dict[str, Callable[[list[ExtractedDocument]], list[Issue]]] = {
     "X-CNTR-01": _check_container,
@@ -600,6 +671,7 @@ _SINGLE_DOC_RULES: dict[str, Callable[[list[ExtractedDocument]], list[Issue]]] =
     "X-FRT-01": _check_freight,
     "X-OC-01": _check_origin_criterion,
     "X-RETRO-01": _check_retroactive,
+    "X-HS-01": _check_hs_codes,
 }
 
 
