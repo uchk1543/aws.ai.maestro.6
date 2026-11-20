@@ -38,6 +38,14 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 | `POST /api/jobs/{id}/hs` | `{"choices":[{"line","hs"}]}` | `{"declaration_draft":{...}}` |
 | `POST /api/jobs/{id}/approve` | `{"approver"}` | `{"wms":{"status","wms_id"}}`, 불일치가 남았으면 409 |
 | `POST /api/chat` | `{"session_id","message"}` | `docs/examples/chat_response.json` |
+| `GET /api/documents?doc_type=<종류>&cursor=<다음 쪽>` | - | `docs/examples/documents.json` (문서 분류 내역, #143) |
+
+문서 분류 내역 (`GET /api/documents`, G10 #143. 모양은 `tools/models.py`의 `DocumentsResponse`)
+- `doc_type`: 약속 1의 4종 또는 `unknown`(분류 못 함·분류 실패). 그 밖은 400. `cursor`는 앞 쪽의 `next_cursor`
+- `counts`: 전체 작업 기준 종류별 서류 수 (다섯 종류 모두). 화면은 다시 세지 않는다
+- `items[]`: `job_id`, `key`, `file_name`, `doc_type`, `classified_by`(`model`·`user`), `reason`(분류 근거), `doc_no`·`consignee`(읽은 raw, 읽지 않았으면 null), `job_status`, `created_at`(한국 시간 `YYYY-MM-DD HH:MM`)
+- 최근 작업 먼저, 한 쪽 50건. 아직 분류 전(queued·running)인 서류는 빼고, 끝난 작업에서 분류 기록이 없으면 `unknown`
+- 분류 근거는 작업 단계 기록의 `classify_document` 문장에서 읽는다. `POST /api/jobs`가 작업 줄에 `files`(요청한 키·종류)와 `created_at`을 함께 저장한다
 값 목록
 - `status`: `queued` | `running` | `waiting_approval` | `done` | `failed`
 - `grade`: `불일치` | `확인 필요` | `참고`

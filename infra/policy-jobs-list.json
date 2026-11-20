@@ -1,0 +1,11 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListJobsForDocumentHistory",
+      "Effect": "Allow",
+      "Action": ["dynamodb:Scan"],
+      "Resource": "arn:aws:dynamodb:ap-northeast-2:__ACCOUNT_ID__:table/team06-jobs"
+    }
+  ]
+}
