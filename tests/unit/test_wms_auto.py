@@ -51,6 +51,9 @@ class BrokenWms:
     def __init__(self):
         self.calls = 0
 
+    def registered_jobs(self, bl_no: str) -> dict[str, str]:
+        return {}
+
     def register(self, record: WmsRecord) -> str:
         self.calls += 1
         raise RuntimeError("가짜 저장소 오류")
@@ -178,3 +181,12 @@ def test_not_ready_job_does_not_open_wms(monkeypatch):
     monkeypatch.setattr(wms, "dynamo_wms", lambda: opened.append(True) or MemoryWms())
     assert wms.register_if_ready(JOB, docs(1), JobResult(hs=[pending(1)]), IMPORTER) == (WAITING, None)
     assert opened == []
+
+
+def test_same_bl_from_other_job_waits_with_reason():
+    """#176: 같은 B/L이 다른 작업으로 이미 WMS에 있으면 자동 등록하지 않고 승인 대기로 사람에게 넘긴다. 이유를 단다."""
+    memory = MemoryWms()
+    wms.register_if_ready("job-0000d001", docs(1), JobResult(hs=[auto(1)]), IMPORTER, adapter=memory)
+    state, reason = wms.register_if_ready(JOB, docs(1), JobResult(hs=[auto(1)]), IMPORTER, adapter=memory)
+    assert state == WAITING and "이미" in reason and "job-0000d001" in reason
+    assert list(memory.records) == [f"{BL}#job-0000d001"]

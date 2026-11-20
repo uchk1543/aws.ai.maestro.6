@@ -40,3 +40,6 @@ class MemoryWms:
         if record.idempotency_key not in self.records:
             self.records[record.idempotency_key] = (f"wms-{len(self.records) + 1:04d}", record)
         return self.records[record.idempotency_key][0]
+
+    def registered_jobs(self, bl_no: str) -> dict[str, str]:
+        return {r.job_id: wms_id for wms_id, r in self.records.values() if r.bl_no == bl_no}
