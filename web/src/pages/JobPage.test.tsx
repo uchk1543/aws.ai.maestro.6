@@ -150,4 +150,47 @@ describe("JobPage", () => {
   it("elapsedText 는 분·초로 적는다", () => {
     expect([0, 59_999, 72_000, 180_000].map(elapsedText)).toEqual(["0초", "59초", "1분 12초", "3분 0초"]);
   });
+
+  it("맨 위에 다음 할 일 한 줄을 보인다: 불일치 · HS · 확인만 남음 (FB22)", async () => {
+    const base = example.result!;
+    const cases: [Job, string, string][] = [
+      [{ ...example, next_action: undefined }, "불일치 1건: 서류를 고쳐 다시 올려야 등록할 수 있습니다", "파일 업로드로"],
+      [
+        { ...example, next_action: undefined, result: { ...base, issues: base.issues.map((i) => ({ ...i, grade: "확인 필요" as const })) } },
+        "HS 1개를 고르세요",
+        "HS 고르기로",
+      ],
+      [
+        {
+          ...example,
+          next_action: undefined,
+          result: { ...base, issues: base.issues.map((i) => ({ ...i, grade: "확인 필요" as const })), hs: base.hs.map((h) => ({ ...h, status: "사람 확정" as const, by: "human" as const, hs_code: "8507609000" })) },
+        },
+        "확인 필요 1건을 확인한 뒤 승인하세요",
+        "승인 칸으로",
+      ],
+    ];
+    for (const [job, message, button] of cases) {
+      vi.mocked(api.getJob).mockResolvedValue(job);
+      const { unmount } = renderWithQuery(<JobPage jobId="job-0000abcd" />);
+      const banner = await screen.findByRole("region", { name: "다음 할 일" });
+      expect(banner).toHaveTextContent(message);
+      expect(within(banner).getByRole("button", { name: button })).toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it("서버가 next_action 을 주면 그 문장을 그대로 보인다", async () => {
+    vi.mocked(api.getJob).mockResolvedValue({ ...example, next_action: { kind: "approve", message: "서버가 정한 문장", count: null } });
+    renderWithQuery(<JobPage jobId="job-0000abcd" />);
+    expect(await screen.findByRole("region", { name: "다음 할 일" })).toHaveTextContent("서버가 정한 문장");
+  });
+
+  it("불일치가 남으면 승인을 누르기 전에 막고 이유를 보인다", async () => {
+    vi.mocked(api.getJob).mockResolvedValue(example);
+    renderWithQuery(<JobPage jobId="job-0000abcd" />);
+    const notes = await screen.findAllByRole("note");
+    expect(notes.some((n) => n.classList.contains("wms-blocked") && n.textContent?.includes("서류를 고쳐 다시 올려야 등록할 수 있습니다"))).toBe(true);
+    expect(screen.getByRole("button", { name: "승인하고 WMS 등록" })).toBeDisabled();
+  });
 });

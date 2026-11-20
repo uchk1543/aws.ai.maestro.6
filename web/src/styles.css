@@ -2960,3 +2960,64 @@ video.port-media.on {
 .hs-candidate:has(input:checked) .hs-reason.warn {
   color: #ffb4a8;
 }
+
+/* FB22 작업 화면 맨 위 '다음 할 일': 불일치(서류를 고쳐야 함)만 빨강, 나머지는 검정 */
+.next-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin: 4px 0 16px;
+  padding: 16px 20px;
+  background: #fff;
+  border: 1.5px solid var(--ink);
+  border-radius: 16px;
+}
+
+.next-action.next-fix_docs,
+.next-action.next-reupload {
+  background: #fdf0ee;
+  border-color: var(--red);
+}
+
+.next-action.next-none,
+.next-action.next-wait {
+  background: var(--fill-2);
+  border-color: var(--line);
+}
+
+.next-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.next-message {
+  flex: 1 1 260px;
+  font-size: 17px;
+}
+
+.next-go {
+  min-height: 40px;
+  padding: 0 16px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--ink);
+  border: 0;
+  border-radius: 999px;
+}
+
+.next-fix_docs .next-go,
+.next-reupload .next-go {
+  background: var(--red);
+}
+
+.wms-blocked {
+  margin: 0 0 10px;
+  padding: 10px 14px;
+  font-size: 14px;
+  color: var(--red);
+  background: #fdf0ee;
+  border-radius: 10px;
+}

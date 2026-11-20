@@ -8,6 +8,7 @@ import { DocReview } from "../components/DocReview";
 import { HsPicker } from "../components/HsPicker";
 import { IssueList } from "../components/IssueList";
 import { WmsPanel } from "../components/WmsPanel";
+import { nextActionOf } from "../nextAction";
 import { navigate } from "../route";
 import type { Job, JobStatus } from "../types";
 
@@ -49,6 +50,36 @@ export function pollInterval(job: Job | undefined, error: unknown): number | fal
   return job.status === "queued" || job.status === "running" ? POLL_MS : false;
 }
 
+const NEXT_LINK: Partial<Record<string, { label: string; target?: string; path?: string }>> = {
+  fix_docs: { label: "파일 업로드로", path: "/upload" },
+  reupload: { label: "파일 업로드로", path: "/upload" },
+  choose_hs: { label: "HS 고르기로", target: "job-hs" },
+  approve: { label: "승인 칸으로", target: "job-wms" },
+};
+
+/** 작업 화면 맨 위 '지금 상태와 다음 할 일' 한 줄 (FB22 #178). 문장은 서버 next_action 그대로 */
+function NextBanner({ job }: { job: Job }) {
+  const next = nextActionOf(job);
+  const link = NEXT_LINK[next.kind];
+  return (
+    <section className={`next-action next-${next.kind}`} aria-label="다음 할 일" aria-live="polite">
+      <span className="next-label">다음 할 일</span>
+      <strong className="next-message">{next.message}</strong>
+      {link && (
+        <button
+          type="button"
+          className="next-go"
+          onClick={() =>
+            link.path ? navigate(link.path) : document.getElementById(link.target!)?.scrollIntoView?.({ behavior: "smooth", block: "start" })
+          }
+        >
+          {link.label}
+        </button>
+      )}
+    </section>
+  );
+}
+
 export function JobPage({ jobId }: { jobId: string }) {
   const query = useQuery({
     queryKey: ["job", jobId],
@@ -85,6 +116,7 @@ export function JobPage({ jobId }: { jobId: string }) {
             <span className={`status status-${job.status}`}>{STATUS_KO[job.status]}</span>
             {polling && <span className="hint"> · 2초마다 새로 고칩니다 · 경과 {elapsedText(elapsed)}</span>}
           </p>
+          <NextBanner job={job} />
           {slow && (
             <div className="slow-note" role="status">
               <p>
@@ -126,9 +158,23 @@ export function JobPage({ jobId }: { jobId: string }) {
             ) : (
               <IssueList issues={job.result.issues} />
             ))}
-          {job.result && <HsPicker jobId={job.job_id} jobStatus={job.status} results={job.result.hs} />}
+          {job.result && (
+            <div id="job-hs">
+              <HsPicker jobId={job.job_id} jobStatus={job.status} results={job.result.hs} />
+            </div>
+          )}
           {job.result && <DeclarationTable draft={job.result.declaration_draft} />}
-          {job.result && <WmsPanel jobId={job.job_id} jobStatus={job.status} wms={job.result.wms} />}
+          {job.result && (
+            <div id="job-wms">
+              <WmsPanel
+                jobId={job.job_id}
+                jobStatus={job.status}
+                wms={job.result.wms}
+                // 불일치가 남으면 승인해도 409 라, 누르기 전에 막고 이유를 보인다 (FB22)
+                blocked={nextActionOf(job).kind === "fix_docs" ? nextActionOf(job).message : null}
+              />
+            </div>
+          )}
         </>
       )}
     </section>

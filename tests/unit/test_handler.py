@@ -211,8 +211,14 @@ def test_post_saves_queued_and_invokes_worker_without_processing(fakes, lambda_c
     assert status == 200 and set(body) == {"job_id"}
     job_id = body["job_id"]
     assert call("GET", f"/api/jobs/{job_id}") == (
-        200, {"job_id": job_id, "status": "queued", "steps": [], "result": None, "error": None},
+        200,
+        {
+            "job_id": job_id, "status": "queued", "steps": [], "result": None, "error": None,
+            # 작업 화면 맨 위 '다음 할 일' (FB22 #178). 응답 때 정하고 저장하지 않는다
+            "next_action": {"kind": "wait", "message": "처리 중입니다. 끝나면 할 일을 알려 드립니다", "count": None},
+        },
     )
+    assert "next_action" not in fakes.items[job_id]["data"]
     [invoked] = lambda_client.calls
     assert invoked["FunctionName"] == "team06-worker" and invoked["InvocationType"] == "Event"
     assert json.loads(invoked["Payload"]) == {"job_id": job_id, "files": request["files"]}

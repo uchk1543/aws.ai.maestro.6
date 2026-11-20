@@ -172,7 +172,8 @@ def save_job(job: Job, keep: dict | None = None) -> None:
         Item={
             **(keep or {}),
             "job_id": job.job_id,
-            "data": job.model_dump_json(by_alias=True),
+            # next_action 은 GET 때마다 결과로 정하는 칸이라 저장하지 않는다 (FB22)
+            "data": job.model_dump_json(by_alias=True, exclude={"next_action"}),
             "updated_at": int(time.time()),
         }
     )
@@ -520,6 +521,8 @@ def get_job(job_id: str) -> dict:
     job = load_job(job_id)
     if job is None:
         return _error(404, "작업을 찾을 수 없습니다")
+    # 작업 화면 맨 위 '다음 할 일' (FB22 #178). 저장하지 않고 응답 때마다 결과로 정한다
+    job = job.model_copy(update={"next_action": wms.next_action(job)})
     return _response(200, job.model_dump(mode="json", by_alias=True))
 
 

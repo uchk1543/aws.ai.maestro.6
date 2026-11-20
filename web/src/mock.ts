@@ -9,6 +9,7 @@ import documentsDraft from "./fixtures/documents.draft.json";
 import statsDraft from "./fixtures/stats.draft.json";
 import { ApiError } from "./api";
 import { fileViewOf } from "./mockDocs";
+import { nextActionOf } from "./nextAction";
 import type {
   ApproveResponse,
   ChatHistoryLine,
@@ -228,7 +229,9 @@ export async function mockRequest(method: string, path: string, body: unknown): 
     if (method === "GET" && !route[2]) {
       const n = polls.get(jobId) ?? 0;
       polls.set(jobId, n + 1);
-      return mockJobAt(jobId, n, finalJob);
+      // 서버처럼 응답 때마다 다음 할 일을 정한다 (FB22). 예시에 적힌 값은 처리 전 단계와 맞지 않으므로 다시 정한다
+      const job = mockJobAt(jobId, n, finalJob);
+      return { ...job, next_action: nextActionOf({ ...job, next_action: null }) };
     }
     if (method === "POST" && route[2] === "hs") return chooseHs(body);
     if (method === "POST" && route[2] === "approve") return approve(body);
