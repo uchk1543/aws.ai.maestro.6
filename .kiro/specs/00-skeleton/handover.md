@@ -31,7 +31,7 @@ KIRO_BOOTSTRAP.md에서 아직 남은 부분(0-1·0-3·0-4, 4장 MCP, 6장 5번,
 - 팀 전체로 P0가 끝까지 도는 것을 먼저 한다. P0 몫이 없거나 끝난 사람만 P1을 시작한다.
 
 ## 3. 아침 순서 (체크리스트)
-- [ ] 3-1. AWS 권한 받기 → 뼈대 배포 (`infra/README.md` "실행 순서", S4). 인계 전이라 PM이 한다 (team.md AWS). 인계 뒤 배포는 4번만
+- [ ] 3-1. AWS 권한 받기 → 뼈대 배포 (`infra/README.md` "실행 순서", S4). 배포는 인계 뒤에도 PM만 한다 (team.md AWS)
 - [ ] 3-2. `.kiro/settings/mcp.json` 만들기 (4장, 아래)
 - [ ] 3-3. TEAM.md 1번 표와 `.github/CODEOWNERS`의 `<...>`를 아이디로 바꾸고 커밋
 - [ ] 3-4. 원격 연결, push, CI 확인
@@ -89,7 +89,7 @@ uv run python -m scripts.github_setup --repo uchk1543/aws.ai.maestro.6 --apply \
 }
 ```
 
-### PM 개인용 `~/.kiro/settings/mcp.json` (저장소 밖, 인계 전까지만)
+### PM 개인용 `~/.kiro/settings/mcp.json` (저장소 밖, PM만)
 팀 저장소에 넣으면 다섯 명의 Kiro에 모두 붙어 "배포는 한 명만" 원칙이 무너진다.
 ```json
 {
@@ -106,8 +106,8 @@ uv run python -m scripts.github_setup --repo uchk1543/aws.ai.maestro.6 --apply \
 ```
 - `autoApprove`는 비워 둔다. 호출마다 명령을 읽고 승인한다.
 - 만들기·바꾸기는 MCP로 즉석에서 하지 않는다. `infra/` 스크립트로만 한다. MCP는 조회에만 쓴다.
-  즉석으로 만든 리소스는 서버 담당이 어떤 설정인지 알 수 없다.
-- 인계(9-4)가 끝나면 `"disabled": true`로 바꾼다.
+  즉석으로 만든 리소스는 나중에 어떤 설정인지 아무도 알 수 없다.
+- PM만 쓴다. 다른 팀원에게 이 설정을 나눠 주지 않는다.
 
 ## 8. 인계 전에 확인할 것
 - [ ] `uv run pytest` 통과, main CI success
@@ -151,8 +151,9 @@ git switch main && git branch -D chore/ruleset-check
 ```
 
 ### 9-4. 넘기기
-- `infra/`, `api/`, 배포 권한 → 서버 담당. `infra/README.md`로 함께 한 번 재배포해 본다.
-- PM의 개인 `aws-api` MCP를 `"disabled": true`로 바꾼다.
+- `api/`, `tools/ocr.py`, `tools/wms.py` → 4번 서버. 배포 권한과 `infra/`는 PM이 그대로 갖는다.
+- 4번과 `infra/README.md`를 함께 한 번 읽어, 새 테이블·권한이 필요할 때 infra/ PR로 올리는 방법을 맞춘다.
+- PM의 개인 `aws-api` MCP는 PM만 쓰므로 켜 둔다. 조회에만 쓰고, 만들기·바꾸기는 infra/ 스크립트로만 한다.
 - 각자 GitHub 이슈(라벨 `담당:<내 담당>`)와 `.kiro/specs/README.md`의 자기 Spec 폴더에서 시작한다. Spec 1은 금요일 10~12시에 팀이 함께 승인한다.
 
 ### 9-5. 팀원 공지 (단톡에 그대로)

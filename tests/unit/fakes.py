@@ -1,6 +1,6 @@
 """단위 테스트용 메모리 구현. AWS 없이 각자 자기 도구를 테스트할 때 쓴다.
 
-실제 구현(DynamoDB 등)은 서버 담당이 api/ 에 같은 모양으로 만든다.
+실제 구현(DynamoDB 등)은 4번 서버 담당이 api/ 에 같은 모양으로 만든다 (테이블 생성은 PM).
 """
 
 from tools.models import Shipment, WmsRecord

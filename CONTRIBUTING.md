@@ -39,13 +39,14 @@ git fetch && git merge origin/main
 | `agent/`, `tools/extract.py`, `tools/reread.py`, `tools/query.py`, `tools/report.py`, `samples/`, `eval/*.csv` | 1번 판독 |
 | `tools/validate.py`, `tools/rules/`, `tools/hs.py`, `tools/declaration.py`, `eval/*.py`, `data/hs/` | 2번 검증 |
 | `web/` | 3번 화면 |
-| `infra/`, `api/`, `tools/ocr.py`, `tools/wms.py` | 4번 서버 (배포 단독) |
+| `api/`, `tools/ocr.py`, `tools/wms.py` | 4번 서버 |
+| `infra/` | PM (리소스 생성·배포 실행은 PM만. 4번은 PR로 고칠 수 있다) |
 | `data/seed/`, `docs/presentation/` | 5번 발표 |
 | `.kiro/`, `docs/schema.md`, `docs/examples/`, `tools/models.py`, `pyproject.toml`, `uv.lock`, `.github/`, `TEAM.md` | 공용 (PM 또는 대리 승인) |
 
 이 표는 `.github/CODEOWNERS`와 같다. 남의 파일을 고쳐야 하면 직접 고치지 말고 담당자에게 요청한다.
 ## 합치는 시각
-15 · 18 · 23 · 03 · 07시. 각자 그 전에 PR을 올리고, PM이 공용 파일 관련 PR부터 하나씩 합친 뒤 main이 도는지 확인해 단톡에 알린다. 그다음 전원 `git pull`, 서버 담당이 main으로 배포한다.
+15 · 18 · 23 · 03 · 07시. 각자 그 전에 PR을 올리고, PM이 공용 파일 관련 PR부터 하나씩 합친 뒤 main이 도는지 확인해 단톡에 알린다. 그다음 PM이 main으로 배포하고, 전원 `git pull`.
 토요일 09시 기능 동결 뒤에는 데모에 나오는 버그 수정만 합친다. 데모 전 정상 커밋에 `git tag demo-v1 && git push --tags`.
 ## 충돌이 나면
 PR 작성자가 자기 브랜치에서 해결한다 (Kiro 병합 편집기). 해결 후 반드시 `uv run pytest`를 돌리고 push한다. 30분 넘게 막히면 바로 말한다.

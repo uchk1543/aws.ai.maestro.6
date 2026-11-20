@@ -24,8 +24,9 @@ ROLES = {
     "판독": ("1f77b4", "1번: 서류 분류·읽기, 에이전트 루프, 다시 확인, 현황 채팅, 데이터셋"),
     "검증": ("2ca02c", "2번: 대조 규칙, HS 코드, 신고서 초안, 채점"),
     "화면": ("9467bd", "3번: web/ 화면 전체"),
-    "서버": ("ff7f0e", "4번: AWS 리소스, API, Textract, 가상 WMS, 배포 단독"),
+    "서버": ("ff7f0e", "4번: API, Textract, 가상 WMS, 저장소 코드 (배포는 PM)"),
     "발표": ("e377c2", "5번: 가상 화물 기록, 시나리오, 시간 측정, 발표 자료"),
+    "PM": ("5319e7", "PM: AWS 리소스 생성·배포 단독, PR 합치기, 공용 파일 승인"),
 }
 # 단계 → (마일스톤 이름, 마감 UTC 또는 None, 설명). 금 18시 KST = 금 09시 UTC
 PHASES = {
@@ -68,6 +69,13 @@ def load_tasks(path: Path = TASKS_CSV) -> list[dict[str, str]]:
     return tasks
 
 
+def owner_text(role: str) -> str:
+    """이슈 본문의 담당 표기. 예: '2번 검증 담당', 'PM'."""
+    if role == "PM":
+        return "PM"
+    return f"{ROLES[role][1].split(':')[0]} {role} 담당"
+
+
 def issue_title(task: dict[str, str]) -> str:
     return f"[{task['id']}] {task['title']}"
 
@@ -77,7 +85,7 @@ def issue_body(task: dict[str, str]) -> str:
     files = "\n".join(f"- `{f}`" for f in task["files"].split()) or "- (없음)"
     return (
         f"**작업 ID**: {task['id']}  \n"
-        f"**담당**: {ROLES[task['role']][1].split(':')[0]} {task['role']} 담당 (TEAM.md)  \n"
+        f"**담당**: {owner_text(task['role'])} (TEAM.md)  \n"
         f"**단계**: {task['phase']}\n\n"
         f"### 고칠 파일\n{files}\n\n"
         f"### 끝난 기준\n{task['done'] or '(담당자가 채운다)'}\n\n"
