@@ -6,6 +6,7 @@ requires-python = ">=3.13"
 dependencies = [
     "boto3>=1.35",
     "pydantic>=2.7",
+    "pypdf>=7.1.1",
     "strands-agents",
     "strands-agents-tools",
 ]
