@@ -422,6 +422,19 @@ class Job(_Strict):
     error: str | None = Field(default=None, description="failed일 때 이유")
 
 
+class NoticeDocument(_Strict):
+    """불일치 통지 문서 (C7 #158). 관리자(화주·수출자 담당)에게 보낼 자동 생성 문서. 보내기 전에 사람이 검토한다."""
+
+    job_id: str = Field(description="작업 ID. 예: 'job-7c1e'")
+    subject: str = Field(
+        description="제목 한 줄. 예: '[불일치 확인 요청] B/L BL-2026-0001 / 송장 QDT/26/0289'. 두 번호를 모두 못 읽었으면 작업 ID를 쓴다"
+    )
+    markdown: str = Field(description="본문 마크다운. 서류에서 온 글자는 이스케이프해 데이터로만 넣는다")
+    html: str = Field(description="본문 HTML(문서 전체). 서류에서 온 글자는 HTML 이스케이프한다")
+    mismatch_count: int = Field(description="본문에 담은 불일치 건수. 참고는 세지 않는다")
+    check_count: int = Field(description="본문에 담은 확인 필요 건수")
+
+
 # ---------------------------------------------------------------------------
 # 화물 기록과 현황 조회
 # ---------------------------------------------------------------------------

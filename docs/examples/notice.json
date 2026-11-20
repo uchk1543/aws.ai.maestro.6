@@ -1,0 +1,8 @@
+{
+  "job_id": "job-7c1e",
+  "subject": "[불일치 확인 요청] B/L BL-2026-0001 / 송장 QDT/26/0289",
+  "markdown": "# \\[불일치 확인 요청\\] B/L BL-2026-0001 / 송장 QDT/26/0289\n\n> 자동 생성 문서입니다. 사람이 검토한 뒤 보냅니다.\n\n작업 ID: job-7c1e\n\n## 대상 서류\n\n- 상업송장: 파일 invoice.pdf, 서류 번호 QDT/26/0289\n- 포장명세서: 파일 packing.pdf, 서류 번호 QDT/26/0289\n- 선하증권: 파일 bl.jpg, 서류 번호 BL-2026-0001\n\n## 불일치 (1건)\n\n정정한 서류를 다시 보내 주세요.\n\n- 규칙 X-WT-01: 상업송장 1행 총중량 6,250kg과 포장명세서 6,520kg이 다릅니다.\n  - 짚은 칸: 상업송장 items\\[0\\].gross\\_kg: 6,250.00 KGS\n  - 짚은 칸: 포장명세서 items\\[0\\].gross\\_kg: 6,520.00 KGS\n  - 확인 방법: Textract OCR로 확인\n",
+  "html": "<!doctype html>\n<html lang=\"ko\">\n<head><meta charset=\"utf-8\">\n<title>[불일치 확인 요청] B/L BL-2026-0001 / 송장 QDT/26/0289</title></head>\n<body>\n<h1>[불일치 확인 요청] B/L BL-2026-0001 / 송장 QDT/26/0289</h1>\n<p><strong>자동 생성 문서입니다. 사람이 검토한 뒤 보냅니다.</strong></p>\n<p>작업 ID: job-7c1e</p>\n<h2>대상 서류</h2>\n<ul>\n<li>상업송장: 파일 invoice.pdf, 서류 번호 QDT/26/0289</li>\n<li>포장명세서: 파일 packing.pdf, 서류 번호 QDT/26/0289</li>\n<li>선하증권: 파일 bl.jpg, 서류 번호 BL-2026-0001</li>\n</ul>\n<h2>불일치 (1건)</h2>\n<p>정정한 서류를 다시 보내 주세요.</p>\n<ul>\n<li>규칙 X-WT-01: 상업송장 1행 총중량 6,250kg과 포장명세서 6,520kg이 다릅니다.\n<ul>\n<li>짚은 칸: 상업송장 items[0].gross_kg: 6,250.00 KGS</li>\n<li>짚은 칸: 포장명세서 items[0].gross_kg: 6,520.00 KGS</li>\n<li>확인 방법: Textract OCR로 확인</li>\n</ul></li>\n</ul>\n</body>\n</html>\n",
+  "mismatch_count": 1,
+  "check_count": 0
+}

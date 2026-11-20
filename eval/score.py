@@ -326,6 +326,7 @@ def oracle_docs(
 # H2. HS 확정과 자동 처리율 (모델 호출 없음)
 # ---------------------------------------------------------------------------
 HS_MODES = ("none", "oracle", "trap")  # 모델 대신 쓰는 가짜: 없음 · 정답을 1순위로 · 헷갈리는 HS를 1순위로
+MODEL_MODE = "bedrock"  # 진짜 Bedrock 모델(검색어 뽑기 + 후보 고르기). 돈과 시간이 들어서 --hs-model일 때만 돈다
 
 
 class _MemoryHistory:
@@ -390,15 +391,18 @@ def score_hs(inputs: dict, table, mode: str = "none", clean_sets: set[str] | Non
     """품목 행마다 recommend_hs를 돌려 HS 지표와 자동 처리율을 센다. 모델 호출 없음.
     언제: 규칙·HS 표·확정 조건을 고친 뒤. 받는 것: load_hs_inputs 결과, HS 표(HSTable), mode(HS_MODES),
     clean_sets(cross_check에 불일치·확인 필요가 없는 세트. None이면 모두 깨끗하다고 본다).
-    mode: none = 모델 없음(자동 확정은 확정 이력만), oracle = 후보 안에 정답이 있으면 1순위로(상한), trap = 헷갈리는 HS를 1순위로(최악).
+    mode: none = 모델 없음(자동 확정은 확정 이력만), oracle = 후보 안에 정답이 있으면 1순위로(상한), trap = 헷갈리는 HS를 1순위로(최악),
+    bedrock = 진짜 Bedrock 모델이 검색어를 뽑고 후보에서 고른다(bedrock_terms_reader·bedrock_picker. 이때만 모델을 부른다).
     '사람 확인 필요'가 나오면 정답 HS를 사람이 고른 것처럼 넣고 계속한다. 이력은 비운 상태에서 시작해 세트 순서대로 쌓인다.
     반환: 건수 dict. wrong_auto는 0이어야 한다.
     """
     from tools.hs import confirm_by_human, item_key, recommend_hs
     from tools.models import HSPick
 
-    if mode not in HS_MODES:
-        raise ValueError(f"mode는 {HS_MODES} 중 하나: {mode}")
+    if mode not in (*HS_MODES, MODEL_MODE):
+        raise ValueError(f"mode는 {(*HS_MODES, MODEL_MODE)} 중 하나: {mode}")
+    if mode == MODEL_MODE:
+        from tools.hs import bedrock_picker, bedrock_terms_reader
     history = _MemoryHistory()
     out = dict(
         rows=0, answer_not_in_table=0, auto=0, by_history=0, by_auto_match=0, wrong_auto=0,
@@ -412,12 +416,17 @@ def score_hs(inputs: dict, table, mode: str = "none", clean_sets: set[str] | Non
 
         def picker(name, cands, answer=answer, trap=trap, seen=seen):
             seen["cands"] = cands
+            if mode == MODEL_MODE:
+                return bedrock_picker(name, cands)
             by_hs = {c.hs: c for c in cands}
             order = {"none": [], "oracle": [answer], "trap": [trap, answer]}[mode]
             return HSPick(picks=[by_hs[h] for h in order if h in by_hs])
 
         with contextlib.redirect_stdout(io.StringIO()):  # [tool] 출력을 숨긴다
-            result = recommend_hs(docs, line, row["consignee"], history=history, table=table, picker=picker)
+            result = recommend_hs(
+                docs, line, row["consignee"], history=history, table=table, picker=picker,
+                terms_reader=bedrock_terms_reader if mode == MODEL_MODE else None,
+            )
         out["rows"] += 1
         out["answer_not_in_table"] += 0 if table.exists(answer) else 1
         if result.status == "자동 확정":
@@ -460,13 +469,14 @@ def format_hs_report(r: dict) -> str:
 
 
 def main() -> None:
-    """정답 값으로 규칙만 채점한다 (모델 호출 없음). 예: uv run python -m eval.score --split dev [--p1] [--hs]"""
+    """정답 값으로 규칙만 채점한다 (모델 호출 없음). 예: uv run python -m eval.score --split dev [--p1] [--hs] [--hs-model]"""
     from tools.validate import cross_check  # 순환을 피하려고 여기서 부른다
 
     parser = argparse.ArgumentParser(description=main.__doc__)
     parser.add_argument("--split", default="dev", choices=["dev", "test"])
     parser.add_argument("--hs", action="store_true", help="HS 확정과 자동 처리율도 센다 (모델 없음·정답·함정 세 가지)")
     parser.add_argument("--p1", action="store_true", help="P1 규칙도 센다: 선하증권·원산지증명서까지 만들고 P0+P1 심은 오류를 정답으로 본다")
+    parser.add_argument("--hs-model", action="store_true", help="진짜 Bedrock 모델로 HS를 추천해 센다 (aws login과 MODEL_ID 필요, 모델을 부른다)")
     args = parser.parse_args()
     if args.split == "test":
         raise SystemExit("발표용(test)은 저장소에 없고 마지막에 한 번만 돌린다. 이 명령은 dev만 지원한다.")
@@ -478,15 +488,15 @@ def main() -> None:
     detection = score_detection(load_answers(), issues, args.split, phases=phases, fmt_by_doc=formats)
     fields = score_fields(EVAL_DIR / "fields.csv", docs, fmt_by_doc=formats)
     print(format_report(detection, fields))
-    if args.hs:
+    if args.hs or args.hs_model:
         from tools.hs import load_hs_table
 
         table = load_hs_table()
         inputs = load_hs_inputs(args.split)
         clean = {s for s in inputs["normal"] if not [i for i in issues.get(s, []) if i.grade != "참고"]}
-        for mode in HS_MODES:
+        for mode in (HS_MODES if args.hs else ()) + ((MODEL_MODE,) if args.hs_model else ()):
             print()
-            print(format_hs_report(score_hs(inputs, table, mode, clean)))
+            print(format_hs_report(score_hs(inputs, table, mode, clean)), flush=True)
 
 
 if __name__ == "__main__":
