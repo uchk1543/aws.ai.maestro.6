@@ -7,12 +7,24 @@
 - 못 읽은 칸: `raw`와 `value`를 null로 두고 `unreadable`에 이유(흐림 · 가려짐 · 칸 없음)를 적는다.
 - 모델이 스스로 매긴 확신 점수는 두지 않는다.
 - `doc_type`: `bill_of_lading` | `commercial_invoice` | `packing_list` | `certificate_of_origin` | `unknown`
-- `doc_no`: 서류끼리 맞춰 보는 번호. 상업송장은 송장 번호, **포장명세서는 거기 적힌 송장 번호**(Packing List No.가 아니다), B/L은 B/L No.
+- `doc_no`: 서류끼리 맞춰 보는 번호. 상업송장은 송장 번호, **포장명세서는 거기 적힌 송장 번호**(Packing List No.가 아니다), B/L은 B/L No., **원산지증명서는 10번 칸의 송장 번호**(증명서 번호는 `co_no`)
   X-INV-01은 상업송장 `doc_no`와 포장명세서 `doc_no`를 비교한다. 포장명세서 번호 자체는 지금 담지 않는다 (#89).
 - `total_qty`: 합계로 찍힌 **품목 수량**의 합계. 포장 개수의 합계(CTNS 등)가 아니다. 합계가 찍혀 있지 않으면 비우고, 대조 코드가 줄 값을 더한다.
 - `consignee_name`: 수하인(Consignee, 수입자) 칸의 회사 이름 한 줄. 주소·전화는 뺀다. 상업송장 값이 HS 확정 이력과 WMS 등록의 수입자다 (#110). 칸이 없으면 null.
   모델 스키마(`RawDocument`)에서는 필수 + null 허용이다 (Bedrock 구조화 출력의 선택 속성 12개 한도).
-- 읽는 종류: 상업송장·포장명세서·선하증권. 원산지증명서는 칸이 들어오기 전까지 분류만 하고 '참고'(DOC-LATER)로 알린다.
+- 읽는 종류: 상업송장·포장명세서·선하증권·원산지증명서 (B2 P1 #11). 그 밖의 종류가 생기면 분류만 하고 '참고'(DOC-LATER)로 알린다.
+- 서류 종류별 칸 (#110). 모두 `Cell | null`이고 그 서류에 없는 칸은 null이다. 칸 이름은 `eval/fields.csv`, 아래 신고서 표의 출처와 같다.
+
+  | 서류 | 칸 |
+  |---|---|
+  | 상업송장 | `doc_no` `exporter_name` `consignee_name` `incoterms` `payment_term` `origin` `total_qty` `total_gross_kg` `total_amount`, 품목 `item_code` `name` `hs_code` `qty` `unit_price` `amount` `gross_kg` `net_kg` |
+  | 포장명세서 | `doc_no` `exporter_name` `consignee_name` `total_qty` `total_gross_kg` `total_packages`, 품목 `item_code` `name` `qty` `gross_kg` `net_kg` |
+  | 선하증권 | `doc_no`(B/L No.) `shipper_name` `consignee_name` `notify_name` `vessel_voyage` `port_loading` `port_discharge` `onboard_date` `container_no` `freight_term` `total_packages` `total_gross_kg` `total_cbm`. 품목 행은 없다 |
+  | 원산지증명서 | `doc_no`(송장 번호) `co_no` `exporter_name` `consignee_name` `departure_date` `invoice_date` `issue_date` `issued_retroactively`, 품목 `name` `hs_code` `qty` `origin_criterion` |
+- 이름 칸(`*_name`)은 첫 이름 줄만 담고 주소는 뺀다. 선하증권의 'TO ORDER OF SHIPPER', 'SAME AS CONSIGNEE'는 적힌 그대로다.
+- 날짜 칸의 `value`는 `YYYY-MM-DD`이고, 숫자만 쓴 날짜(`10/11/2026`)는 일/월/연으로 푼다. 금액(`total_amount`·`unit_price`·`amount`)은 `value` 숫자, `unit` 통화.
+- `total_packages`는 포장 개수의 합계(`unit` CTN 등)로 `total_qty`(품목 수량)와 다르다. `container_no`는 여러 개면 공백 하나로 잇는다.
+- 모델이 채우는 모양: 상업송장·포장명세서는 `RawDocument`(새 칸은 필수 + null 허용), 선하증권·원산지증명서는 종류별 `RawBillOfLading`·`RawOrigin`(칸 모두 필수 + null 허용). 코드가 위 칸으로 바꾼다.
 - 예시: `docs/examples/extract_packing_list.json`
 ## 약속 2. 작업 API (화면 ↔ Lambda)
 주소: 화면과 같은 CloudFront 주소의 `/api/…`. CloudFront가 `/api/*`를 API Gateway(HTTP API)로 보낸다. 같은 주소라 CORS 설정이 필요 없다.
@@ -26,6 +38,14 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 | `POST /api/jobs/{id}/hs` | `{"choices":[{"line","hs"}]}` | `{"declaration_draft":{...}}` |
 | `POST /api/jobs/{id}/approve` | `{"approver"}` | `{"wms":{"status","wms_id"}}`, 불일치가 남았으면 409 |
 | `POST /api/chat` | `{"session_id","message"}` | `docs/examples/chat_response.json` |
+| `GET /api/documents?doc_type=<종류>&cursor=<다음 쪽>` | - | `docs/examples/documents.json` (문서 분류 내역, #143) |
+
+문서 분류 내역 (`GET /api/documents`, G10 #143. 모양은 `tools/models.py`의 `DocumentsResponse`)
+- `doc_type`: 약속 1의 4종 또는 `unknown`(분류 못 함·분류 실패). 그 밖은 400. `cursor`는 앞 쪽의 `next_cursor`
+- `counts`: 전체 작업 기준 종류별 서류 수 (다섯 종류 모두). 화면은 다시 세지 않는다
+- `items[]`: `job_id`, `key`, `file_name`, `doc_type`, `classified_by`(`model`·`user`), `reason`(분류 근거), `doc_no`·`consignee`(읽은 raw, 읽지 않았으면 null), `job_status`, `created_at`(한국 시간 `YYYY-MM-DD HH:MM`)
+- 최근 작업 먼저, 한 쪽 50건. 아직 분류 전(queued·running)인 서류는 빼고, 끝난 작업에서 분류 기록이 없으면 `unknown`
+- 분류 근거는 작업 단계 기록의 `classify_document` 문장에서 읽는다. `POST /api/jobs`가 작업 줄에 `files`(요청한 키·종류)와 `created_at`을 함께 저장한다
 값 목록
 - `status`: `queued` | `running` | `waiting_approval` | `done` | `failed`
 - `grade`: `불일치` | `확인 필요` | `참고`
@@ -40,6 +60,12 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 - `customs_status` 값은 아래 6개만 쓴다 (진행 순서). 검사 중은 심사 중 뒤에 거치는 선택 단계다.
   `입항` → `수입신고` → `심사 중` → `검사 중` → `수리` → `반출`
 - 통관이 끝난 상태: `수리`, `반출`.
+- 처리한 작업의 줄 (E3, `tools/report.py`의 `record_shipment`·`mark_registered`, 부르는 쪽은 처리 Lambda·승인):
+  - 작업이 `waiting_approval`·`done`으로 끝나고 선하증권 B/L 번호와 수하인이 있으면 한 줄 쓴다. B/L이 없으면 쓰지 않는다.
+  - 서류에는 입항일 칸이 없어서 `arrived_at`은 **처리한 날**(한국 시간), `customs_status`는 `입항`, `job_id`는 그 작업이다 (데모용 결정).
+    `consignee`는 상업송장 → 선하증권 → 포장명세서의 `consignee_name`, `item`은 첫 품목 품명(여럿이면 "… 외 N개 품목").
+  - 가상 WMS에 등록되면(자동 D2 · 사람 승인 D3) 그 작업이 쓴 줄을 `수입신고`로 고친다. 이미 그 뒤 상태면 그대로 둔다.
+  - 미리 넣은 가상 기록(`job_id` 없음)과 B/L이 같으면 덮어쓰지 않는다 (조건부 쓰기). 같은 B/L을 다시 처리하면 입항일·상태는 두고 `job_id`·수하인·품명만 바꾼다.
 - "통관 지연"은 상태 값이 아니다. `customs_status`에 넣지 않고, 아래 규칙으로 코드가 계산한다.
   - 통관 지연 = (오늘 − `arrived_at`) ≥ **3일** 이고 `customs_status`가 `수리`·`반출`이 아님.
   - 입항일 당일이 0일이다. 입항일이 11/17이면 11/20부터 지연이다.
@@ -58,17 +84,17 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 | field | 신고서 칸 | 출처 | 읽기 칸 |
 |---|---|---|---|
 | `bl_no` | B/L 번호 | `bill_of_lading.bl_no` (= `doc_no`) | 있음 |
-| `vessel` | 선기명 | `bill_of_lading.vessel_voyage` | 없음 |
-| `importer` | 수입자 | `commercial_invoice.consignee_name` | 없음 |
-| `supplier` | 해외공급자 | `commercial_invoice.exporter_name` | 없음 |
-| `export_country` | 적출국 | `bill_of_lading.port_loading` | 없음 |
+| `vessel` | 선기명 | `bill_of_lading.vessel_voyage` | 있음 |
+| `importer` | 수입자 | `commercial_invoice.consignee_name` | 있음 |
+| `supplier` | 해외공급자 | `commercial_invoice.exporter_name` | 있음 |
+| `export_country` | 적출국 | `bill_of_lading.port_loading` | 있음 |
 | `total_gross_kg` | 총중량(kg) | `packing_list.total_gross_kg` | 있음 |
-| `total_packages` | 총포장갯수 | `packing_list.total_packages` | 없음 |
+| `total_packages` | 총포장갯수 | `packing_list.total_packages` | 있음 |
 | `package_kind` | 포장종류 | `packing_list` (포장 단위에서 코드가 정함) | 없음 |
-| `incoterms` | 인도조건 | `commercial_invoice.incoterms` | 없음 |
+| `incoterms` | 인도조건 | `commercial_invoice.incoterms` | 있음 |
 | `currency` | 통화 | `commercial_invoice` (금액 칸의 통화) | 없음 |
-| `total_amount` | 결제금액 | `commercial_invoice.total_amount` | 없음 |
-| `payment` | 결제방법 | `commercial_invoice.payment_term` | 없음 |
+| `total_amount` | 결제금액 | `commercial_invoice.total_amount` | 있음 |
+| `payment` | 결제방법 | `commercial_invoice.payment_term` | 있음 |
 | `co_present` | 원산지증명서 유무 | `certificate_of_origin` (서류가 올라왔는지, Y/N) | 있음 |
 
 품목 칸 (줄마다 하나씩)
@@ -79,11 +105,11 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 | `qty` | 수량 | `commercial_invoice.items[0].qty` | 있음 |
 | `unit` | 단위 | `commercial_invoice.items[0].qty` (칸의 `unit`) | 있음 |
 | `net_kg` | 순중량(kg) | `packing_list.items[0].net_kg` | 있음 |
-| `unit_price` | 단가 | `commercial_invoice.items[0].unit_price` | 없음 |
-| `amount` | 금액 | `commercial_invoice.items[0].amount` | 없음 |
-| `origin` | 원산지 | `commercial_invoice.origin` | 없음 |
+| `unit_price` | 단가 | `commercial_invoice.items[0].unit_price` | 있음 |
+| `amount` | 금액 | `commercial_invoice.items[0].amount` | 있음 |
+| `origin` | 원산지 | `commercial_invoice.origin` | 있음 |
 | `fta` | 협정 | `certificate_of_origin` (서류 양식에서 코드가 정함) | 없음 |
-| `origin_criterion` | 원산지결정기준 | `certificate_of_origin.items[0].origin_criterion` | 없음 |
+| `origin_criterion` | 원산지결정기준 | `certificate_of_origin.items[0].origin_criterion` | 있음 |
 
 비우는 규칙 (코드가 정한다)
 - 불일치·확인 필요 `issues`의 `cells`가 칸의 출처와 같은 서류·칸을 짚으면 그 칸을 비운다. 참고는 비우지 않는다.

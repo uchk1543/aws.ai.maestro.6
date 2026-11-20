@@ -6,9 +6,10 @@ CloudFront가 /api/*를 API Gateway로 보내고, rawPath에 /api가 붙어 온�
     POST /api/uploads        → {"uploads"}             (F2, 파일마다 S3에 직접 PUT할 미리 서명된 URL)
     POST /api/jobs           → {"job_id"}              (F3, queued로 저장하고 처리 Lambda를 비동기로 부른 뒤 바로 응답)
     GET  /api/jobs/{id}      → Job                     (화면이 2초마다)
-    POST /api/jobs/{id}/hs   → {"declaration_draft"}   (C3, 사람이 고른 HS 반영)
+    POST /api/jobs/{id}/hs   → {"declaration_draft"}   (C3, 사람이 고른 HS 반영. D2: 조건을 채우면 WMS 자동 등록)
     POST /api/jobs/{id}/approve → {"wms"}              (D3, 사람 승인으로 WMS 등록. 불일치가 남았으면 409)
     POST /api/chat           → ChatResponse            (E5, 현황 조회. 1번 agent.query_agent)
+    GET  /api/documents?doc_type=…&cursor=… → DocumentsResponse (G10 #143, 문서 분류 내역. team06-jobs Scan)
 서류 처리(run_job)는 처리 Lambda team06-worker(api/worker.py)가 한다. API Gateway는 요청 하나를 30초 안에 끝내야 한다.
 
 환경 변수: JOBS_TABLE(team06-jobs), DOCS_BUCKET(team06-docs-...), MODEL_ID, HS_HISTORY_TABLE(team06-hs-history),
@@ -28,7 +29,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import TypeAdapter
 
 from tools import declaration, hs, wms
-from tools.models import ExtractedDocument, Job, Step, WmsState
+from tools.models import DOC_TYPE_KO, DocType, DocumentRecord, DocumentsResponse, ExtractedDocument, Job, Step, WmsState
 
 ALLOWED_DOC_TYPES = {"commercial_invoice", "packing_list", "bill_of_lading", "certificate_of_origin"}  # 약속 1의 4종 (#129)
 JOB_ID = re.compile(r"^job-[0-9a-f]{8}$")
@@ -343,12 +344,14 @@ def create_job(body) -> dict:
         return _error(400, problem)
 
     job_id = f"job-{uuid.uuid4().hex[:8]}"
-    save_job(Job(job_id=job_id, status="queued"))  # 처리 Lambda보다 먼저 저장해야 바로 오는 GET이 작업을 찾는다
+    # files·created_at은 문서 분류 내역(GET /documents, #143)이 읽는다. 처리 Lambda는 keep으로 그대로 둔다
+    columns = {"files": json.dumps(files, ensure_ascii=False), "created_at": int(time.time())}
+    save_job(Job(job_id=job_id, status="queued"), keep=columns)  # 처리 Lambda보다 먼저 저장해야 바로 오는 GET이 작업을 찾는다
     try:
         invoke_worker(job_id, files)
     except Exception as exc:  # 권한·이름·제한 오류. queued로 두면 화면이 끝없이 기다리므로 failed로 바꾼다
         print(f"[error] invoke_worker job={job_id} {type(exc).__name__}: {exc}")
-        save_job(Job(job_id=job_id, status="failed", error=f"처리를 시작하지 못했습니다 ({type(exc).__name__})"))
+        save_job(Job(job_id=job_id, status="failed", error=f"처리를 시작하지 못했습니다 ({type(exc).__name__})"), keep=columns)
         return _error(502, "서류 처리를 시작하지 못했습니다. 잠시 뒤 다시 올려 주세요")
     print(f"[job] {job_id} status=queued files={len(files)}")
     return _response(200, {"job_id": job_id})
@@ -365,11 +368,14 @@ def get_job(job_id: str) -> dict:
 
 def choose_hs(job_id: str, body) -> dict:
     """POST /jobs/{id}/hs. 사람이 고른 HS로 확정하고, 확정 이력에 저장하고, 신고서 초안을 다시 채운다.
+    그다음 자동 등록 조건을 다시 검사해, 다 채우면 바로 가상 WMS에 등록하고(by=auto) 작업을 done으로 끝낸다 (D2).
 
-    언제: 화면에서 '사람 확인 필요' 품목의 HS를 고른 뒤 (agent-design.md 6번). 모델 호출 없음.
+    언제: 화면에서 '사람 확인 필요' 품목의 HS를 고른 뒤 (agent-design.md 6·8번). 모델 호출 없음.
     받는 것: {"choices": [{"line", "hs"}]}. line은 이 작업의 HS 결과에 있는 행, hs는 10자리.
     반환: 200 {"declaration_draft"} / 400 요청 형식 / 404 없는 작업
       / 409 처리 중, 서류 기록이 없음, 수입자를 몰라 확정 이력을 남길 수 없음.
+      WMS 상태는 GET /jobs/{id}의 result.wms로 본다. 등록을 못 해도(조건 미달, B/L 없음, 저장소 오류)
+      HS 선택은 저장하고 200이다. 그때는 승인 대기로 남아 사람이 승인한다 (D3).
     """
     if not JOB_ID.match(job_id):
         return _error(404, "작업을 찾을 수 없습니다")
@@ -408,7 +414,21 @@ def choose_hs(job_id: str, body) -> dict:
     job.steps.append(
         Step(tool="draft_declaration", summary=f"신고서 초안 {len(draft.fields)}칸, 비운 칸 {len(draft.blank_fields)}개", ok=True)
     )
+
+    # HS 선택을 먼저 저장한다. WMS 기록은 같은 멱등 키면 처음 것만 남으므로, 저장된 HS로만 만든다
     save_job(job, keep=item)
+
+    # 자동 등록 재검사 (D2, agent-design.md 8번). 등록 실패는 예외로 오지 않고 (승인 대기, 이유)로 온다
+    before = job.result.wms
+    state, reason = wms.register_if_ready(job_id, docs, job.result, importer)
+    if state.status == "등록됨" and (before is None or before.status != "등록됨"):
+        job.status = "done"  # 사람이 승인할 것이 남지 않았다 (D3 승인과 같다). HS를 다시 고르면 409
+        job.steps.append(Step(tool="push_to_wms", summary=f"WMS 자동 등록: {state.wms_id}", ok=True))
+    elif reason:
+        job.steps.append(Step(tool="push_to_wms", summary=f"WMS 자동 등록 못 함: {reason}", ok=False))
+    if state != before or reason:
+        job.result.wms = state
+        save_job(job, keep=item)
     return _response(200, {"declaration_draft": draft.model_dump(mode="json")})
 
 
@@ -492,6 +512,120 @@ def chat(body) -> dict:
     return _response(200, res.model_dump(mode="json", by_alias=True))
 
 
+# ---------------------------------------------------------------------------
+# 문서 분류 내역 (G10 #143)
+# ---------------------------------------------------------------------------
+LIST_DOC_TYPES = (*sorted(ALLOWED_DOC_TYPES), "unknown")  # 화면의 종류 칩. unknown = 분류 못 함·분류 실패
+DOC_PAGE = 50  # 한 쪽 서류 수
+_KO_TO_TYPE = {ko: t for t, ko in DOC_TYPE_KO.items()}
+# 단계 기록 문장. agent/document_agent.py의 classify_document 기록과 같은 형식이다 (test_handler가 실제 run_job 출력으로 지킨다)
+_CLASSIFIED = re.compile(
+    r"^(?P<name>.+?) → (?P<ko>" + "|".join(map(re.escape, _KO_TO_TYPE)) + r") \((?P<reason>.*)\)$", re.S
+)
+_CLASSIFY_FAILED = re.compile(r"^(?P<name>.+?) 분류 실패: (?P<error>.*)$", re.S)
+
+
+def _kst_minute(seconds: int) -> str:
+    """초(UTC 기준 epoch) → 한국 시간 'YYYY-MM-DD HH:MM'. Lambda 시계는 UTC다."""
+    from datetime import datetime
+
+    from agent import KST
+
+    return datetime.fromtimestamp(seconds, KST).strftime("%Y-%m-%d %H:%M")
+
+
+def _scan_jobs() -> list[dict]:
+    """team06-jobs를 끝까지 읽는다. 작업은 데모 규모(수십 건)라 Scan으로 충분하다."""
+    items, kwargs = [], {}
+    while True:
+        page = _table().scan(**kwargs)
+        items += page.get("Items", [])
+        if "LastEvaluatedKey" not in page:
+            return items
+        kwargs["ExclusiveStartKey"] = page["LastEvaluatedKey"]
+
+
+def _classifications(job: Job) -> dict[str, tuple[DocType, str]]:
+    """단계 기록에서 파일 이름 → (분류 결과, 근거). 분류 실패는 (unknown, '분류 실패: …')."""
+    found: dict[str, tuple[DocType, str]] = {}
+    for step in job.steps:
+        if step.tool != "classify_document":
+            continue
+        if (m := _CLASSIFIED.match(step.summary)) is not None:
+            found[m["name"]] = (_KO_TO_TYPE[m["ko"]], m["reason"])
+        elif (m := _CLASSIFY_FAILED.match(step.summary)) is not None:
+            found[m["name"]] = ("unknown", f"분류 실패: {m['error']}")
+    return found
+
+
+def _raw(cell) -> str | None:
+    return cell.raw if cell is not None and cell.raw else None
+
+
+def job_documents(item: dict) -> list[DocumentRecord]:
+    """작업 한 줄을 서류 단위 기록으로 펼친다. 아직 분류 전인 서류(queued·running)는 빼고, 끝난 작업에서 기록이 없으면 unknown.
+
+    언제: GET /documents. 받는 것: team06-jobs의 한 줄 (data, docs, files, created_at).
+    files 칸이 없는 옛 작업(#143 전)은 읽은 서류(docs)만 펼친다.
+    """
+    job = Job.model_validate_json(item["data"])
+    docs = {d.file: d for d in (_DOCS.validate_json(item["docs"]) if item.get("docs") else [])}
+    files = json.loads(item["files"]) if item.get("files") else [{"key": k, "doc_type": None} for k in docs]
+    classified = _classifications(job)
+    created_at = _kst_minute(int(item.get("created_at") or item.get("updated_at") or 0))
+    records = []
+    for f in files:
+        key, name = f["key"], f["key"].rsplit("/", 1)[-1]
+        if f.get("doc_type"):
+            doc_type, by, reason = f["doc_type"], "user", "올릴 때 사용자가 고른 종류"
+        elif name in classified:
+            (doc_type, reason), by = classified[name], "model"
+        elif key in docs:  # files 칸이 없는 옛 작업(#143 전)에서 종류를 정해 올린 서류. 분류 기록 없이 읽기만 했다
+            doc_type, by, reason = docs[key].doc_type, "user", "올릴 때 고른 종류 (분류 기록 없음)"
+        elif job.status in ("queued", "running"):
+            continue  # 아직 분류하지 않았다
+        else:
+            doc_type, by, reason = "unknown", "model", "분류 기록이 없음"
+        doc = docs.get(key)
+        records.append(DocumentRecord(
+            job_id=job.job_id, key=key, file_name=name, doc_type=doc_type, classified_by=by, reason=reason,
+            doc_no=_raw(doc.doc_no) if doc else None, consignee=_raw(doc.consignee_name) if doc else None,
+            job_status=job.status, created_at=created_at,
+        ))
+    return records
+
+
+def list_documents(query: dict | None) -> dict:
+    """GET /documents?doc_type=…&cursor=…. 문서 분류 내역 (G10 #143). 모델 호출 없음.
+
+    받는 것: doc_type(LIST_DOC_TYPES 중 하나), cursor(앞 쪽이 준 next_cursor, 없으면 첫 쪽).
+    반환: 200 DocumentsResponse (counts는 전체 작업 기준, items는 최근 작업 먼저 DOC_PAGE건) / 400 요청 형식.
+    """
+    query = query or {}
+    doc_type, cursor = query.get("doc_type"), query.get("cursor") or "0"
+    if doc_type not in LIST_DOC_TYPES:
+        return _error(400, f"doc_type은 {', '.join(LIST_DOC_TYPES)} 중 하나입니다")
+    if not cursor.isdigit():
+        return _error(400, "cursor가 잘못됐습니다")
+    records: list[DocumentRecord] = []
+    for item in _scan_jobs():
+        try:
+            records += job_documents(item)
+        except Exception as exc:  # 깨진 줄 하나 때문에 목록 전체가 실패하지 않게 한다
+            print(f"[warn] documents job={item.get('job_id')} 건너뜀: {type(exc).__name__}: {exc}")
+    records.sort(key=lambda r: (r.created_at, r.job_id), reverse=True)
+    counts = {t: 0 for t in LIST_DOC_TYPES}
+    for r in records:
+        counts[r.doc_type] += 1
+    picked = [r for r in records if r.doc_type == doc_type]
+    start = int(cursor)
+    page = picked[start:start + DOC_PAGE]
+    more = start + DOC_PAGE < len(picked)
+    body = DocumentsResponse(counts=counts, items=page, next_cursor=str(start + DOC_PAGE) if more else None)
+    print(f"[api] documents doc_type={doc_type} 전체 {len(records)}장, 이 종류 {len(picked)}장, 쪽 {start}")
+    return _response(200, body.model_dump(mode="json"))
+
+
 # 약속 2에 있지만 아직 없는 경로 → 작업 ID (e2e-plan.md). 만들면 여기서 지운다.
 _PLANNED: dict[tuple[str, str], str] = {}
 
@@ -535,6 +669,8 @@ def lambda_handler(event, context):
             return approve_job(parts[2], _body(event))
         if method == "POST" and path == "/chat":
             return chat(_body(event))
+        if method == "GET" and path == "/documents":
+            return list_documents(event.get("queryStringParameters"))
         planned = _planned_route(method, path)
         if planned:
             return _error(501, f"아직 만들지 않은 경로입니다 ({planned}). 형식은 docs/schema.md 약속 2")

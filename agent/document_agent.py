@@ -39,8 +39,8 @@ from tools.validate import cross_check
 MAX_FILES = 10
 MAX_BYTES = 4_500_000  # Bedrock 문서 블록 한도 (4.5MB)
 # 읽는 종류. 선하증권은 B/L 번호(WMS 등록)와 총중량 3자 대조(X-WT-01)에 쓴다 (#110).
-# 원산지증명서는 칸을 넣으면(#110 남은 몫) 여기에 더한다. 나머지는 분류만 하고 '참고'로 알린다
-READ_TYPES = {"commercial_invoice", "packing_list", "bill_of_lading"}
+# 원산지증명서는 원산지 기준·증명서 번호를 신고서 초안에 쓴다 (B2 P1 #11). 그 밖의 종류가 생기면 분류만 하고 '참고'로 알린다
+READ_TYPES = {"commercial_invoice", "packing_list", "bill_of_lading", "certificate_of_origin"}
 MAX_WORKERS = 4
 MAX_REASON = 80  # 단계 기록에 넣는 분류 근거 길이. 지시는 60자인데 실제로 86자까지 나왔다 (#18)
 MAX_TURNS = 12  # 에이전트 루프의 모델 호출 한도 (Strands limits)
@@ -168,7 +168,7 @@ class _Run:
         """아직 읽지 않는 종류(P1)는 대조에서 빼고 '참고'로 알린다. 등급을 올리지 않는다."""
         ko = DOC_TYPE_KO[doc_type]
         self._hand_over(
-            key, "DOC-LATER", doc_type, "*", f"{ko}({_name(key)})는 아직 읽지 않습니다. 상업송장·포장명세서·선하증권만 대조했습니다.",
+            key, "DOC-LATER", doc_type, "*", f"{ko}({_name(key)})는 아직 읽지 않는 종류입니다. 대조에서 뺐습니다.",
             failed=True, grade="참고",
         )
 
