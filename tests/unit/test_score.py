@@ -189,3 +189,58 @@ def test_dev_answer_key_scored_with_oracle_reads_has_no_miss_and_no_false_positi
     assert r["false_positive_sets"] == 0
     fields = score_fields(EVAL_DIR / "fields.csv", docs)
     assert fields["cells_correct"] == fields["cells"] > 0
+
+# FB06 #163에서 만든 P1 규칙 4개가 잡아야 하는 심은 오류 (정답지의 P1 줄)
+FB06_PLANTED = {
+    ("D011", "bill_of_lading", "total_packages"),  # X-PKG-01
+    ("D016", "bill_of_lading", "container_no"),  # X-CNTR-01
+    ("D046", "certificate_of_origin", "invoice_no"),  # X-INV-01 (원산지증명서)
+    ("D053", "commercial_invoice", "total_amount"),  # X-SUM-01
+}
+
+
+def _score_p1_oracle():
+    docs = oracle_docs(with_p1=True)
+    with contextlib.redirect_stdout(io.StringIO()):
+        issues = {s: cross_check(d) for s, d in docs.items() if len(d) >= 2}
+    return score_detection(load_answers(), issues, "dev", phases=("P0", "P1"), fmt_by_doc=load_formats()), issues
+
+
+def test_p1_정답_값_채점에서_FB06_규칙_네_개가_심은_오류를_잡는다():
+    r, _ = _score_p1_oracle()
+    missed = {(m["set_id"], m["doc"], m["field"]) for m in r["misses"]}
+    assert not (FB06_PLANTED & missed)  # 심은 네 건은 놓치지 않는다
+    assert r["detected"] >= 43  # P0 37건 + FB06 4건 + 선하증권 총중량 2건
+
+
+def test_p1_정답_값_채점에서_정상_세트_오탐은_0():
+    r, _ = _score_p1_oracle()
+    assert r["normal_sets"] > 0
+    assert r["false_positive_sets"] == 0
+    assert r["check_needed_sets"] == 0  # 확인 필요도 정상 세트에는 나오지 않는다
+
+
+def test_p1_정답_값_채점의_남은_놓침은_발표_뒤로_미룬_규칙뿐():
+    """X-HS-01 · X-FRT-01 · X-OC-01 · X-RETRO-01은 이슈 #163이 발표 뒤로 미뤘다. 그 밖의 규칙에서 놓치면 안 된다."""
+    r, _ = _score_p1_oracle()
+    rule_of = {(a["set_id"], a["doc"], a["field"]): a["expected_rule_id"] for a in load_answers()}
+    left = {rule_of[(m["set_id"], m["doc"], m["field"])] for m in r["misses"]}
+    assert left <= {"X-HS-01", "X-FRT-01", "X-OC-01", "X-RETRO-01"}, left
+
+
+def test_기본_oracle은_P0_서류만_만든다():
+    docs = oracle_docs()
+    assert {d.doc_type for ds in docs.values() for d in ds} == {"commercial_invoice", "packing_list"}
+
+
+def test_p1_oracle_포장명세서_총포장수는_심기_전_값():
+    docs = oracle_docs(with_p1=True)["D011"]
+    by_type = {d.doc_type: d for d in docs}
+    assert by_type["bill_of_lading"].total_packages.value == 325  # 심은 값
+    assert by_type["packing_list"].total_packages.value == 327  # 심기 전 값
+    assert by_type["commercial_invoice"].items[0].amount.value == by_type["commercial_invoice"].total_amount.value  # 총금액은 안 틀림
+
+
+def test_p1_oracle_상업송장_줄_금액은_심기_전_총금액():
+    inv = {d.doc_type: d for d in oracle_docs(with_p1=True)["D053"]}["commercial_invoice"]
+    assert inv.total_amount.value == 29701 and inv.items[0].amount.value == 29710
