@@ -113,8 +113,14 @@ def test_unknown_is_not_read_and_asks_human():
     first = job.result.issues[0]
     assert (first.rule_id, first.grade) == ("DOC-UNKNOWN", "확인 필요")
     assert (first.cells[0].doc, first.cells[0].field) == ("unknown", "doc_type")
-    assert "memo.png" in first.evidence and "종류를 골라" in first.evidence
+    assert "memo.png" in first.evidence
+    assert_retry_hint(first.evidence)
     assert job.status == "waiting_approval"
+
+
+def assert_retry_hint(evidence: str) -> None:
+    """화면에 종류 고르기가 아직 없으므로(#167) 지금 할 수 있는 행동만 안내한다 (#183)."""
+    assert evidence.endswith("다른 파일로 다시 올려 주세요.") and "종류를 골라" not in evidence
 
 
 def test_user_unknown_also_asks_human():
@@ -122,6 +128,7 @@ def test_user_unknown_also_asks_human():
     job = run_job("job-1", [{"key": MEMO, "doc_type": "unknown"}], fetch, reader=m.reader, classifier=m.classifier)
     assert m.classified == [] and m.read == [] and job.steps == []
     assert job.result.issues[0].rule_id == "DOC-UNKNOWN" and job.status == "waiting_approval"
+    assert_retry_hint(job.result.issues[0].evidence)
 
 
 def test_bill_of_lading_and_origin_are_read():
@@ -159,6 +166,7 @@ def test_classify_failure_is_not_ok_and_not_read():
     assert fail.summary.startswith("packing.pdf 분류 실패: 모델 호출 실패: RuntimeError")
     assert m.read == ["invoice.pdf"]
     assert job.result.issues[0].rule_id == "CLASSIFY-FAIL"
+    assert_retry_hint(job.result.issues[0].evidence)
     assert all(i.rule_id != "REPORT-INCOMPLETE" for i in job.result.issues)  # 넘긴 파일은 조건에서 뺀다
     assert job.status == "waiting_approval"
 

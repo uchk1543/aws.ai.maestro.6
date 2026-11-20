@@ -24,8 +24,10 @@ PM과 4번 사이 이름 약속(진입점, 이벤트, 환경 변수)은 이슈 #
 | 정책 | `policy-logs.json` | 두 Lambda의 로그 그룹에 쓰기 |
 | 정책 | `policy-data.json` | `team06-jobs` Get/Put/UpdateItem, 서류 버킷 `uploads/*` Get/PutObject (미리 서명된 URL 포함), `team06-wms` Scan (같은 B/L 중복 등록 검사, #176) |
 | 정책 | `policy-jobs-list.json` | API Lambda만: `team06-jobs` Scan (문서 분류 내역 `GET /api/documents`, #143) |
+| 정책 | `policy-chat.json` | API Lambda만: `team06-chat` Get/Put/Query, 가드레일 `team06-chat-guard` ApplyGuardrail (APAC 프로필 도착 리전 6곳 포함, #151) |
+| 가드레일 | `team06-chat-guard` (`guardrail-chat.json`) | 현황 조회 입력 검사: 프롬프트 공격 HIGH, 유해 표현, 통관·화물과 무관한 요청 거부. Standard 등급(한국어), `apac.guardrail.v1:0`. 환경 변수 `GUARDRAIL_ID`·`GUARDRAIL_VERSION`(API Lambda) |
 | 정책 | `policy-invoke-worker.json` | API Lambda가 `team06-worker`만 호출 |
-| DynamoDB | `team06-jobs`, `team06-hs-history`, `team06-wms`, `team06-shipments` | 온디맨드. 키와 칸은 아래 "테이블" |
+| DynamoDB | `team06-jobs`, `team06-hs-history`, `team06-wms`, `team06-shipments`, `team06-chat` | 온디맨드. 키와 칸은 아래 "테이블" |
 | 정책 | `policy-textract.json` | worker만: `textract:AnalyzeDocument`, `DetectDocumentText` (서울) |
 | S3 | `team06-docs-<계정ID>` | 공개 차단. `uploads/` 서류, `deploy/` 배포 zip. CORS: 화면 주소에서 PUT만 |
 | S3 | `team06-web-<계정ID>` | 공개 차단. 버킷 정책 `policy-web-bucket.json`: CloudFront 배포 하나만 읽기 |
@@ -46,6 +48,7 @@ PM과 4번 사이 이름 약속(진입점, 이벤트, 환경 변수)은 이슈 #
 | `team06-hs-history` | `importer`(파티션) + `item_key`(정렬, `tools.hs.item_key`) — 4번 C3 설계(#76) | `hs`(10자리), `job_id`, `updated_at` | `HSHistory` 구현 (C2), 사람 확정 (C3) |
 | `team06-wms` | `idempotency_key` = `"<B/L 번호>#<작업 ID>"` | `wms_id`, `record`(WmsRecord JSON 문자열), `registered_at` | `WmsAdapter` 구현 (D1). 같은 키는 조건부 쓰기(`attribute_not_exists`)로 한 번만. 등록 전에 Scan(`begins_with "<B/L 번호>#"`)으로 같은 B/L의 다른 작업을 찾아 있으면 등록하지 않는다 (#176) |
 | `team06-shipments` | `bl_no` | Shipment 칸 그대로 (날짜는 `YYYY-MM-DD` 문자열, `job_id` 없으면 칸 없음) | `ShipmentStore` 구현 (E3·E4). 시드는 `infra/seed_shipments.py` (E2). Lambda 권한에 Scan 포함 |
+| `team06-chat` | `session_id`(파티션) + `ts`(정렬, 한국 시간 `YYYYMMDDHHMMSSmmm`) | `role`(user·assistant), `text`, 답이면 `filters`·`count`·`rule`·`blocked`, `expires_at`(초, TTL 7일) | 채팅 기록 (E6 #157). 환경 변수 `CHAT_TABLE` |
 
 ### 데모·평가 전 초기화 (PM만, #170)
 평가·10회 반복·데모 직전에는 확정 이력이 비어 있어야 한다 (agent-design.md 11번). 기본은 미리보기이고, `--apply`면 `reset`을 입력해야 지운다.

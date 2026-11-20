@@ -22,6 +22,8 @@ TABLE=team06-jobs                       # 키 job_id
 HS_HISTORY_TABLE=team06-hs-history      # 키 importer(파티션) + item_key(정렬). 4번 C3 설계 (#76)
 WMS_TABLE=team06-wms                    # 키 idempotency_key = "<B/L 번호>#<작업 ID>" (F4, D1)
 SHIPMENTS_TABLE=team06-shipments        # 키 bl_no (E2, 시드: infra/seed_shipments.py)
+CHAT_TABLE=team06-chat                  # 키 session_id(파티션) + ts(정렬), TTL expires_at (F8 #151, E6 #157)
+GUARDRAIL_NAME=team06-chat-guard        # 현황 조회 입력 검사 (F8 #151, E7 #152). 설정: infra/guardrail-chat.json
 BUCKET="team06-docs-${ACCOUNT_ID}"      # 서류 원본(uploads/)과 배포 zip(deploy/)
 WEB_BUCKET="team06-web-${ACCOUNT_ID}"   # 화면 빌드 파일 (CloudFront만 읽음)
 
