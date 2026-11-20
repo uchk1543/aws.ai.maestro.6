@@ -30,7 +30,7 @@ from pydantic import TypeAdapter
 from tools import declaration, hs, wms
 from tools.models import ExtractedDocument, Job, Step, WmsState
 
-ALLOWED_DOC_TYPES = {"commercial_invoice", "packing_list"}  # 뼈대 범위 (S2)
+ALLOWED_DOC_TYPES = {"commercial_invoice", "packing_list", "bill_of_lading", "certificate_of_origin"}  # 약속 1의 4종 (#129)
 JOB_ID = re.compile(r"^job-[0-9a-f]{8}$")
 HS_CODE = re.compile(r"^[0-9]{10}$")  # 10자리 HSK
 APPROVER_MAX = 50  # 승인자 이름 길이. 화면 입력칸(WmsPanel maxLength)과 같다
@@ -143,18 +143,19 @@ def load_job(job_id: str) -> Job | None:
     return Job.model_validate_json(item["data"]) if item else None
 
 
-def load_job_docs(item: dict) -> tuple[list[ExtractedDocument], str] | None:
-    """HS를 다시 반영할 때 쓸 읽은 서류와 수입자. 없으면 None.
+def load_job_docs(item: dict) -> tuple[list[ExtractedDocument], str | None] | None:
+    """HS를 다시 반영하거나 승인할 때 쓸 읽은 서류와 수입자. 서류 기록이 없으면 None.
 
-    언제: POST /jobs/{id}/hs. 모델을 다시 부르지 않으려고 저장해 둔 값을 쓴다 (agent-design.md 6번).
+    언제: POST /jobs/{id}/hs·/approve. 모델을 다시 부르지 않으려고 저장해 둔 값을 쓴다 (agent-design.md 6번).
     받는 것: team06-jobs의 한 줄. docs 칸(ExtractedDocument 목록 JSON)과 importer 칸(수입자)을 읽는다.
-    반환: (서류 목록, 수입자). 두 칸 중 하나라도 없으면 None.
-    아직 이 두 칸을 쓰는 쪽이 없다: run_job(1번)은 Job만 돌려주고, 수입자는 약속 1에 칸이 없다.
+      두 칸은 처리 Lambda(api/worker.py)가 마지막 저장 때 쓴다 (#122).
+    반환: (서류 목록, 수입자). docs 칸이 없으면 None. importer 칸이 없으면 수입자는 None이다
+      (상업송장 consignee_name을 못 읽었을 때. 그 칸은 #110이 약속 1에 더하기 전까지 없다).
     """
     raw_docs, importer = item.get("docs"), item.get("importer")
-    if not raw_docs or not importer:
+    if not raw_docs:
         return None
-    return _DOCS.validate_json(raw_docs), importer
+    return _DOCS.validate_json(raw_docs), importer or None
 
 
 class DynamoHSHistory:
@@ -259,10 +260,12 @@ def _validate_files(body) -> tuple[list[dict] | None, str | None]:
         doc_type = f.get("doc_type") if isinstance(f, dict) else None
         if not isinstance(key, str) or not key.startswith(KEY_PREFIX) or ".." in key:
             return None, f"key는 '{KEY_PREFIX}'로 시작해야 합니다"
-        if doc_type is None:
-            return None, "뼈대에서는 doc_type이 필요합니다 (자동 분류는 Spec 1)"
-        if doc_type not in ALLOWED_DOC_TYPES:
-            return None, f"doc_type은 {sorted(ALLOWED_DOC_TYPES)} 중 하나입니다"
+        # doc_type 칸은 꼭 있어야 하고, 값이 null이면 run_job이 classify_document로 분류한다 (B1·B9).
+        # 화면(G9)은 늘 null을 보낸다 (#129)
+        if "doc_type" not in f:
+            return None, "doc_type 칸이 필요합니다 (모르면 null)"
+        if doc_type is not None and doc_type not in ALLOWED_DOC_TYPES:
+            return None, f"doc_type은 null이거나 {sorted(ALLOWED_DOC_TYPES)} 중 하나입니다"
         clean.append({"key": key, "doc_type": doc_type})
     return clean, None
 
@@ -365,7 +368,8 @@ def choose_hs(job_id: str, body) -> dict:
 
     언제: 화면에서 '사람 확인 필요' 품목의 HS를 고른 뒤 (agent-design.md 6번). 모델 호출 없음.
     받는 것: {"choices": [{"line", "hs"}]}. line은 이 작업의 HS 결과에 있는 행, hs는 10자리.
-    반환: 200 {"declaration_draft"} / 400 요청 형식 / 404 없는 작업 / 409 처리 중이거나 서류 기록이 없음.
+    반환: 200 {"declaration_draft"} / 400 요청 형식 / 404 없는 작업
+      / 409 처리 중, 서류 기록이 없음, 수입자를 몰라 확정 이력을 남길 수 없음.
     """
     if not JOB_ID.match(job_id):
         return _error(404, "작업을 찾을 수 없습니다")
@@ -383,6 +387,8 @@ def choose_hs(job_id: str, body) -> dict:
     if context is None:
         return _error(409, "이 작업에는 저장된 서류 기록이 없어 신고서 초안을 다시 채울 수 없습니다")
     docs, importer = context
+    if importer is None:  # 확정 이력 키가 수입자 + 품목이라 수입자 없이는 남길 수 없다
+        return _error(409, "상업송장에서 수입자(Consignee)를 읽지 못해 HS를 확정할 수 없습니다")
     line_docs = {line: _line_doc(docs, line) for line in picked}
     missing = sorted(line for line, doc in line_docs.items() if doc is None)
     if missing:
@@ -444,8 +450,8 @@ def approve_job(job_id: str, body) -> dict:
     if context is None:
         return _error(409, "이 작업에는 저장된 서류 기록이 없어 WMS에 올릴 기록을 만들 수 없습니다")
     docs, importer = context
-    try:
-        record = wms.make_record(job_id, docs, job.result.hs, importer, "human")
+    try:  # 수입자를 모르면 make_record가 '수하인(수입자)이 비어 있어' RecordNotReady를 낸다
+        record = wms.make_record(job_id, docs, job.result.hs, importer or "", "human")
     except wms.RecordNotReady as exc:
         return _error(409, str(exc))
 

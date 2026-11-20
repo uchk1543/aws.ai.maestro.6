@@ -241,12 +241,25 @@ def test_bad_post_does_not_invoke_worker(fakes, lambda_client):
         {"files": []},
         {"files": [{"key": "secret/x.pdf", "doc_type": "packing_list"}]},
         {"files": [{"key": "uploads/../x.pdf", "doc_type": "packing_list"}]},
-        {"files": [{"key": "uploads/x.pdf", "doc_type": None}]},
-        {"files": [{"key": "uploads/x.pdf", "doc_type": "bill_of_lading"}]},
+        {"files": [{"key": "uploads/x.pdf", "doc_type": "unknown"}]},
+        {"files": [{"key": "uploads/x.pdf", "doc_type": "invoice"}]},
+        {"files": [{"key": "uploads/x.pdf"}]},  # doc_type 칸 없음 (null과 다르다)
     ],
 )
 def test_bad_requests_are_400(fakes, body):
     assert call("POST", "/jobs", body)[0] == 400
+
+
+@pytest.mark.parametrize(
+    "doc_type", [None, "commercial_invoice", "packing_list", "bill_of_lading", "certificate_of_origin"]
+)
+def test_doc_type_null_or_four_kinds_are_accepted(fakes, lambda_client, doc_type):
+    """화면(G9)은 doc_type을 null로 보내고 run_job이 분류한다. 정해 보내면 약속 1의 4종만 받는다 (#129)."""
+    status, _ = call("POST", "/api/jobs", {"files": [{"key": "uploads/s1/a.pdf", "doc_type": doc_type}]})
+
+    assert status == 200
+    [invoked] = lambda_client.calls
+    assert json.loads(invoked["Payload"])["files"] == [{"key": "uploads/s1/a.pdf", "doc_type": doc_type}]
 
 
 def test_unknown_job_and_path_are_404(fakes):
@@ -418,14 +431,16 @@ def example_docs() -> list[ExtractedDocument]:
     return [pl, ci]
 
 
-def put_hs_job(table, *, status="waiting_approval", with_docs=True):
+def put_hs_job(table, *, status="waiting_approval", with_docs=True, with_importer=True):
     job = Job.model_validate({**example("job_waiting_approval.json"), "job_id": HS_JOB, "status": status})
     if status == "running":
         job.result = None
     item = {"job_id": HS_JOB, "data": job.model_dump_json(by_alias=True), "updated_at": 0}
     if with_docs:
         docs = [d.model_dump(mode="json") for d in example_docs()]
-        item |= {"docs": json.dumps(docs, ensure_ascii=False), "importer": IMPORTER}
+        item |= {"docs": json.dumps(docs, ensure_ascii=False)}
+        if with_importer:  # 처리 Lambda는 수입자를 모르면 이 칸을 쓰지 않는다 (#122)
+            item["importer"] = IMPORTER
     table.put_item(Item=item)
 
 
@@ -507,12 +522,21 @@ def test_hs_unknown_job_is_404(hs_fakes):
     assert call("POST", "/jobs/nope/hs", {"choices": [{"line": 1, "hs": "8507600000"}]})[0] == 404
 
 
-@pytest.mark.parametrize("kwargs", [{"status": "running"}, {"with_docs": False}])
-def test_hs_job_not_ready_is_409(hs_fakes, kwargs):
-    """처리 중인 작업, 서류 기록이 없는 작업은 고를 수 없다. 이력도 쓰지 않는다."""
+@pytest.mark.parametrize(
+    "kwargs, message",
+    [
+        ({"status": "running"}, "승인 대기 중인 작업에서만"),
+        ({"with_docs": False}, "저장된 서류 기록이 없어"),
+        ({"with_importer": False}, "수입자(Consignee)를 읽지 못해"),
+    ],
+    ids=["running", "no-docs", "no-importer"],
+)
+def test_hs_job_not_ready_is_409(hs_fakes, kwargs, message):
+    """처리 중인 작업, 서류 기록이나 수입자가 없는 작업은 고를 수 없다. 이력도 쓰지 않는다."""
     table, history, calls = hs_fakes
     put_hs_job(table, **kwargs)
-    assert call("POST", f"/jobs/{HS_JOB}/hs", {"choices": [{"line": 1, "hs": "8507600000"}]})[0] == 409
+    status, body = call("POST", f"/jobs/{HS_JOB}/hs", {"choices": [{"line": 1, "hs": "8507600000"}]})
+    assert status == 409 and message in body["error"]
     assert history.rows == {} and calls["confirm"] == []
 
 
@@ -541,7 +565,9 @@ APPROVE_JOB = "job-00000d03"
 BL = "BL-2026-0001"
 
 
-def put_approve_job(table, *, grade="불일치", status="waiting_approval", with_docs=True, with_bl=True, wms_state=None):
+def put_approve_job(
+    table, *, grade="불일치", status="waiting_approval", with_docs=True, with_bl=True, with_importer=True, wms_state=None
+):
     """예시 작업(문제 1건, 1행 HS 사람 확인 필요)을 넣는다. grade로 그 문제의 등급을 바꾼다."""
     job = Job.model_validate({**example("job_waiting_approval.json"), "job_id": APPROVE_JOB, "status": status})
     job.result.issues[0].grade = grade
@@ -552,7 +578,9 @@ def put_approve_job(table, *, grade="불일치", status="waiting_approval", with
         docs = example_docs()
         if with_bl:
             docs.append(ExtractedDocument(doc_type="bill_of_lading", file="uploads/sample-001/bl.pdf", doc_no=Cell(raw=BL, value=BL)))
-        item |= {"docs": json.dumps([d.model_dump(mode="json") for d in docs], ensure_ascii=False), "importer": IMPORTER}
+        item |= {"docs": json.dumps([d.model_dump(mode="json") for d in docs], ensure_ascii=False)}
+        if with_importer:
+            item["importer"] = IMPORTER
     table.put_item(Item=item)
 
 
@@ -643,8 +671,9 @@ def test_approve_unknown_job_is_404(wms_fakes):
         ({"status": "running"}, "승인 대기 중인 작업에서만"),
         ({"with_docs": False}, "저장된 서류 기록이 없어"),
         ({"with_bl": False}, "B/L 번호가 없어"),
+        ({"with_importer": False}, "수하인(수입자)이 비어 있어"),
     ],
-    ids=["running", "no-docs", "no-bl"],
+    ids=["running", "no-docs", "no-bl", "no-importer"],
 )
 def test_approve_job_not_ready_is_409(wms_fakes, kwargs, message):
     table, memory = wms_fakes

@@ -41,7 +41,7 @@ PM과 4번 사이 이름 약속(진입점, 이벤트, 환경 변수)은 이슈 #
 
 | 테이블 | 키 (문자열) | 칸 | 쓰는 곳 |
 |---|---|---|---|
-| `team06-jobs` | `job_id` | `data`(Job JSON 문자열), `updated_at`(초) | api/, 처리 Lambda |
+| `team06-jobs` | `job_id` | `data`(Job JSON 문자열), `updated_at`(초), `docs`(읽은 서류 `ExtractedDocument` 목록 JSON 문자열), `importer`(수입자 = 상업송장 `consignee_name` raw, 못 읽었으면 칸 없음) | api/, 처리 Lambda. `docs`·`importer`는 처리 Lambda가 마지막 저장 때 쓰고 HS 선택·승인이 읽는다 (#122) |
 | `team06-hs-history` | `importer`(파티션) + `item_key`(정렬, `tools.hs.item_key`) — 4번 C3 설계(#76) | `hs`(10자리), `job_id`, `updated_at` | `HSHistory` 구현 (C2), 사람 확정 (C3) |
 | `team06-wms` | `idempotency_key` = `"<B/L 번호>#<작업 ID>"` | `wms_id`, `record`(WmsRecord JSON 문자열), `registered_at` | `WmsAdapter` 구현 (D1). 같은 키는 조건부 쓰기(`attribute_not_exists`)로 한 번만 |
 | `team06-shipments` | `bl_no` | Shipment 칸 그대로 (날짜는 `YYYY-MM-DD` 문자열, `job_id` 없으면 칸 없음) | `ShipmentStore` 구현 (E3·E4). 시드는 `infra/seed_shipments.py` (E2). Lambda 권한에 Scan 포함 |
