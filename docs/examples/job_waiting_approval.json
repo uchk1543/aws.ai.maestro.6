@@ -27,6 +27,8 @@
         "status": "사람 확인 필요",
         "by": null,
         "hs_code": null,
+        "item_name": "LITHIUM-ION BATTERY PACK",
+        "doc_hs_code": "8507.60",
         "candidates": [
           {"hs": "8507600000", "name": "(HS 표의 품목명)", "reason": "품명과 용도 칸 근거"}
         ]

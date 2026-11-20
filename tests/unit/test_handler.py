@@ -188,15 +188,18 @@ def test_post_then_worker_shows_mismatch(fakes, lambda_client):
     Job.model_validate(job)  # 약속 2 형식
     assert job["status"] == "waiting_approval"
     # 선하증권이 없어 먼저 빠진 서류로 남긴다 (#168). 불일치 칸은 다시 확인한다 (B8): 상업송장·포장명세서 총중량
-    # 끝나면 화물 기록 한 줄 (E3). 이 서류에는 선하증권이 없어 쓰지 않았다는 줄이다
+    # 끝나면 신고서 초안(C8 #154)과 화물 기록 한 줄 (E3). 이 서류에는 선하증권이 없어 쓰지 않았다는 줄이다
     assert [s["tool"] for s in job["steps"]] == [
         "check_missing_docs", "read_document", "read_document", "cross_check", "reread_field", "reread_field",
-        "record_shipment",
+        "draft_declaration", "record_shipment",
     ]
     assert "B/L 번호가 없어" in job["steps"][-1]["summary"]
     issue, missing = job["result"]["issues"]
     assert issue["grade"] == "불일치" and issue["rule_id"] == "X-WT-01"
     assert (missing["rule_id"], missing["grade"]) == ("DOC-MISSING", "확인 필요")
+    # 처리 직후 초안이 있다. 불일치가 짚은 포장명세서 총중량은 비운다 (agent-design.md 7번)
+    draft = DeclarationDraft.model_validate(job["result"]["declaration_draft"])
+    assert "total_gross_kg" in draft.blank_fields
     # 승인 대기로 끝나면 화면이 승인 입력을 그리도록 wms를 채운다 (#159, 실제 run_job 출력 FB14)
     assert job["result"]["wms"] == {"status": "승인 대기", "by": None, "wms_id": None}
 
@@ -471,6 +474,9 @@ def put_hs_job(table, *, status="waiting_approval", with_docs=True, with_importe
     table.put_item(Item=item)
 
 
+KNOWN_HS = {"8507600000", "8507609000", "8507800000"}  # 가짜 HS부호 표
+
+
 @pytest.fixture
 def wms_memory(monkeypatch):
     """가상 WMS(team06-wms) 대신 메모리판. 승인(D3)과 HS 선택 뒤 자동 등록(D2)이 여기에 쓴다."""
@@ -500,6 +506,8 @@ def hs_fakes(fakes, wms_memory, monkeypatch):
         return DeclarationDraft(fields=fields, blank_fields=["items[0].gross_kg"])
 
     monkeypatch.setattr(handler, "_hs_history", lambda: history)
+    # HS부호 표 확인(#164)도 가짜로 끼운다. 예시 후보 8507600000은 실제 표에 없다
+    monkeypatch.setattr(handler, "_hs_known", lambda code: code in KNOWN_HS)
     monkeypatch.setattr(hs, "item_key", fake_item_key)
     monkeypatch.setattr(hs, "confirm_by_human", fake_confirm)
     monkeypatch.setattr(declaration, "draft_declaration", fake_draft)
@@ -550,6 +558,50 @@ def test_hs_bad_choices_are_400_and_write_nothing(hs_fakes, body):
     put_hs_job(table)
     assert call("POST", f"/jobs/{HS_JOB}/hs", body)[0] == 400
     assert history.rows == {} and calls["confirm"] == [] and calls["draft"] == []
+
+
+def test_hs_not_in_table_is_400_and_changes_nothing(hs_fakes):
+    """HS부호 표에 없는 코드는 400이다. 이력·작업은 그대로다 (#181)."""
+    table, history, calls = hs_fakes
+    put_hs_job(table)
+    before = dict(table.items[HS_JOB])
+
+    status, body = call("POST", f"/jobs/{HS_JOB}/hs", {"choices": [{"line": 1, "hs": "1234567890"}]})
+
+    assert status == 400
+    assert "HS부호 표에 없는" in body["error"] and "1234567890" in body["error"]
+    assert history.rows == {} and calls["confirm"] == [] and calls["draft"] == []
+    assert table.items[HS_JOB] == before
+
+
+def test_hs_outside_candidates_is_200_and_noted_in_steps(hs_fakes):
+    """표에 있지만 후보 3개 밖의 코드는 받고, 단계 기록에 '후보 밖에서 직접 입력'을 남긴다 (#181)."""
+    table, history, _ = hs_fakes
+    put_hs_job(table)
+
+    status, _ = call("POST", f"/jobs/{HS_JOB}/hs", {"choices": [{"line": 1, "hs": "8507609000"}]})
+
+    assert status == 200
+    assert history.rows == {(IMPORTER, "CI-BP-200"): ("8507609000", HS_JOB)}
+    _, job = call("GET", f"/jobs/{HS_JOB}")
+    [step] = [s for s in job["steps"] if s["tool"] == "confirm_by_human"]
+    assert "1행 8507609000 (후보 밖에서 직접 입력)" in step["summary"]
+
+
+def test_hs_from_candidates_is_not_noted_as_outside(hs_fakes):
+    table, _, _ = hs_fakes
+    put_hs_job(table)
+    assert call("POST", f"/jobs/{HS_JOB}/hs", {"choices": [{"line": 1, "hs": "8507600000"}]})[0] == 200
+    _, job = call("GET", f"/jobs/{HS_JOB}")
+    [step] = [s for s in job["steps"] if s["tool"] == "confirm_by_human"]
+    assert "후보 밖" not in step["summary"]
+
+
+def test_hs_known_uses_real_hs_table():
+    """가짜 없이 실제 HS부호 표(data/hs/hs_codes.csv)로 확인한다."""
+    assert handler._hs_known("8507609000")
+    assert not handler._hs_known("8507600000")  # 6자리 8507.60 아래에는 10자리 세분만 있다
+    assert not handler._hs_known("1234567890")
 
 
 def test_hs_unknown_job_is_404(hs_fakes):

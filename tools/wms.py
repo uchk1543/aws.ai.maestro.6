@@ -257,8 +257,10 @@ def register_if_ready(
 ) -> tuple[WmsState, str | None]:
     """자동 등록 조건을 다 채우면 사람 손 없이 바로 가상 WMS에 등록한다 (by=auto).
 
-    언제: finish_report가 결과를 저장한 직후(처리 Lambda, 후속 이슈), 사람이 HS를 고른 뒤(POST /jobs/{id}/hs).
-      부르는 쪽은 HS 결과를 먼저 저장하고 부른다. 같은 멱등 키는 처음 기록만 남아서, 저장 전 HS로 등록하면 어긋난다.
+    언제: 처리 Lambda가 done으로 끝난 작업을 마지막으로 저장하기 직전(#154), 사람이 HS를 고른 뒤(POST /jobs/{id}/hs).
+      둘 다 api/handler.auto_register를 거친다. HS 선택은 고른 HS를 먼저 저장하고 부른다. 같은 멱등 키는 처음 기록만 남아서,
+      저장 전 HS로 등록하면 어긋난다. 처리 Lambda는 HS가 그 실행에서 처음 나와 다시 고를 일이 없어서 등록 뒤 한 번에 저장한다
+      (화면이 승인 대기를 받으면 새로 고침을 멈추므로 중간 저장을 하지 않는다).
     받는 것: job_id, docs(읽은 서류), result(문제·HS·지금 WMS 상태), consignee(수하인 = 수입자),
       adapter(테스트용. 없으면 가상 WMS dynamo_wms()).
     반환: (WMS 상태, 못 한 이유).
