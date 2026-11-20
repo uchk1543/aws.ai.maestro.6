@@ -51,6 +51,7 @@ def ocr(monkeypatch):
     monkeypatch.setattr(worker, "render_pages", fake_render)
     monkeypatch.setattr(worker, "ocr_document", fake_ocr)
     monkeypatch.setattr(handler, "store_object", lambda key, data, content_type: seen["stored"].__setitem__(key, content_type))
+    monkeypatch.setattr(worker, "ocr_cache", lambda: None)  # S3 OCR 저장소 대신. 캐시를 보는 테스트만 메모리판으로 바꾼다
     return seen
 
 
@@ -725,3 +726,22 @@ def test_waiting_approval_job_is_not_registered(table, monkeypatch, wms_memory):
     assert run_with(table, monkeypatch, read_docs(), hs=WAITING_HS)["status"] == "waiting_approval"
     assert wms_memory.records == {}
     assert "push_to_wms" not in [s.tool for s in saved(table).steps]
+
+
+def test_same_file_reuses_saved_ocr_and_keeps_full_copy(table, monkeypatch, ocr):
+    """B4-L0: 자르지 않은 OCR 을 저장해 두고, 같은 파일이면 Textract(가짜 ocr_document)를 다시 부르지 않는다."""
+    from tests.unit.test_ocr import MemoryOcrCache
+
+    cache = MemoryOcrCache()
+    monkeypatch.setattr(worker, "ocr_cache", lambda: cache)
+    monkeypatch.setattr(document_agent, "run_job", done_run_job)
+
+    put_job(table)
+    worker.lambda_handler({"job_id": JOB, "files": FILES}, None)
+    put_job(table)
+    worker.lambda_handler({"job_id": JOB, "files": FILES}, None)
+
+    assert ocr["ocr"] == ["uploads/s1/invoice.pdf"]  # 두 번째 작업은 저장분을 쓴다
+    assert len(cache.items) == 1
+    assert json.loads(table.items[JOB]["ocr"])["uploads/s1/invoice.pdf"]["lines"][0]["text"] == "COMMERCIAL INVOICE"
+    assert ocr["stored"] == {"uploads/s1/invoice.pdf.p1.jpg": "image/jpeg"}  # 쪽 그림은 화면이 쓰므로 매번 둔다

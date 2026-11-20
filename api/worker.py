@@ -14,6 +14,8 @@ API Lambda(api/handler.py의 POST /jobs)가 작업을 queued로 저장한 뒤 �
             서류마다 Textract OCR을 매번 돌린다 (F10 #188). run_job과 동시에 돌리고, 다시 확인(reread_field)의 두 번째 근거로
             넘긴다. PDF는 쪽 그림(JPEG)을 그려 S3(uploads/…)에 두고 그 그림을 OCR 한다. OCR 결과(ocr 칸)와 쪽 그림 목록(pages 칸)은
             같은 줄에 저장해 서류 보기(GET /jobs/{id}/files)의 쪽 그림·칸 위치에 쓴다.
+            ocr 칸은 OCR_MAX_LINES 에서 자른다. 자르지 않은 결과는 S3 cache/ocr/<파일 해시>.json 에 두고, 같은 파일이면
+            그것을 써서 Textract 를 다시 부르지 않는다 (B4-L0, l0). NO_CACHE=1 이면 저장·재사용하지 않는다.
             OCR은 처리 시작부터 OCR_WAIT_SECONDS까지만 기다린다. 넘으면 그 서류는 OCR 없이 진행한다 (Lambda 300초 안에 끝나게).
 제한 시간 300초. 환경 변수: JOBS_TABLE, DOCS_BUCKET, MODEL_ID, HS_HISTORY_TABLE, SHIPMENTS_TABLE, WMS_TABLE
 
@@ -32,7 +34,7 @@ from functools import cache
 from api import handler
 from tools import declaration, hs, report
 from tools.models import ExtractedDocument, HSResult, Job, OcrResult, RereadResult, Step, WmsState
-from tools.ocr import is_pdf, ocr_document, render_pages, upright_image
+from tools.ocr import default_ocr_cache, is_pdf, ocr_cached, ocr_document, render_pages, upright_image
 from tools.query import dynamo_shipments
 from tools.reread import reread_field
 
@@ -118,6 +120,11 @@ def page_key(key: str, number: int) -> str:
     return f"{key}.p{number}.jpg"
 
 
+def ocr_cache():
+    """OCR 원본 저장소 (B4-L0). DOCS_BUCKET 의 cache/ocr/, NO_CACHE=1 이면 None. 테스트는 메모리판으로 바꾼다."""
+    return default_ocr_cache()
+
+
 def ocr_one(key: str) -> tuple[OcrResult | None, list[dict]]:
     """서류 한 장: PDF면 쪽 그림을 그려 S3 에 두고, 그 그림(이미지는 원본)을 Textract 로 OCR 한다 (F10 #188).
     EXIF 회전이 있는 사진은 똑바로 세운 그림을 쪽 그림으로 두고 그것을 OCR 한다 (화면의 박스 방향과 맞추려고).
@@ -138,7 +145,8 @@ def ocr_one(key: str) -> tuple[OcrResult | None, list[dict]]:
             handler.store_object(page_key(key, 1), upright.data, "image/jpeg")
             pages.append({"key": page_key(key, 1), "width": upright.width, "height": upright.height})
             images = [upright.data]
-        return ocr_document(key, data, pages=images), pages
+        # 같은 파일이면 저장해 둔 OCR 을 쓰고, 아니면 Textract 로 OCR 해서 자르지 않고 S3 cache/ocr/ 에 둔다 (B4-L0)
+        return ocr_cached(key, data, pages=images, cache=ocr_cache(), run=ocr_document), pages
     except Exception as exc:  # 깨진 PDF·크기·권한·타임아웃. 작업은 계속한다
         print(f"[warn] ocr key={key} {type(exc).__name__}: {exc}")
         return None, pages

@@ -9,8 +9,10 @@ PDF는 쪽마다 그림(JPEG)으로 그려(pypdfium2) 그 그림을 OCR 한다. 
 """
 
 import io
+import hashlib
 import os
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cache
 from pathlib import PurePath
@@ -140,6 +142,106 @@ def ocr_document(
             lines.append(OcrLine(page=number, text=block["Text"], bbox=(box["Left"], box["Top"], box["Width"], box["Height"])))
     print(f"[tool] ocr_document file={file} 쪽 {len(pages)}, 줄 {len(lines)}개")
     return OcrResult(file=file, lines=lines)
+
+
+# ---------------------------------------------------------------------------
+# OCR 원본 저장과 캐시 (B4-L0, l0: 서류 전체 글자)
+# 작업 줄(team06-jobs의 ocr 칸)은 DynamoDB 400KB 한도 때문에 600줄에서 자른다. 자르지 않은 결과는 S3 cache/ocr/ 에 둔다.
+# 키는 파일 바이트 해시라서 같은 파일을 다시 올리면 Textract 를 다시 부르지 않는다 (데모 재현·평가 반복).
+
+OCR_CACHE_PREFIX = "cache/ocr/"
+OCR_VERSION = "detect-v1"  # Textract API·쪽 그림 방식이 바뀌면 올린다. 옛 저장분을 쓰지 않게 된다
+
+
+class OcrCache(Protocol):
+    """OCR 저장소. 값은 OcrResult JSON 문자열. 테스트에서는 메모리판으로 바꾼다."""
+
+    def get(self, key: str) -> str | None: ...
+
+    def put(self, key: str, value: str) -> None: ...
+
+
+class S3OcrCache:
+    """S3 판 OCR 저장소. DOCS_BUCKET 의 cache/ocr/<키>.json. 권한: infra/policy-data.json 의 cache/ocr/*."""
+
+    def __init__(self, bucket: str, client=None):
+        self.bucket = bucket
+        self._client = client
+
+    def _s3(self):
+        if self._client is None:
+            import boto3
+            from botocore.config import Config
+
+            config = Config(connect_timeout=TIMEOUT_SECONDS, read_timeout=TIMEOUT_SECONDS, retries={"total_max_attempts": 2, "mode": "standard"})
+            self._client = boto3.client("s3", config=config)
+        return self._client
+
+    def get(self, key: str) -> str | None:
+        try:
+            return self._s3().get_object(Bucket=self.bucket, Key=f"{OCR_CACHE_PREFIX}{key}.json")["Body"].read().decode("utf-8")
+        except Exception as exc:  # 없는 키는 그냥 없음. 다른 오류(권한 등)도 캐시 없이 OCR 하게 한다
+            code = getattr(exc, "response", {}).get("Error", {}).get("Code")
+            if code not in ("NoSuchKey", "404"):
+                print(f"[warn] ocr_cache get 실패: {type(exc).__name__}: {exc}")
+            return None
+
+    def put(self, key: str, value: str) -> None:
+        self._s3().put_object(
+            Bucket=self.bucket, Key=f"{OCR_CACHE_PREFIX}{key}.json", Body=value.encode("utf-8"), ContentType="application/json"
+        )
+
+
+def default_ocr_cache() -> OcrCache | None:
+    """환경 변수로 정한 OCR 저장소. NO_CACHE=1 이거나 DOCS_BUCKET 이 없으면 None(저장·재사용 안 함)."""
+    if os.environ.get("NO_CACHE") == "1":
+        return None
+    bucket = os.environ.get("DOCS_BUCKET")
+    return S3OcrCache(bucket) if bucket else None
+
+
+def ocr_cache_key(data: bytes) -> str:
+    """OCR 캐시 키. 파일 바이트·OCR_VERSION·쪽 수 상한·해상도 중 하나라도 다르면 다른 키다."""
+    parts = [hashlib.sha256(data).hexdigest(), OCR_VERSION, str(MAX_PAGES), str(RENDER_DPI)]
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+
+def ocr_cached(
+    file: str,
+    data: bytes,
+    *,
+    pages: list[bytes] | None = None,
+    cache: OcrCache | None = None,
+    run: Callable[..., OcrResult] = ocr_document,
+) -> OcrResult:
+    """같은 파일이면 저장해 둔 OCR 을 쓰고, 없으면 OCR 해서 자르지 않고 저장한다.
+
+    언제: 처리 Lambda 가 서류마다 (api/worker.py 의 ocr_one).
+    받는 것: file(S3 키), data(파일 바이트), pages(ocr_document 에 넘길 쪽 그림), cache(저장소, None 이면 저장·재사용 안 함),
+             run(실제 OCR 함수. 기본 ocr_document, 테스트·부른 쪽이 바꿀 수 있다).
+    반환: OcrResult. 저장분이면 file 만 지금 키로 바꾼다. 저장소 오류는 OCR 을 막지 않는다.
+    """
+    key = ocr_cache_key(data) if cache is not None else None
+    if key is not None:
+        try:
+            hit = cache.get(key)
+        except Exception as exc:
+            print(f"[warn] ocr_cache get 실패: {type(exc).__name__}: {exc}")
+            hit = None
+        if hit is not None:
+            try:
+                res = OcrResult.model_validate_json(hit)
+                print(f"[tool] ocr_document file={file} 저장분 사용 key={key[:12]} 줄 {len(res.lines)}개")
+                return res.model_copy(update={"file": file})
+            except ValueError as exc:
+                print(f"[warn] ocr_cache 값이 형식에 안 맞아 새로 OCR: {type(exc).__name__}")
+    res = run(file, data, pages=pages)
+    if key is not None:
+        try:
+            cache.put(key, res.model_dump_json())
+        except Exception as exc:
+            print(f"[warn] ocr_cache put 실패: {type(exc).__name__}: {exc}")
+    return res
 
 
 # ---------------------------------------------------------------------------

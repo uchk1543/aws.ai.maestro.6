@@ -28,7 +28,7 @@ PM과 4번 사이 이름 약속(진입점, 이벤트, 환경 변수)은 이슈 #
 | 가드레일 | `team06-chat-guard` (`guardrail-chat.json`) | 현황 조회 입력 검사: 프롬프트 공격 HIGH, 유해 표현. Standard 등급(한국어), `apac.guardrail.v1:0`. 거부 주제는 정상 질문을 막아(21개 중 3개) 뺐다. 바꿀 때 `update-guardrail.sh` → `create.sh`. 환경 변수 `GUARDRAIL_ID`·`GUARDRAIL_VERSION`(API Lambda) |
 | 정책 | `policy-invoke-worker.json` | API Lambda가 `team06-worker`만 호출 |
 | DynamoDB | `team06-jobs`, `team06-hs-history`, `team06-wms`, `team06-shipments`, `team06-chat` | 온디맨드. 키와 칸은 아래 "테이블" |
-| 정책 | `policy-textract.json` | worker만: `textract:AnalyzeDocument`, `DetectDocumentText` (서울) |
+| 정책 | `policy-textract.json` | worker만: `textract:AnalyzeDocument`, `DetectDocumentText` (서울), 서류 버킷 `cache/ocr/*` Get/PutObject (자르지 않은 OCR 원본·캐시, B4-L0) |
 | S3 | `team06-docs-<계정ID>` | 공개 차단. `uploads/` 서류, `deploy/` 배포 zip. CORS: 화면 주소에서 PUT만 |
 | S3 | `team06-web-<계정ID>` | 공개 차단. 버킷 정책 `policy-web-bucket.json`: CloudFront 배포 하나만 읽기 |
 | 로그 그룹 | `/aws/lambda/team06-api`, `/aws/lambda/team06-worker` | 보존 7일 |

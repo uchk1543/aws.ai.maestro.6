@@ -176,3 +176,116 @@ def test_upright_image_turns_rotated_photo_and_skips_others():
     assert ocr.upright_image(jpeg((40, 20))) is None
     assert ocr.upright_image(jpeg((40, 20), orientation=1)) is None
     assert ocr.upright_image(b"not an image") is None
+
+
+# ---------------------------------------------------------------------------
+# OCR 원본 저장과 캐시 (B4-L0): 자르지 않은 OcrResult 를 S3 cache/ocr/ 에 두고, 같은 파일이면 Textract 를 다시 부르지 않는다
+# ---------------------------------------------------------------------------
+class MemoryOcrCache:
+    def __init__(self):
+        self.items: dict[str, str] = {}
+
+    def get(self, key):
+        return self.items.get(key)
+
+    def put(self, key, value):
+        self.items[key] = value
+
+
+def counting_ocr(calls):
+    def run(file, data, *, client=None, pages=None):
+        calls.append(file)
+        return OcrResult(file=file, lines=[OcrLine(page=1, text=f"line {i}", bbox=(0.1, 0.1, 0.4, 0.02)) for i in range(700)])
+
+    return run
+
+
+def test_same_file_bytes_use_saved_ocr_without_textract():
+    cache, calls = MemoryOcrCache(), []
+
+    first = ocr.ocr_cached("uploads/a/scan.jpg", b"jpeg", cache=cache, run=counting_ocr(calls))
+    again = ocr.ocr_cached("uploads/b/scan.jpg", b"jpeg", cache=cache, run=counting_ocr(calls))
+
+    assert calls == ["uploads/a/scan.jpg"]
+    assert again.file == "uploads/b/scan.jpg"  # 저장분이어도 지금 올린 파일의 키로 돌려준다
+    assert again.lines == first.lines
+
+
+def test_saved_ocr_keeps_every_line():
+    cache = MemoryOcrCache()
+
+    ocr.ocr_cached("uploads/a/scan.jpg", b"jpeg", cache=cache, run=counting_ocr([]))
+
+    [saved] = cache.items.values()
+    assert len(OcrResult.model_validate_json(saved).lines) == 700  # 작업 줄(ocr 칸)처럼 600줄에서 자르지 않는다
+
+
+def test_different_bytes_get_different_cache_keys():
+    assert ocr.ocr_cache_key(b"a") != ocr.ocr_cache_key(b"b")
+    assert ocr.ocr_cache_key(b"a") == ocr.ocr_cache_key(b"a")
+
+
+def test_no_cache_always_calls_textract():
+    calls = []
+
+    ocr.ocr_cached("uploads/a/scan.jpg", b"jpeg", cache=None, run=counting_ocr(calls))
+    ocr.ocr_cached("uploads/a/scan.jpg", b"jpeg", cache=None, run=counting_ocr(calls))
+
+    assert len(calls) == 2
+
+
+def test_broken_cache_falls_back_to_textract():
+    class Broken:
+        def get(self, key):
+            raise RuntimeError("AccessDenied")
+
+        def put(self, key, value):
+            raise RuntimeError("AccessDenied")
+
+    calls = []
+
+    res = ocr.ocr_cached("uploads/a/scan.jpg", b"jpeg", cache=Broken(), run=counting_ocr(calls))
+
+    assert calls == ["uploads/a/scan.jpg"] and len(res.lines) == 700
+
+
+def test_unreadable_saved_value_is_ignored():
+    cache, calls = MemoryOcrCache(), []
+    cache.items[ocr.ocr_cache_key(b"jpeg")] = "{not json"
+
+    ocr.ocr_cached("uploads/a/scan.jpg", b"jpeg", cache=cache, run=counting_ocr(calls))
+
+    assert calls == ["uploads/a/scan.jpg"]
+
+
+def test_default_cache_is_off_with_no_cache_or_without_bucket(monkeypatch):
+    monkeypatch.setenv("DOCS_BUCKET", "team06-docs-test")
+    monkeypatch.setenv("NO_CACHE", "1")
+    assert ocr.default_ocr_cache() is None
+    monkeypatch.delenv("NO_CACHE")
+    assert isinstance(ocr.default_ocr_cache(), ocr.S3OcrCache)
+    monkeypatch.delenv("DOCS_BUCKET")
+    assert ocr.default_ocr_cache() is None
+
+
+def test_s3_cache_reads_and_writes_under_cache_ocr_prefix():
+    class FakeS3:
+        def __init__(self):
+            self.objects = {}
+
+        def put_object(self, *, Bucket, Key, Body, ContentType):
+            self.objects[(Bucket, Key)] = Body
+
+        def get_object(self, *, Bucket, Key):
+            if (Bucket, Key) not in self.objects:
+                raise type("NoSuchKey", (Exception,), {"response": {"Error": {"Code": "NoSuchKey"}}})()
+            return {"Body": io.BytesIO(self.objects[(Bucket, Key)])}
+
+    s3 = FakeS3()
+    store = ocr.S3OcrCache("bkt", client=s3)
+
+    assert store.get("abc") is None
+    store.put("abc", '{"file": "x"}')
+
+    assert list(s3.objects) == [("bkt", "cache/ocr/abc.json")]
+    assert store.get("abc") == '{"file": "x"}'
