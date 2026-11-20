@@ -48,6 +48,7 @@ from tools.models import (
     DocType,
     DocumentRecord,
     DocumentsResponse,
+    ExtractedContainer,
     ExtractedDocument,
     ExtractedItem,
     Job,
@@ -61,6 +62,7 @@ from tools.models import (
     StatsResponse,
     TodoCounts,
     ReadField,
+    SITE_FIELDS,
     Step,
     WmsState,
 )
@@ -1099,7 +1101,10 @@ _LABELS = {
     "issue_date": "발급일", "departure_date": "출항일", "invoice_date": "송장 날짜", "issued_retroactively": "소급 발급",
     "item_code": "품목 코드", "name": "품명", "hs_code": "HS 코드", "qty": "수량", "gross_kg": "총중량",
     "net_kg": "순중량", "unit_price": "단가", "amount": "금액", "origin_criterion": "원산지 기준",
+    "marks": "화인", "packages": "포장 수", "seal_no": "봉인 번호", "size_type": "규격", "cbm": "용적(CBM)",
 }
+_CONTAINER_LABELS = {"container_no": "번호"}  # "1번 컨테이너 컨테이너 번호"가 되지 않게 컨테이너 줄에서만 바꾼다
+_LINE_INDEX = re.compile(r"\[\d+\]")
 
 
 def presign_view(key: str, content_type: str) -> str:
@@ -1129,20 +1134,32 @@ def image_size(key: str) -> tuple[int, int] | None:
 
 
 def read_fields(doc: ExtractedDocument | None) -> list[ReadField]:
-    """읽은 서류를 칸 한 줄씩 펼친다. 칸 경로는 IssueCell.field와 같아 화면이 불일치 칸을 바로 짚는다. 비어 있는 칸은 뺀다."""
+    """읽은 서류를 칸 한 줄씩 펼친다. 칸 경로는 IssueCell.field와 같아 화면이 불일치 칸을 바로 짚는다. 비어 있는 칸은 뺀다.
+
+    받는 것: 읽은 서류(없으면 빈 목록). 반환: 서류 전체 칸 → 품목 줄(items[i]) → B/L 컨테이너 줄(containers[i]) 순서의 ReadField.
+    site는 경로에서 줄 번호([숫자])를 뺀 이름이 그 서류 종류의 SITE_FIELDS에 있으면 true다 (F12 #230). 관리자 칸도 빠짐없이 나간다.
+    """
     if doc is None:
         return []
+    site_fields = SITE_FIELDS.get(doc.doc_type, frozenset())
     out: list[ReadField] = []
 
     def add(path: str, label: str, cell) -> None:
         if isinstance(cell, Cell) and (cell.raw is not None or cell.unreadable is not None):
-            out.append(ReadField(field=path, label=label, raw=cell.raw, value=cell.value, unit=cell.unit, unreadable=cell.unreadable))
+            out.append(ReadField(
+                field=path, label=label, raw=cell.raw, value=cell.value, unit=cell.unit, unreadable=cell.unreadable,
+                site=_LINE_INDEX.sub("", path) in site_fields,
+            ))
 
     for name in ExtractedDocument.model_fields:
         add(name, _LABELS.get(name, name), getattr(doc, name))
     for i, item in enumerate(doc.items):
         for name in ExtractedItem.model_fields:
             add(f"items[{i}].{name}", f"{item.line}행 {_LABELS.get(name, name)}", getattr(item, name))
+    for i, box in enumerate(doc.containers):
+        for name in ExtractedContainer.model_fields:
+            label = _CONTAINER_LABELS.get(name) or _LABELS.get(name, name)
+            add(f"containers[{i}].{name}", f"{box.line}번 컨테이너 {label}", getattr(box, name))
     return out
 
 
