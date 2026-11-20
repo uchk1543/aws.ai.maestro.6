@@ -11,6 +11,7 @@ import type {
   DocumentsResponse,
   HSChoice,
   Job,
+  JobFilesResponse,
   JobFile,
   UploadRequestFile,
   UploadsResponse,
@@ -86,6 +87,11 @@ export function getDocuments(docType: DocType, cursor: string | null = null): Pr
   const query = new URLSearchParams({ doc_type: docType });
   if (cursor) query.set("cursor", cursor);
   return request("GET", `/api/documents?${query.toString()}`);
+}
+
+/** 서류 보기: 작업에 올라온 서류의 쪽 그림 주소와 표시 위치 (G11, 서버 약속은 제안 중). */
+export function getJobFiles(jobId: string): Promise<JobFilesResponse> {
+  return request("GET", `/api/jobs/${encodeURIComponent(jobId)}/files`);
 }
 
 /** 브라우저가 type 을 모르는 파일은 이 값으로 보낸다. */
