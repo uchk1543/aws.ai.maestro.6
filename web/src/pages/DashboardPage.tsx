@@ -225,6 +225,8 @@ function DocsPanel({ stats, fx }: { stats: StatsResponse; fx: boolean }) {
           <span className="hint">
             끝난 작업 {stats.auto.finished}건 중 {stats.auto.auto}건이 사람 손 없이 WMS에 등록됐습니다
           </span>
+          {/* 목록(job_status=done)에는 사람이 승인해 끝난 작업도 들어가 숫자와 다를 수 있다 (#201 리뷰) */}
+          <span className="hint auto-link-note">누르면 처리가 끝난 작업의 서류를 봅니다 (사람이 승인한 작업 포함)</span>
         </span>
       </button>
 

@@ -84,7 +84,7 @@ export function sendChat(req: ChatRequest): Promise<ChatResponse> {
   return request("POST", "/api/chat", req);
 }
 
-/** 문서 분류 내역: 한 종류의 서류 목록과 종류별 건수 (G10, 서버 약속은 제안 중). cursor 는 앞 응답의 next_cursor. */
+/** 문서 분류 내역: 한 종류의 서류 목록과 종류별 건수 (G10, docs/schema.md GET /api/documents #143). cursor 는 앞 응답의 next_cursor. */
 export function getDocuments(
   docType: DocType,
   cursor: string | null = null,
@@ -102,7 +102,7 @@ export function getStats(): Promise<StatsResponse> {
   return request("GET", "/api/stats");
 }
 
-/** 서류 보기: 작업에 올라온 서류의 쪽 그림 주소와 표시 위치 (G11, 서버 약속은 제안 중). */
+/** 서류 보기: 작업에 올라온 서류의 원본 주소·쪽 그림·칸 위치·읽은 칸 (G11, docs/schema.md GET /api/jobs/{id}/files #156·#189). */
 export function getJobFiles(jobId: string): Promise<JobFilesResponse> {
   return request("GET", `/api/jobs/${encodeURIComponent(jobId)}/files`);
 }

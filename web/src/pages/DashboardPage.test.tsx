@@ -53,6 +53,7 @@ describe("DashboardPage", () => {
     expect(screen.getByRole("button", { name: "분류 못 함 2장" })).toBeInTheDocument();
     expect(screen.getByText("끝난 작업 3건 중 2건이 사람 손 없이 WMS에 등록됐습니다")).toBeInTheDocument();
     expect(screen.getByText("67%")).toBeInTheDocument(); // 2/3 (서버 두 숫자의 비율만 그린다)
+    expect(screen.getByText(/사람이 승인한 작업 포함/)).toBeInTheDocument(); // 목록이 숫자보다 넓다는 안내 (#201 리뷰)
     expect(screen.getByRole("button", { name: /X-WT-01/ })).toHaveTextContent("1건");
   });
 

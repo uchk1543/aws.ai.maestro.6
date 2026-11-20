@@ -2276,6 +2276,11 @@ video.port-media.on {
   font-size: 13px;
 }
 
+.auto-text .auto-link-note {
+  font-size: 12px;
+  color: #8a8f98;
+}
+
 .ring {
   flex: none;
   width: 84px;
