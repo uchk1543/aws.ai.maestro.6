@@ -4,7 +4,7 @@
     uv run python infra/reset_demo.py --job job-3ec5c0f3 --apply  # 확인 문구를 입력하면 지운다
     uv run python infra/reset_demo.py --all                       # 처리 기록 전체를 보여 준다 (지우지 않음)
     uv run python infra/reset_demo.py --all --apply               # 확인 뒤 비우고 시드 화물 기록을 다시 넣는다
-    uv run python infra/reset_demo.py --all --apply --s3          # 서류 버킷 uploads/·cache/read/도 지운다
+    uv run python infra/reset_demo.py --all --apply --s3          # 서류 버킷 uploads/·cache/read/·cache/ocr/도 지운다
 
 지우는 것
     --job: team06-hs-history·team06-shipments에서 job_id가 같은 줄, team06-wms에서 키가 '#<job_id>'로 끝나는 줄, team06-jobs의 그 작업
@@ -27,7 +27,7 @@ REGION = "ap-northeast-2"
 TABLES = {"jobs": "team06-jobs", "hs": "team06-hs-history", "wms": "team06-wms", "shipments": "team06-shipments"}
 KEYS = {"jobs": ("job_id",), "hs": ("importer", "item_key"), "wms": ("idempotency_key",), "shipments": ("bl_no",)}
 CONFIRM_WORD = "reset"
-S3_PREFIXES = ("uploads/", "cache/read/")
+S3_PREFIXES = ("uploads/", "cache/read/", "cache/ocr/")  # cache/ocr/: OCR 원본·캐시 (B4-L0)
 
 
 def plan(items: dict[str, list[dict]], *, job_ids: list[str] | None = None) -> dict[str, list[dict]]:
@@ -93,7 +93,7 @@ def main() -> None:
     which.add_argument("--job", nargs="+", metavar="JOB_ID", help="이 작업들이 남긴 줄만")
     which.add_argument("--all", action="store_true", help="처리 기록 전체 (시드 화물 기록은 다시 넣는다)")
     parser.add_argument("--apply", action="store_true", help="실제로 지운다 (없으면 미리보기)")
-    parser.add_argument("--s3", action="store_true", help="--all과 함께: 서류 버킷 uploads/·cache/read/도 지운다")
+    parser.add_argument("--s3", action="store_true", help="--all과 함께: 서류 버킷 uploads/·cache/read/·cache/ocr/도 지운다")
     args = parser.parse_args()
     if args.s3 and not args.all:
         raise SystemExit("--s3는 --all과 함께만 쓴다")
