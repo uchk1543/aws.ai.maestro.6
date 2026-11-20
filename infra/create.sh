@@ -3,7 +3,7 @@
 #   MODEL_ID=<global 추론 프로필 ID> bash infra/create.sh
 # 만드는 것
 #   IAM 역할 team06-api-role, team06-worker-role (인라인 정책만, 필요한 권한만. worker에만 Textract)
-#   DynamoDB team06-jobs, team06-hs-history, team06-wms
+#   DynamoDB team06-jobs, team06-hs-history, team06-wms, team06-shipments
 #   S3 team06-docs-<계정>(서류·배포 zip), team06-web-<계정>(화면, CloudFront만 읽음)
 #   로그 그룹 2개(보존 7일), Lambda team06-api(30초) · team06-worker(300초), 각각 동시 실행 상한 5
 #   API Gateway HTTP API team06-api (/api, /api/{proxy+}, 요청 제한), CloudFront team06-web (/* → S3, /api/* → API)
@@ -38,24 +38,36 @@ ensure_role "${ROLE_API}" logs data bedrock invoke-worker
 ensure_role "${ROLE_WORKER}" logs data bedrock textract
 
 # ---------------------------------------------------------------------------
-# 2. DynamoDB 테이블 (모두 온디맨드, 문자열 키 하나)
+# 2. DynamoDB 테이블 (모두 온디맨드, 문자열 키. 정렬 키는 있을 때만)
 # ---------------------------------------------------------------------------
+# 이미 있는 테이블의 키가 다르면 지우지 않고 멈춘다 (지우는 것은 PM이 따로 승인하고 한다)
 ensure_table() {
-  local table="$1" key="$2"
-  if aws dynamodb describe-table --table-name "${table}" >/dev/null 2>&1; then
-    echo "[create] 테이블 ${table} 있음"
-  else
-    aws dynamodb create-table --table-name "${table}" \
-      --attribute-definitions "AttributeName=${key},AttributeType=S" \
-      --key-schema "AttributeName=${key},KeyType=HASH" \
-      --billing-mode PAY_PER_REQUEST >/dev/null
-    aws dynamodb wait table-exists --table-name "${table}"
-    echo "[create] 테이블 ${table} 만듦 (키 ${key})"
+  local table="$1" hash="$2" range="${3:-}" want have
+  want="${hash}${range:+,${range}}"
+  if have=$(aws dynamodb describe-table --table-name "${table}" \
+      --query "join(',', Table.KeySchema[].AttributeName)" --output text 2>/dev/null); then
+    if [ "${have}" != "${want}" ]; then
+      echo "[create] 테이블 ${table}의 키가 다릅니다 (지금 ${have}, 맞는 것 ${want}). 지우고 다시 만들어야 합니다 → infra/README.md '테이블 키 바꾸기'"
+      exit 1
+    fi
+    echo "[create] 테이블 ${table} 있음 (키 ${have})"
+    return
   fi
+  local attrs="AttributeName=${hash},AttributeType=S" keys="AttributeName=${hash},KeyType=HASH"
+  if [ -n "${range}" ]; then
+    attrs="${attrs} AttributeName=${range},AttributeType=S"
+    keys="${keys} AttributeName=${range},KeyType=RANGE"
+  fi
+  # shellcheck disable=SC2086
+  aws dynamodb create-table --table-name "${table}" --attribute-definitions ${attrs} \
+    --key-schema ${keys} --billing-mode PAY_PER_REQUEST >/dev/null
+  aws dynamodb wait table-exists --table-name "${table}"
+  echo "[create] 테이블 ${table} 만듦 (키 ${want})"
 }
 ensure_table "${TABLE}" job_id
-ensure_table "${HS_TABLE}" pk
+ensure_table "${HS_HISTORY_TABLE}" importer item_key
 ensure_table "${WMS_TABLE}" idempotency_key
+ensure_table "${SHIPMENTS_TABLE}" bl_no
 
 # ---------------------------------------------------------------------------
 # 3. S3 버킷 두 개 (둘 다 공개 차단)
@@ -111,7 +123,7 @@ ensure_function() {
   fi
   aws lambda put-function-concurrency --function-name "${fn}" --reserved-concurrent-executions 5 >/dev/null
 }
-COMMON_ENV="MODEL_ID=${MODEL_ID},JOBS_TABLE=${TABLE},HS_TABLE=${HS_TABLE},WMS_TABLE=${WMS_TABLE},DOCS_BUCKET=${BUCKET}"
+COMMON_ENV="MODEL_ID=${MODEL_ID},JOBS_TABLE=${TABLE},HS_HISTORY_TABLE=${HS_HISTORY_TABLE},WMS_TABLE=${WMS_TABLE},SHIPMENTS_TABLE=${SHIPMENTS_TABLE},DOCS_BUCKET=${BUCKET}"
 WORKER_ENV="${COMMON_ENV}"
 API_ENV="${COMMON_ENV},WORKER_FUNCTION=${FN_WORKER}"
 ensure_function "${FN_WORKER}" "${HANDLER_WORKER}" "${ROLE_WORKER}" 300 1024 "${WORKER_ENV}"

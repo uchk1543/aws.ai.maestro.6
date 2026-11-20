@@ -1,9 +1,9 @@
 id,title,role,phase,depends,files,done
 A1,실제 서류 양식 조사와 서류 세트 제작,판독,P0,,samples/,상업송장·포장명세서 dev 세트부터 · SAMPLE 표기 · 가상 값
 A2,정답지 작성 (심은 오류 · 핵심 칸 · HS 정답 · 현황 질문),판독,P0,A1,eval/answers.csv eval/fields.csv eval/sets.csv eval/queries.csv,약속 3 형식 · 정상 세트 절반 가까이
-A3,촬영본 만들기,판독,P1,A1,samples/,서류 종류별 몇 장 출력해 휴대폰 촬영
+A3,촬영본 대신 스캔본,판독,P1,A1,samples/,글자층 없는 스캔본 163장(개발용 99장)으로 대신하고 점수를 따로 냄 (PM 결정 이슈 79)
 A4,test 세트 잠금,판독,P1,A2,samples/,프롬프트를 고치기 전 git 태그
-A5,가상 화물 기록 50~100건,발표,P1,E1,data/seed/,Shipment 형식 · 이번 주·지난주·통관 지연 건 포함
+A5,가상 화물 기록 50~100건,판독,P1,E1,data/seed/,Shipment 형식 · 이번 주·지난주·통관 지연 건 포함
 A6,관세청 HS부호 CSV 받기,검증,P1,,data/hs/,한글·영문 품목명과 단위 코드 · 출처와 받은 날짜 기록
 B1,서류 분류 classify_document,판독,P0,,tools/extract.py,근거를 steps에 남김 · 애매하면 unknown
 B2,읽기 칸 확정과 4종 확장,판독,P0,A1,tools/extract.py tools/models.py,약속 1 · P0는 2종 · P1은 4종 · 단위 테스트
