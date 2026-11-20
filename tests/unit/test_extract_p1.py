@@ -176,3 +176,41 @@ def test_현장_칸_목록():
     assert "items.packages" in SITE_FIELDS["packing_list"]
     assert "total_amount" not in SITE_FIELDS["commercial_invoice"]  # 관리자만
     assert SITE_FIELDS["certificate_of_origin"] == frozenset()
+
+
+BL_SITE = {
+    **BL, "marks": cell("EXAMPLE HOME LIVING\nBUSAN, KOREA C/NO. 1-535"),
+    "containers": [
+        {"line": 1, "container_no": cell("SMCU8393918"), "seal_no": cell("SM1470293"), "size_type": cell("40'HC (45G1)"),
+         "packages": cell("300 CTNS"), "gross_kg": cell("4,400.000 KGS"), "cbm": cell("35.000 CBM")},
+        {"line": 2, "container_no": cell("SMCU2669249"), "seal_no": cell("SM1470294"), "size_type": cell("40'HC (45G1)"),
+         "packages": cell("235 CTNS"), "gross_kg": cell("3,514.600 KGS"), "cbm": cell("28.610 CBM")},
+    ],
+}
+
+
+def test_컨테이너_줄이_여럿이면_줄마다_푼다():
+    doc = to_extracted(RawBillOfLading.model_validate(BL_SITE), "bill_of_lading", "bl.pdf")
+    assert [c.line for c in doc.containers] == [1, 2]
+    c = doc.containers[1]
+    assert (c.seal_no.value, c.packages.value, c.packages.unit, c.gross_kg.value, c.cbm.value) == (
+        "SM1470294", 235, "CTN", 3514.6, 28.61,
+    )
+    assert doc.container_no.raw == "SMCU8393918 SMCU2669249"  # 기존 칸 그대로
+
+
+def test_화인은_대문자_공백_하나로_푼다():
+    doc = to_extracted(RawBillOfLading.model_validate(BL_SITE), "bill_of_lading", "bl.pdf")
+    assert doc.marks.raw == "EXAMPLE HOME LIVING\nBUSAN, KOREA C/NO. 1-535"
+    assert doc.marks.value == "EXAMPLE HOME LIVING BUSAN, KOREA C/NO. 1-535"
+
+
+def test_포장명세서_품목별_포장_수():
+    raw = {**PL, "items": [{**PL["items"][0], "packages": cell("286")}]}
+    doc = to_extracted(RawDocument.model_validate(raw), "packing_list", "pl.pdf")
+    assert doc.items[0].packages.value == 286
+
+
+def test_지시문에_현장_칸_설명이_있다():
+    assert "CONTAINER DETAILS" in system_prompt("bill_of_lading") and "봉인 번호" in system_prompt("bill_of_lading")
+    assert "packages" in system_prompt("packing_list") and "marks" in system_prompt("packing_list")
