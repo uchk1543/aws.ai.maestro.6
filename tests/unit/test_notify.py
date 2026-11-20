@@ -72,11 +72,12 @@ def test_targets_none_when_only_check_or_not_waiting():
     assert notify.notice_targets(Job(job_id=JOB, status="waiting_approval")) == ([], [])
 
 
-def test_mismatch_only_attaches_notice_html():
+def test_mismatch_only_attaches_notice_pdf():
+    """HTML 첨부는 받는 쪽 메일 서버가 버려서(2026-11-21 시험) 통지 문서를 PDF로 붙인다."""
     step, mail = send(job_of(issues=[MISMATCH]))
     [(name, kind, data)] = attachments(parsed(mail))
-    assert (name, kind) == (f"notice-{BL}.html", "text/html")
-    assert "X-WT-01" in data.decode("utf-8")
+    assert (name, kind) == (f"notice-{BL}.pdf", "application/pdf")
+    assert data.startswith(b"%PDF")
     assert step.ok
 
 
@@ -89,7 +90,7 @@ def test_pending_only_attaches_pdf():
 
 def test_both_one_mail_two_attachments():
     step, mail = send(job_of(issues=[MISMATCH], hs=[pending()]))
-    assert [a[0] for a in attachments(parsed(mail))] == [f"notice-{BL}.html", f"hs-request-{JOB}.pdf"]
+    assert [a[0] for a in attachments(parsed(mail))] == [f"notice-{BL}.pdf", f"hs-request-{JOB}.pdf"]
     assert step == Step(tool="send_notice", summary="관리자에게 검증 요청 메일 보냄 (불일치 1건, HS 확인 1건, 첨부 2개)", ok=True)
     assert mail.calls[0][:2] == ("notice@example.com", "owner@example.com")
     msg = parsed(mail)
@@ -139,7 +140,7 @@ def test_body_reads_like_request_to_manager():
         "■ 거래처 확인 요청: 서류 간 불일치 1건",
         "- [X-WT-01] 상업송장 총중량 6,250kg과 포장명세서 6,520kg이 다릅니다.",
         "- 원본 확인이 필요한 항목 1건은 첨부한 불일치 통지 문서에 함께 있습니다.",
-        f"→ 거래처에 정정한 서류를 다시 보내 주시도록 요청해 주세요. (첨부: notice-{BL}.html)",
+        f"→ 거래처에 정정한 서류를 다시 보내 주시도록 요청해 주세요. (첨부: notice-{BL}.pdf)",
         "■ 관세사 확인 요청: HS 품목분류 1건",
         "- 1행 WOODEN DINING CHAIR, OAK FRAME (서류 HS 9401.61, 후보 9401.61-1000 외 2개)",
         f"→ 첨부한 HS 확인 요청서로 관세사에게 품목분류 확인을 요청해 주세요. 제품 정보(재질·용도·구성품 등)는 화주에게 받아 함께 전달해 주세요. (첨부: hs-request-{JOB}.pdf)",

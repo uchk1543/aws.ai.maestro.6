@@ -2,7 +2,7 @@
 
 언제 쓰나: 작업이 승인 대기(waiting_approval)로 끝났는데 불일치나 HS 미확정 품목이 남았을 때.
 관리자(NOTIFY_TO, ERP 담당)에게 코드가 만든 문서를 첨부해 SES로 메일 한 통을 보낸다. 관리자가 검토한 뒤 거래처·관세사에게 검증을 요청한다.
-  - 불일치가 있으면 불일치 통지 문서 HTML (tools.validate.notice_document, C7 #158)
+  - 불일치가 있으면 불일치 통지 문서 PDF (tools.validate.notice_document 마크다운을 api/notice_pdf.py가 PDF로, C7 #158)
   - HS 미확정이 있으면 HS 확인 요청서 PDF (tools.hs_request.make_hs_request, X2 #260)
 받는 사람은 내부 관리자다. 두 문서 모두 '사람이 검토한 뒤 전달'이라 관세사·거래처에 바로 보내지 않는다.
 
@@ -22,7 +22,7 @@ from typing import Protocol
 import boto3
 from botocore.config import Config
 
-from api import handler
+from api import handler, notice_pdf
 from tools import hs_request, validate
 from tools.models import ExtractedDocument, HSResult, Issue, Job, Step
 
@@ -88,14 +88,15 @@ def build_attachments(
 
     언제: send_notice가 메일을 만들기 전.
     받는 것: job(작업 결과), docs(읽은 서류), importer(수입자, HS 확인 요청서에 찍음), now(만든 시각, 시험용).
-    반환: 불일치가 있으면 불일치 통지 문서 HTML(내려받기 API와 같은 이름), HS 미확정이 있으면 HS 확인 요청서 PDF.
+    반환: 불일치가 있으면 불일치 통지 문서 PDF(이름은 내려받기 API와 같은 notice-<B/L>.pdf), HS 미확정이 있으면 HS 확인 요청서 PDF.
+      HTML 첨부는 받는 쪽 메일 서버가 버려서(2026-11-21 실제 발송 시험) 통지 문서도 PDF로 붙인다.
     실패: 문서를 만들다 난 예외를 그대로 올린다 (send_notice가 단계 기록으로 바꾼다).
     """
     mismatch, pending = notice_targets(job)
     files: list[tuple[str, str, bytes]] = []
     if mismatch:
         notice = validate.notice_document(job.job_id, docs, job.result.issues)
-        files.append((handler._notice_name(notice.subject, job.job_id, "html"), "text/html", notice.html.encode("utf-8")))
+        files.append((handler._notice_name(notice.subject, job.job_id, "pdf"), "application/pdf", notice_pdf.render_notice_pdf(notice)))
     if pending:
         pdf = hs_request.make_hs_request(job, docs, importer=importer, now=now)
         files.append((f"hs-request-{job.job_id}.pdf", "application/pdf", pdf))
@@ -160,7 +161,8 @@ def _compose(
     제목에는 번호를 _subject_no로 정리해서만 넣는다. 서류 글자는 본문에만 한 줄로 넣는다.
     """
     mismatch, pending = notice_targets(job)
-    names = {kind: name for name, kind, _ in files}
+    notice_file = next((name for name, _, _ in files if name.startswith("notice-")), NONE_MARK)
+    hs_file = next((name for name, _, _ in files if name.startswith("hs-request-")), NONE_MARK)
     checks = [i for i in job.result.issues if i.grade == "확인 필요"] if mismatch else []
     lines = [
         GREETING,
@@ -180,13 +182,13 @@ def _compose(
         lines += [f"- [{_one_line(i.rule_id)}] {_one_line(i.evidence, EVIDENCE_LIMIT)}" for i in mismatch]
         if checks:
             lines.append(f"- 원본 확인이 필요한 항목 {len(checks)}건은 첨부한 불일치 통지 문서에 함께 있습니다.")
-        lines.append(f"→ 거래처에 정정한 서류를 다시 보내 주시도록 요청해 주세요. (첨부: {names.get('text/html', NONE_MARK)})")
+        lines.append(f"→ 거래처에 정정한 서류를 다시 보내 주시도록 요청해 주세요. (첨부: {notice_file})")
     if pending:
         lines += ["", f"■ 관세사 확인 요청: HS 품목분류 {len(pending)}건"]
         lines += [_hs_line(h) for h in pending]
         lines.append(
             "→ 첨부한 HS 확인 요청서로 관세사에게 품목분류 확인을 요청해 주세요. 제품 정보(재질·용도·구성품 등)는 화주에게 받아 함께 전달해 주세요."
-            f" (첨부: {names.get('application/pdf', NONE_MARK)})"
+            f" (첨부: {hs_file})"
         )
     status = (
         "- 승인 대기입니다. 불일치가 남은 건은 정정한 서류를 다시 올려야 WMS에 등록됩니다."
