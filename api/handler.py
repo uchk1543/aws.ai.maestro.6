@@ -13,6 +13,7 @@ CloudFront가 /api/*를 API Gateway로 보내고, rawPath에 /api가 붙어 온�
          거르기(F11 #195): job_status · grade · rule_id · hs=pending
     GET  /api/stats           → StatsResponse          (F11 #195, 대시보드 통계. team06-jobs·team06-shipments Scan)
     GET  /api/jobs?next_action=… → JobListResponse     (#252, 다음 할 일이 같은 작업 목록. team06-jobs Scan)
+    GET  /api/jobs?all=1&… → JobListResponse          (#281, 작업 내역: 끝난 작업 포함, 서류·걸러낸 문제 요약)
     GET  /api/jobs/{id}/files → JobFilesResponse        (F7 #156, 서류 보기: 원본 주소 + 읽은 칸)
     GET  /api/jobs/{id}/notice?format=md|html → 파일    (F9 #155, 불일치 통지 문서 내려받기. C7 notice_document)
     GET  /api/chat/{id}      → {"messages"}            (E6 #157, 대화 기록 최근 50줄 오래된 순)
@@ -55,6 +56,8 @@ from tools.models import (
     Job,
     JobFilesResponse,
     JobFileView,
+    IssueBrief,
+    JobDocBrief,
     JobListResponse,
     JobSummary,
     AutoRate,
@@ -1254,10 +1257,14 @@ def _rule_count(rule_id: str, e: dict) -> RuleCount:
     return RuleCount(rule_id=rule_id, grade=grade, count=e["count"], example=e["example"], name=row["description"] if row else None)
 
 
-def job_summary(item: dict) -> JobSummary:
+ISSUE_BRIEF_MAX = 3  # 작업 내역 카드에 보일 문제 줄 수 (#281)
+
+
+def job_summary(item: dict, *, detail: bool = False) -> JobSummary:
     """작업 한 줄 → 목록 한 줄 (#252). B/L·수입자는 저장된 읽은 서류에서, 다음 할 일은 GET /jobs/{id}와 같은 규칙.
 
     언제: GET /jobs. 받는 것: team06-jobs의 한 줄. 서류 기록이 없는 작업(처리 중·옛 작업)은 B/L·수입자가 null.
+    detail=True(작업 내역, #281)면 올린 서류와 분류 결과(docs), 걸러낸 문제 앞 몇 건(issues)도 채운다.
     """
     job = Job.model_validate_json(item["data"])
     loaded = load_job_docs(item)
@@ -1274,6 +1281,18 @@ def job_summary(item: dict) -> JobSummary:
         next_action=wms.next_action(job),
         mismatch=sum(1 for i in result.issues if i.grade == "불일치") if result else 0,
         hs_pending=sum(1 for h in result.hs if h.status == "사람 확인 필요") if result else 0,
+        check=sum(1 for i in result.issues if i.grade == "확인 필요") if result else 0,
+        docs=(
+            [JobDocBrief(file_name=r.file_name, doc_type=r.doc_type, classified_by=r.classified_by) for r in job_documents(item)]
+            if detail else []
+        ),
+        issues=(
+            [
+                IssueBrief(grade=i.grade, rule_id=i.rule_id, evidence=i.evidence)
+                for i in result.issues if i.grade in ("불일치", "확인 필요")
+            ][:ISSUE_BRIEF_MAX]
+            if detail and result else []
+        ),
     )
 
 
@@ -1281,12 +1300,22 @@ def list_jobs(query) -> dict:
     """GET /jobs?next_action=<kind>. 다음 할 일이 같은 작업 목록 (#252, 대시보드 카드를 누르면 그 자리에 펼친다).
 
     받는 것: next_action(fix_docs·choose_hs·approve·reupload·wait 중 하나, 없으면 끝난 작업을 뺀 전부).
-    반환: 200 JobListResponse (최근 작업 먼저, JOB_LIST_MAX건) / 400 next_action 값 / 502 읽기 실패.
+      작업 내역(#281): all=1이면 끝난 작업도 넣고, 줄마다 올린 서류·걸러낸 문제(docs·check·issues)와 전체 수(total)를 채운다.
+      all=1일 때 거르기(선택): job_status, grade, rule_id, hs=pending (GET /documents와 같은 규칙), type(그 종류의 서류가 있는 작업).
+    반환: 200 JobListResponse (최근 작업 먼저, JOB_LIST_MAX건) / 400 next_action·거르기 값 / 502 읽기 실패.
       개수는 GET /stats의 todo 같은 칸과 같은 규칙이다. 깨진 작업 줄은 건너뛴다.
     """
-    kind = (query or {}).get("next_action")
+    query = query or {}
+    kind = query.get("next_action")
     if kind is not None and kind not in NEXT_KINDS:
         return _error(400, f"next_action은 {', '.join(NEXT_KINDS)} 중 하나입니다")
+    every = query.get("all") == "1"
+    filters, problem = _document_filters(query) if every else ({}, None)
+    if problem:
+        return _error(400, problem)
+    doc_type = query.get("type") if every else None
+    if doc_type is not None and doc_type not in LIST_DOC_TYPES:
+        return _error(400, f"type은 {', '.join(LIST_DOC_TYPES)} 중 하나입니다")
     try:
         items = _scan_jobs()
     except Exception as exc:
@@ -1295,16 +1324,21 @@ def list_jobs(query) -> dict:
     rows: list[tuple[int, JobSummary]] = []
     for item in items:
         try:
-            row = job_summary(item)
+            if filters and not job_matches(Job.model_validate_json(item["data"]), filters):
+                continue
+            row = job_summary(item, detail=every)
         except Exception as exc:  # 깨진 줄 하나 때문에 목록 전체가 실패하지 않게 한다
             print(f"[warn] list_jobs job={item.get('job_id')} 건너뜀: {type(exc).__name__}: {exc}")
             continue
-        if row.next_action.kind == "none" or (kind and row.next_action.kind != kind):
+        if (row.next_action.kind == "none" and not every) or (kind and row.next_action.kind != kind):
+            continue
+        if doc_type and not any(d.doc_type == doc_type for d in row.docs):
             continue
         rows.append((int(item.get("created_at") or item.get("updated_at") or 0), row))
     rows.sort(key=lambda r: (r[0], r[1].job_id), reverse=True)
-    print(f"[api] jobs next_action={kind} {len(rows)}건")
-    return _response(200, JobListResponse(items=[r for _, r in rows[:JOB_LIST_MAX]]).model_dump(mode="json"))
+    print(f"[api] jobs next_action={kind} all={every} 거르기={filters} type={doc_type} {len(rows)}건")
+    body = JobListResponse(items=[r for _, r in rows[:JOB_LIST_MAX]], total=len(rows) if every else None)
+    return _response(200, body.model_dump(mode="json"))
 
 
 def stats() -> dict:

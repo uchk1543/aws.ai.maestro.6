@@ -27,6 +27,7 @@ import type {
   Job,
   JobFilesResponse,
   JobListResponse,
+  JobSummary,
   StatsResponse,
   UploadRequestFile,
   UploadsResponse,
@@ -154,6 +155,48 @@ function documents(query: URLSearchParams): DocumentsResponse {
   return { counts, items: copy(all.slice(start, end)), next_cursor: end < all.length ? String(end) : null };
 }
 
+/** GET /api/jobs?all=1 (#281 작업 내역): 가짜 작업 목록에 문서 분류 가짜 데이터의 서류와 예시 작업의 문제를 붙인다.
+ *  거르기는 서버 규칙을 흉내 낸다 (job_status · grade · rule_id · hs=pending · type). */
+function jobHistory(query: URLSearchParams): JobListResponse {
+  const records = (documentsDraft as { items: DocumentRecord[] }).items;
+  const base = (jobsDraft as unknown as JobListResponse).items;
+  const ids = [...new Set([...base.map((j) => j.job_id), ...records.map((r) => r.job_id)])];
+  const rows: JobSummary[] = ids.map((id) => {
+    const listed = base.find((j) => j.job_id === id);
+    const docs = records.filter((r) => r.job_id === id);
+    const issues = id === example.job_id ? (finalJob.result?.issues ?? []).filter((i) => i.grade !== "참고") : [];
+    const status = listed?.status ?? docs[0]?.job_status ?? "done";
+    return {
+      job_id: id,
+      status,
+      bl_no: listed?.bl_no ?? null,
+      consignee: listed?.consignee ?? docs.find((d) => d.consignee)?.consignee ?? null,
+      created_at: listed?.created_at ?? docs[0]?.created_at ?? "",
+      next_action: listed?.next_action ?? { kind: "none", message: "처리가 끝났습니다. 더 할 일이 없습니다", count: null },
+      mismatch: issues.filter((i) => i.grade === "불일치").length || listed?.mismatch || 0,
+      hs_pending: listed?.hs_pending ?? 0,
+      check: issues.filter((i) => i.grade === "확인 필요").length,
+      docs: docs.map((d) => ({ file_name: d.file_name, doc_type: d.doc_type, classified_by: d.classified_by })),
+      issues: issues.slice(0, 3).map((i) => ({ grade: i.grade, rule_id: i.rule_id, evidence: i.evidence })),
+    };
+  });
+  const status = query.get("job_status");
+  const grade = query.get("grade");
+  const rule = query.get("rule_id");
+  const type = query.get("type");
+  const kept = rows.filter((r) => {
+    const facts = JOB_FACTS[r.job_id] ?? { grades: [], rules: [], hsPending: false };
+    if (status && r.status !== status) return false;
+    if (grade && !facts.grades.includes(grade)) return false;
+    if (rule && !facts.rules.includes(rule)) return false;
+    if (query.get("hs") === "pending" && !facts.hsPending) return false;
+    if (type && !r.docs?.some((d) => d.doc_type === type)) return false;
+    return true;
+  });
+  kept.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  return copy({ items: kept, total: kept.length });
+}
+
 /** GET /api/jobs/{id}/files: 임시 가짜 데이터에서 그 작업의 서류마다 가짜 쪽 그림과 표시를 만든다 (G11). */
 function jobFiles(jobId: string): JobFilesResponse {
   const records = (documentsDraft as { items: DocumentRecord[] }).items.filter((d) => d.job_id === jobId);
@@ -231,6 +274,9 @@ export async function mockRequest(method: string, path: string, body: unknown): 
   if (method === "GET" && chatRoute) return { messages: chatLines(decodeURIComponent(chatRoute[1])) };
   const [pathname, search = ""] = path.split("?");
   if (method === "GET" && pathname === "/api/documents") return documents(new URLSearchParams(search));
+  if (method === "GET" && pathname === "/api/jobs" && new URLSearchParams(search).get("all") === "1") {
+    return jobHistory(new URLSearchParams(search));
+  }
   if (method === "GET" && pathname === "/api/jobs") {
     const kind = new URLSearchParams(search).get("next_action");
     const items = (jobsDraft as unknown as JobListResponse).items.filter((j) => !kind || j.next_action.kind === kind);

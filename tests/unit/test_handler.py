@@ -1684,3 +1684,68 @@ def test_jobs_list_without_filter_skips_done_and_rejects_bad_kind(mixed252):
     assert "job-0000f007" not in {i["job_id"] for i in body["items"]} and len(body["items"]) == 6
     status, body = get_jobs("late")
     assert status == 400 and "next_action" in body["error"]
+
+
+# #281 작업 내역: GET /jobs?all=1 은 끝난 작업까지, 줄마다 올린 서류·걸러낸 문제 요약
+def get_history(**query):
+    event = {"requestContext": {"http": {"method": "GET"}}, "rawPath": "/api/jobs",
+             "queryStringParameters": {"all": "1", **query}}
+    res = handler.lambda_handler(event, None)
+    return res["statusCode"], json.loads(res["body"])
+
+
+def test_history_includes_done_jobs_with_total(mixed252):
+    status, body = get_history()
+    assert status == 200
+    res = JobListResponse.model_validate(body)
+    ids = [i.job_id for i in res.items]
+    assert "job-0000f007" in ids and res.total == len(ids) == 7  # 끝난 작업도 넣는다
+    dated = [i for i in ids if i in ("job-0000f001", "job-0000f002", "job-0000f003")]
+    assert dated == ["job-0000f002", "job-0000f003", "job-0000f001"]  # 최근 작업 먼저 (만든 시각 300·200·100)
+
+
+def test_history_row_carries_docs_and_issue_brief(mixed252):
+    _, body = get_history()
+    row = next(i for i in body["items"] if i["job_id"] == "job-0000f001")
+    # 불일치·확인 필요만 요약하고 '참고'는 뺀다
+    assert row["issues"] == [{"grade": "불일치", "rule_id": "X-WT-01", "evidence": "X-WT-01 근거"}]
+    assert (row["mismatch"], row["check"], row["hs_pending"]) == (1, 0, 1)
+    # 서류 목록은 문서 분류 내역(job_documents)과 같은 규칙: 기록만 있는 옛 작업은 읽은 서류를 사용자 분류로
+    assert row["docs"] == [{"file_name": "bl.pdf", "doc_type": "bill_of_lading", "classified_by": "user"}]
+    checked = next(i for i in body["items"] if i["job_id"] == "job-0000f003")
+    assert (checked["check"], checked["issues"][0]["grade"]) == (1, "확인 필요")
+
+
+def test_history_issue_brief_is_capped(fakes):
+    _put252(fakes, "job-0000f101", "waiting_approval",
+            issues=[_issue252(f"X-R{n}", "불일치") for n in range(5)], hs_status="자동 확정")
+    _, body = get_history()
+    [row] = body["items"]
+    assert len(row["issues"]) == handler.ISSUE_BRIEF_MAX and row["mismatch"] == 5  # 건수는 전부, 문장은 앞 몇 건
+
+
+@pytest.mark.parametrize(
+    "query, expected",
+    [
+        ({"grade": "불일치"}, {"job-0000f001", "job-0000f002"}),
+        ({"grade": "확인 필요", "hs": "pending"}, {"job-0000f003"}),
+        ({"rule_id": "X-QTY-01"}, {"job-0000f003", "job-0000f004"}),
+        ({"job_status": "done"}, {"job-0000f007"}),
+        ({"type": "bill_of_lading"}, {"job-0000f001", "job-0000f002"}),
+    ],
+)
+def test_history_filters_match_dashboard_links(mixed252, query, expected):
+    status, body = get_history(**query)
+    assert status == 200
+    assert {i["job_id"] for i in body["items"]} == expected and body["total"] == len(expected)
+
+
+@pytest.mark.parametrize("query", [{"grade": "나쁨"}, {"hs": "done"}, {"type": "memo"}, {"job_status": "late"}])
+def test_history_bad_filter_is_400(mixed252, query):
+    assert get_history(**query)[0] == 400
+
+
+def test_dashboard_list_keeps_old_shape(mixed252):
+    """all=1 이 없으면 예전(#252)처럼 서류·문제 요약 없이, total 도 없다."""
+    _, body = get_jobs("fix_docs")
+    assert body["total"] is None and all(i["docs"] == [] and i["issues"] == [] for i in body["items"])

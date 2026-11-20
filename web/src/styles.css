@@ -4115,3 +4115,271 @@ button.link {
     padding-right: max(var(--gutter), calc((100% - var(--page-max)) / 2));
   }
 }
+
+/* ── 작업 내역 (#281): 서류를 올린 묶음(작업)마다 흰 카드 한 장 ──────────────── */
+.hist .dochist-main > h2 {
+  margin-bottom: 12px;
+}
+
+.hist-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.hist-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: var(--card-pad);
+  background: #fff;
+  border-radius: var(--radius-card);
+}
+
+.hist-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.hist-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  min-width: 0;
+}
+
+.hist-title strong {
+  font-size: 18px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.hist-consignee {
+  font-size: 15px;
+  color: var(--ink-secondary);
+}
+
+.hist-meta {
+  margin-top: -8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.hist-meta code {
+  font-size: 12px;
+}
+
+.hist-block h3 {
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink-secondary);
+}
+
+.hist-block h3 .count {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.hist-docs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hist-doc {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 14px;
+  background: var(--fill);
+  border-radius: 10px;
+}
+
+.hist-doc-kind {
+  font-weight: 700;
+}
+
+.hist-doc-file {
+  color: var(--ink-secondary);
+  overflow-wrap: anywhere;
+}
+
+.hist-doc.unknown .hist-doc-kind {
+  color: var(--red-strong);
+}
+
+.hist-counts {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.hist-issues {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hist-issues li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 15px;
+}
+
+.hist-evidence {
+  line-height: 1.5;
+}
+
+.hist-clean {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.hist-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.hist-next {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+@media (max-width: 767px) {
+  .hist-issues li {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .hist-issues li code {
+    grid-column: 2;
+  }
+  .hist-foot .next-go {
+    width: 100%;
+  }
+}
+
+/* 작업 내역 카드의 배지는 모두 같은 크기 (건수 배지와 문제 줄 배지) */
+.hist-card .grade,
+.hist-card .status {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  min-height: 26px;
+  padding: 0 9px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.hist-issues li {
+  align-items: start;
+}
+
+.hist-issues li .grade {
+  align-self: start;
+}
+
+/* 문장 첫 줄이 배지 가운데에 오도록 (배지 26px, 글자 15px × 1.5) */
+.hist-evidence {
+  padding-top: 2px;
+}
+
+.hist-issues li code {
+  padding-top: 5px;
+}
+
+/* 작업 내역 카드 아래: '문제' 와 '할 일' 두 줄 */
+.hist-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 4px 16px;
+  background: var(--fill-2);
+  border-radius: 14px;
+}
+
+.hist-row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 8px 0;
+}
+
+.hist-row + .hist-row {
+  border-top: 1px solid var(--line);
+}
+
+.hist-row dt {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink-secondary);
+}
+
+.hist-row dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin: 0;
+  font-size: 15px;
+}
+
+.hist-issue {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.hist-issue .hist-evidence {
+  padding-top: 0;
+}
+
+.hist-more {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.hist-todo .next-go {
+  margin-left: auto;
+}
+
+.hist-todo .hint {
+  font-size: 13px;
+}
+
+@media (max-width: 767px) {
+  .hist-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .hist-issue {
+    align-items: flex-start;
+  }
+  .hist-todo .next-go {
+    width: 100%;
+    margin-left: 0;
+  }
+}

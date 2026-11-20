@@ -828,8 +828,25 @@ class StatsResponse(_Strict):
     )
 
 
+class JobDocBrief(_Strict):
+    """작업 내역 카드의 서류 한 장 (#281). 문서 분류 내역(DocumentRecord)과 같은 규칙으로 정한 종류."""
+
+    file_name: str = Field(description="키의 마지막 조각 (화면에 보이는 이름)")
+    doc_type: DocType = Field(description="분류 결과. 분류 못 함·분류 실패는 unknown")
+    classified_by: ClassifiedBy = Field(description="model = 에이전트가 분류, user = 올릴 때 사용자가 고름")
+
+
+class IssueBrief(_Strict):
+    """작업 내역 카드에 보일 걸러낸 문제 한 줄 (#281). 불일치·확인 필요만, 결과 순서대로 앞의 몇 건."""
+
+    grade: Grade = Field(description="불일치 · 확인 필요")
+    rule_id: str = Field(description="규칙 표의 rule_id")
+    evidence: str = Field(description="코드가 만든 근거 문장 (Issue.evidence 그대로)")
+
+
 class JobSummary(_Strict):
-    """작업 목록 한 줄 (GET /jobs?next_action=, #252). 대시보드 카드를 누르면 그 자리에 펼친다."""
+    """작업 목록 한 줄 (GET /jobs?next_action=, #252). 대시보드 카드를 누르면 그 자리에 펼친다.
+    작업 내역(GET /jobs?all=1, #281)에서는 서류·문제 요약(docs·check·issues)도 채운다."""
 
     job_id: str = Field(description="작업 ID")
     status: JobStatus = Field(description="작업 상태")
@@ -839,12 +856,18 @@ class JobSummary(_Strict):
     next_action: NextAction = Field(description="다음 할 일 (GET /jobs/{id}의 next_action과 같은 규칙)")
     mismatch: int = Field(default=0, description="남은 불일치 건수")
     hs_pending: int = Field(default=0, description="사람이 골라야 하는 HS 품목 수")
+    check: int = Field(default=0, description="남은 확인 필요 건수 (#281)")
+    docs: list[JobDocBrief] = Field(default_factory=list, description="올린 서류와 분류 결과 (#281, all=1일 때만)")
+    issues: list[IssueBrief] = Field(
+        default_factory=list, description="걸러낸 문제 앞 몇 건, 불일치·확인 필요만 (#281, all=1일 때만)"
+    )
 
 
 class JobListResponse(_Strict):
     """GET /jobs 응답 (#252). 최근 작업 먼저, 50건까지."""
 
     items: list[JobSummary] = Field(default_factory=list, description="작업 목록")
+    total: int | None = Field(default=None, description="조건에 맞는 전체 작업 수 (#281, 50건을 넘어도 센다). all=1일 때만")
 
 
 # ---------------------------------------------------------------------------

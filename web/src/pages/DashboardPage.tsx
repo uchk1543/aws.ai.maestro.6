@@ -210,7 +210,7 @@ function JobsPanel({ kind, count, onClose }: { kind: TodoKind; count: number; on
         <p className="hint">
           작업 목록을 아직 볼 수 없습니다.{" "}
           <button type="button" className="link" onClick={() => navigate("/documents", FALLBACK[kind])}>
-            문서 분류 내역에서 보기
+            작업 내역에서 보기
           </button>
         </p>
       )}
@@ -331,7 +331,7 @@ function DocsPanel({ stats, fx }: { stats: StatsResponse; fx: boolean }) {
   return (
     <section className="dash-panel" aria-labelledby="docs-title">
       <h2 id="docs-title">서류 처리</h2>
-      <p className="hint dash-note">종류·오류를 누르면 그 서류를 문서 분류 내역에서 봅니다</p>
+      <p className="hint dash-note">종류·오류를 누르면 그 작업들을 작업 내역에서 봅니다</p>
 
       <h3 className="dash-sub">종류별 서류</h3>
       <ul className="kinds">

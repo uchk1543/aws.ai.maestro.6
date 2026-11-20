@@ -12,6 +12,7 @@ import type {
   DocumentFilters,
   DocumentsResponse,
   HSChoice,
+  HistoryFilters,
   Job,
   JobFilesResponse,
   JobListResponse,
@@ -123,6 +124,13 @@ export function getStats(): Promise<StatsResponse> {
 /** 다음 할 일이 같은 작업 목록 (#252). 대시보드 카드를 누르면 그 자리에 펼친다. 개수는 통계의 같은 칸과 같다. */
 export function getJobs(kind: TodoKind): Promise<JobListResponse> {
   return request("GET", `/api/jobs?${new URLSearchParams({ next_action: kind }).toString()}`);
+}
+
+/** 작업 내역 (#281): 끝난 작업까지, 작업마다 올린 서류·걸러낸 문제 요약. 최근 작업 먼저 50건, total 은 전체 수 */
+export function getJobHistory(filters: HistoryFilters = {}): Promise<JobListResponse> {
+  const query = new URLSearchParams({ all: "1" });
+  for (const [k, v] of Object.entries(filters)) if (v) query.set(k, v);
+  return request("GET", `/api/jobs?${query.toString()}`);
 }
 
 /** 서류 보기: 작업에 올라온 서류의 원본 주소·쪽 그림·칸 위치·읽은 칸 (G11, docs/schema.md GET /api/jobs/{id}/files #156·#189). */

@@ -1,248 +1,148 @@
-// G10·G11 문서 분류 내역: 종류 고르기 → getDocuments, 서류 카드(원본 | 인식 결과), 좌우 넘기기, 빈 목록, 오류
-import { screen, waitFor, within } from "@testing-library/react";
+// #281 작업 내역: 작업(서류를 올린 묶음)마다 카드 한 장. 올린 서류·분류, 걸러낸 문제·근거, 다음 할 일, 거르기
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "../api";
-import draft from "../fixtures/documents.draft.json";
-import { fileViewOf } from "../mockDocs";
+import * as route from "../route";
 import { renderWithQuery } from "../test-utils";
-import type { DocType, DocumentRecord, DocumentsResponse } from "../types";
-import { DocHistoryPage } from "./DocHistoryPage";
+import type { JobListResponse, JobSummary } from "../types";
+import { DocHistoryPage, filtersOf } from "./DocHistoryPage";
 
 vi.mock("../api", async (importOriginal) => {
   const real = await importOriginal<typeof import("../api")>();
-  return { ...real, getDocuments: vi.fn(), getJobFiles: vi.fn() };
+  return { ...real, getJobHistory: vi.fn() };
 });
 
-const counts = draft.counts as Record<DocType, number>;
-const all = draft.items as DocumentRecord[];
-const page = (docType: DocType, next: string | null = null): DocumentsResponse => ({
-  counts,
-  items: all.filter((d) => d.doc_type === docType),
-  next_cursor: next,
-});
-
-/** 지금 보이는 카드 (나머지는 aria-hidden) */
-function currentCard() {
-  return screen.getAllByRole("article").find((a) => a.closest("[aria-hidden='true']") === null)!;
-}
+const mismatchJob: JobSummary = {
+  job_id: "job-7c1e",
+  status: "waiting_approval",
+  bl_no: "BL-2026-0001",
+  consignee: "샘플무역",
+  created_at: "2026-11-20 14:05",
+  next_action: { kind: "fix_docs", message: "불일치 1건: 서류를 고쳐 다시 올리거나, 원본을 확인해 판독 오류면 사유를 적고 승인하세요", count: 1 },
+  mismatch: 1,
+  hs_pending: 1,
+  check: 1,
+  docs: [
+    { file_name: "invoice.pdf", doc_type: "commercial_invoice", classified_by: "model" },
+    { file_name: "scan.jpg", doc_type: "unknown", classified_by: "model" },
+    { file_name: "pl.pdf", doc_type: "packing_list", classified_by: "user" },
+  ],
+  issues: [{ grade: "불일치", rule_id: "X-WT-01", evidence: "상업송장 총중량 6,250kg과 포장명세서 6,520kg이 다릅니다." }],
+};
+const cleanJob: JobSummary = {
+  job_id: "job-3a90",
+  status: "done",
+  bl_no: null,
+  consignee: null,
+  created_at: "2026-11-20 11:40",
+  next_action: { kind: "none", message: "WMS에 등록됐습니다. 더 할 일이 없습니다", count: null },
+  mismatch: 0,
+  hs_pending: 0,
+  check: 0,
+  docs: [{ file_name: "invoice.pdf", doc_type: "commercial_invoice", classified_by: "model" }],
+  issues: [],
+};
+const response = (items: JobSummary[], total = items.length): JobListResponse => ({ items, total });
 
 beforeEach(() => {
-  vi.mocked(api.getDocuments).mockReset();
-  vi.mocked(api.getJobFiles)
-    .mockReset()
-    .mockImplementation((jobId) => Promise.resolve({ files: all.filter((d) => d.job_id === jobId).map(fileViewOf) }));
+  vi.mocked(api.getJobHistory).mockReset().mockResolvedValue(response([mismatchJob, cleanJob]));
 });
 
-describe("DocHistoryPage", () => {
-  it("처음에는 상업송장을 불러오고, 종류별 건수는 서버 counts 그대로 보여 준다", async () => {
-    vi.mocked(api.getDocuments).mockResolvedValue(page("commercial_invoice"));
+describe("DocHistoryPage (작업 내역)", () => {
+  it("작업마다 카드 한 장: B/L·수입자·상태·올린 시각, 서류와 분류 결과", async () => {
     renderWithQuery(<DocHistoryPage />);
+    const card = await screen.findByRole("article", { name: "작업 job-7c1e" });
+    expect(within(card).getByText("BL-2026-0001")).toBeInTheDocument();
+    expect(within(card).getByText("샘플무역")).toBeInTheDocument();
+    expect(within(card).getByText("승인 대기")).toBeInTheDocument();
+    expect(card).toHaveTextContent("2026-11-20 14:05");
 
-    await screen.findByRole("region", { name: "상업송장 서류" });
-    expect(api.getDocuments).toHaveBeenCalledWith("commercial_invoice", null, {});
-    const kinds = within(screen.getByRole("list", { name: "서류 종류" })).getAllByRole("button");
-    expect(kinds.map((k) => k.textContent)).toEqual([
-      "상업송장4건",
-      "포장명세서3건",
-      "선하증권2건",
-      "원산지증명서1건",
-      "분류 못 함2건",
-    ]);
-    expect(kinds[0]).toHaveAttribute("aria-pressed", "true");
+    const docs = within(within(card).getByRole("region", { name: "올린 서류" })).getAllByRole("listitem");
+    expect(docs.map((d) => d.textContent)).toEqual(["상업송장invoice.pdf", "분류 못 함scan.jpg", "포장명세서pl.pdf직접 고름"]);
+    expect(api.getJobHistory).toHaveBeenCalledWith({});
   });
 
-  it("누르지 않아도 첫 서류의 원본과 인식 결과가 바로 보인다", async () => {
-    vi.mocked(api.getDocuments).mockResolvedValue(page("commercial_invoice"));
+  it("문제 한 줄: 첫 문제의 등급과 근거 문장, 나머지는 '외 N건' (건수는 서버 값)", async () => {
     renderWithQuery(<DocHistoryPage />);
-
-    const card = await screen.findByRole("article", { name: "invoice.pdf" });
-    expect(await within(card).findByRole("img", { name: "invoice.pdf 1쪽" })).toBeInTheDocument();
-    expect(api.getJobFiles).toHaveBeenCalledWith("job-7c1e");
-    expect(card).toHaveTextContent("AI 자동 분류");
-    expect(card).toHaveTextContent("제목 COMMERCIAL INVOICE, Unit Price·Amount 칸");
-    expect(card).toHaveTextContent("INV-2026-0214");
-    expect(card).toHaveTextContent("샘플무역");
-    expect(card).toHaveTextContent("승인 대기");
-    expect(screen.getByText("1 / 4")).toBeInTheDocument();
+    const card = await screen.findByRole("article", { name: "작업 job-7c1e" });
+    const problem = within(card).getByLabelText("문제");
+    expect(problem).toHaveTextContent("불일치상업송장 총중량 6,250kg과 포장명세서 6,520kg이 다릅니다.");
+    expect(problem).toHaveTextContent("외 1건"); // 불일치 1 + 확인 필요 1 - 보인 1
   });
 
-  it("근거가 된 곳·읽은 값을 누르면 서류 위 그 박스가 강조된다", async () => {
-    const user = userEvent.setup();
-    vi.mocked(api.getDocuments).mockResolvedValue(page("commercial_invoice"));
+  it("문제가 없는 끝난 작업은 '없음 ✔', 할 일도 '없음'", async () => {
     renderWithQuery(<DocHistoryPage />);
-
-    const card = await screen.findByRole("article", { name: "invoice.pdf" });
-    const reasons = within(await within(card).findByRole("list", { name: "근거가 된 곳" })).getAllByRole("button");
-    expect(reasons.map((b) => b.textContent)).toEqual(["제목COMMERCIAL INVOICE", "특징 칸Unit Price", "특징 칸Amount"]);
-    await user.click(reasons[1]);
-    expect(within(card).getByRole("button", { name: "분류 근거 · 특징 칸: Unit Price" })).toHaveAttribute("aria-pressed", "true");
-    expect(within(card).getByRole("dialog", { name: "분류 근거 · 특징 칸" })).toHaveTextContent("Unit Price");
-
-    const values = within(within(card).getByRole("list", { name: "읽은 값" })).getAllByRole("button");
-    expect(values[0]).toHaveTextContent("송장 번호INV-2026-0214");
+    const card = await screen.findByRole("article", { name: "작업 job-3a90" });
+    expect(within(card).getByLabelText("문제")).toHaveTextContent("없음 ✔");
+    expect(within(card).getByLabelText("할 일")).toHaveTextContent("없음");
+    expect(within(card).getByText("B/L 번호 없음")).toBeInTheDocument();
   });
 
-  it("다음·이전 버튼과 ←·→ 키로 서류를 넘긴다", async () => {
-    const user = userEvent.setup();
-    vi.mocked(api.getDocuments).mockResolvedValue(page("commercial_invoice"));
+  it("할 일은 다음 할 일 종류의 짧은 문구(서버 문장은 title), '작업 보기'는 그 작업 화면으로 간다", async () => {
+    const go = vi.spyOn(route, "navigate").mockImplementation(() => {});
     renderWithQuery(<DocHistoryPage />);
-    await screen.findByText("1 / 4");
-    const prev = screen.getByRole("button", { name: "이전 서류" });
-    expect(prev).toBeDisabled();
-
-    await user.click(screen.getByRole("button", { name: "다음 서류" }));
-    expect(screen.getByText("2 / 4")).toBeInTheDocument();
-    expect(currentCard()).toHaveAccessibleName("invoice_SHE-2026-0213.pdf");
-
-    screen.getByRole("region", { name: "상업송장 서류" }).focus();
-    await user.keyboard("{ArrowRight}");
-    expect(screen.getByText("3 / 4")).toBeInTheDocument();
-    await user.keyboard("{ArrowLeft}");
-    await user.click(prev);
-    expect(screen.getByText("1 / 4")).toBeInTheDocument();
-    expect(currentCard()).toHaveAccessibleName("invoice.pdf");
+    const card = await screen.findByRole("article", { name: "작업 job-7c1e" });
+    const todo = within(card).getByLabelText("할 일");
+    expect(todo).toHaveTextContent("서류 고쳐 다시 올리기판독 오류면 사유 적고 승인");
+    expect(within(todo).getByText("서류 고쳐 다시 올리기")).toHaveAttribute("title", mismatchJob.next_action.message);
+    await userEvent.setup().click(within(card).getByRole("button", { name: "작업 보기" }));
+    expect(go).toHaveBeenCalledWith("/jobs/job-7c1e");
+    go.mockRestore();
   });
 
-  it("마지막 카드에서 다음 쪽이 있으면 next_cursor 로 불러와 넘기고, 끝이면 다음 버튼이 꺼진다", async () => {
-    const user = userEvent.setup();
-    const invoices = all.filter((d) => d.doc_type === "commercial_invoice");
-    vi.mocked(api.getDocuments)
-      .mockResolvedValueOnce({ counts, items: invoices.slice(0, 3), next_cursor: "c3" })
-      .mockResolvedValueOnce({ counts, items: invoices.slice(3), next_cursor: null });
+  it("건수는 서버 total, 50건을 넘으면 최근 것만 보인다고 알린다", async () => {
+    vi.mocked(api.getJobHistory).mockResolvedValue(response([mismatchJob], 73));
     renderWithQuery(<DocHistoryPage />);
-    const next = await screen.findByRole("button", { name: "다음 서류" });
-
-    await user.click(next);
-    await user.click(next);
-    await user.click(next);
-
-    await waitFor(() => expect(screen.getByText("4 / 4")).toBeInTheDocument());
-    expect(api.getDocuments).toHaveBeenLastCalledWith("commercial_invoice", "c3", {});
-    expect(currentCard()).toHaveAccessibleName("invoice_EX-2026-0198.pdf");
-    expect(next).toBeDisabled();
+    expect(await screen.findByText("최근 1건만 보입니다.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent("전체 73건");
   });
 
-  it("종류를 바꾸면 그 종류로 다시 부르고 첫 장부터 보여 준다 ('분류 못 함'은 unknown)", async () => {
-    const user = userEvent.setup();
-    vi.mocked(api.getDocuments).mockImplementation((t) => Promise.resolve(page(t)));
+  it("보기 칩은 대시보드와 같은 조건으로 주소를 바꾼다", async () => {
+    const go = vi.spyOn(route, "navigate").mockImplementation(() => {});
     renderWithQuery(<DocHistoryPage />);
-    await user.click(await screen.findByRole("button", { name: "다음 서류" }));
-
-    await user.click(screen.getByRole("button", { name: /^분류 못 함/ }));
-
-    expect(await screen.findByRole("region", { name: "분류 못 함 서류" })).toBeInTheDocument();
-    expect(api.getDocuments).toHaveBeenLastCalledWith("unknown", null, {});
-    expect(screen.getByText("1 / 2")).toBeInTheDocument();
-    expect(currentCard()).toHaveAccessibleName("scan_0001.jpg");
+    await screen.findByRole("article", { name: "작업 job-7c1e" });
+    await userEvent.setup().click(screen.getByRole("button", { name: /불일치/, pressed: false }));
+    expect(go).toHaveBeenCalledWith("/documents", { job_status: "waiting_approval", grade: "불일치" });
+    go.mockRestore();
   });
 
-  it("'작업 화면 열기'는 그 작업으로 간다", async () => {
-    const user = userEvent.setup();
-    vi.mocked(api.getDocuments).mockResolvedValue(page("unknown"));
-    renderWithQuery(<DocHistoryPage />);
-
-    const card = await screen.findByRole("article", { name: "scan_0001.jpg" });
-    await user.click(within(card).getByRole("button", { name: "작업 화면 열기" }));
-    expect(window.location.hash).toBe("#/jobs/job-51bd");
+  it("주소의 거르기(대시보드에서 옴)를 서버에 넘기고, 맞는 보기 칩을 켠다", async () => {
+    renderWithQuery(<DocHistoryPage params={{ job_status: "waiting_approval", hs: "pending" }} />);
+    await screen.findByRole("article", { name: "작업 job-7c1e" });
+    expect(api.getJobHistory).toHaveBeenCalledWith({ job_status: "waiting_approval", hs: "pending" });
+    expect(screen.getByRole("button", { name: /HS 고를 것/ })).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("서버에 서류 보기 경로가 없으면(404) 오류 대신 '준비 중'으로 두고 분류 결과만 보여 준다", async () => {
-    vi.mocked(api.getDocuments).mockResolvedValue(page("unknown"));
-    vi.mocked(api.getJobFiles).mockRejectedValue(new api.ApiError(404, "없는 경로입니다"));
-    renderWithQuery(<DocHistoryPage />);
-
-    const card = await screen.findByRole("article", { name: "scan_0001.jpg" });
-    expect(await within(card).findByText("원본 보기는 준비 중입니다.")).toBeInTheDocument();
-    expect(within(card).queryByRole("alert")).not.toBeInTheDocument();
-    expect(card).not.toHaveTextContent("없는 경로입니다");
-    expect(card).toHaveTextContent("제목이 가려져 있고 칸만으로 종류를 정할 수 없음");
+  it("규칙·종류 거르기는 칩으로 보이고 지우면 전체로 간다", async () => {
+    const go = vi.spyOn(route, "navigate").mockImplementation(() => {});
+    renderWithQuery(<DocHistoryPage params={{ rule_id: "X-WT-01", type: "unknown" }} />);
+    const chips = await screen.findByLabelText("거르기");
+    expect(chips).toHaveTextContent("규칙 X-WT-01");
+    expect(chips).toHaveTextContent("분류 못 함 서류가 있는 작업");
+    await userEvent.setup().click(within(chips).getByRole("button", { name: "거르기 지우기" }));
+    expect(go).toHaveBeenCalledWith("/documents", {});
+    go.mockRestore();
   });
 
-  it("그 밖의 오류는 서버 문장을 보여 준다", async () => {
-    vi.mocked(api.getDocuments).mockResolvedValue(page("unknown"));
-    vi.mocked(api.getJobFiles).mockRejectedValue(new api.ApiError(500, "S3 주소를 만들지 못했습니다"));
-    renderWithQuery(<DocHistoryPage />);
-
-    const card = await screen.findByRole("article", { name: "scan_0001.jpg" });
-    expect(await within(card).findByRole("alert")).toHaveTextContent("서류 원본을 불러오지 못했습니다: S3 주소를 만들지 못했습니다");
-  });
-
-  it("서류의 박스를 누르면 그 자리에 무엇을 읽었는지 작은 팝업이 뜨고, 닫기로 닫힌다", async () => {
-    const user = userEvent.setup();
-    vi.mocked(api.getDocuments).mockResolvedValue(page("commercial_invoice"));
-    renderWithQuery(<DocHistoryPage />);
-    const card = await screen.findByRole("article", { name: "invoice.pdf" });
-
-    await user.click(await within(card).findByRole("button", { name: "분류 근거 · 제목: COMMERCIAL INVOICE" }));
-    const pop = within(card).getByRole("dialog", { name: "분류 근거 · 제목" });
-    expect(pop).toHaveTextContent("COMMERCIAL INVOICE");
-    expect(pop).toHaveTextContent("제목 COMMERCIAL INVOICE, Unit Price·Amount 칸");
-
-    await user.click(within(card).getByRole("button", { name: "읽은 값 · 송장 번호: INV-2026-0214" }));
-    expect(within(card).getByRole("dialog", { name: "읽은 값 · 송장 번호" })).toHaveTextContent("INV-2026-0214");
-
-    await user.click(within(card).getByRole("button", { name: "팝업 닫기" }));
-    expect(within(card).queryByRole("dialog")).not.toBeInTheDocument();
-  });
-
-  it("빈 목록이면 없다고 알린다", async () => {
-    vi.mocked(api.getDocuments).mockResolvedValue({ counts, items: [], next_cursor: null });
-    renderWithQuery(<DocHistoryPage />);
-
-    expect(await screen.findByText("이 종류로 분류된 서류가 없습니다.")).toBeInTheDocument();
-    expect(screen.queryByRole("region")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "다음 서류" })).not.toBeInTheDocument();
-  });
-
-  it("서버 오류 문장을 보여 주고, 404·501 이면 준비 중이라고 덧붙인다", async () => {
-    vi.mocked(api.getDocuments).mockRejectedValue(new api.ApiError(404, "없는 경로입니다 (GET /documents)"));
+  it("빈 목록과 서버 오류를 알린다", async () => {
+    vi.mocked(api.getJobHistory).mockResolvedValueOnce(response([]));
     const { unmount } = renderWithQuery(<DocHistoryPage />);
-
-    const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("없는 경로입니다 (GET /documents)");
-    expect(alert).toHaveTextContent("아직 준비되지 않았습니다");
+    expect(await screen.findByText("조건에 맞는 작업이 없습니다.")).toBeInTheDocument();
     unmount();
-
-    vi.mocked(api.getDocuments).mockRejectedValue(new api.ApiError(500, "조회에 실패했습니다"));
+    vi.mocked(api.getJobHistory).mockRejectedValueOnce(new api.ApiError(502, "작업 목록을 읽지 못했습니다"));
     renderWithQuery(<DocHistoryPage />);
-    const other = await screen.findByRole("alert");
-    expect(other).toHaveTextContent("조회에 실패했습니다");
-    expect(other).not.toHaveTextContent("아직 준비되지 않았습니다");
+    expect(await screen.findByRole("alert")).toHaveTextContent("작업 목록을 읽지 못했습니다");
   });
 
-  it("주소의 거르기(대시보드에서 옴)를 서버에 넘기고 칩으로 보여 주며, 지우면 거르기 없는 주소로 간다", async () => {
-    const user = userEvent.setup();
-    vi.mocked(api.getDocuments).mockResolvedValue(page("commercial_invoice"));
-    renderWithQuery(<DocHistoryPage params={{ job_status: "waiting_approval", grade: "불일치", type: "commercial_invoice" }} />);
-
-    await screen.findByText("1 / 4");
-    expect(api.getDocuments).toHaveBeenCalledWith("commercial_invoice", null, { job_status: "waiting_approval", grade: "불일치" });
-    const chips = screen.getByLabelText("거르기");
-    expect(chips).toHaveTextContent("작업 승인 대기");
-    expect(chips).toHaveTextContent("불일치가 남은 작업");
-
-    await user.click(within(chips).getByRole("button", { name: /거르기 지우기/ }));
-    expect(window.location.hash).toBe("#/documents?type=commercial_invoice");
-  });
-
-  it("주소의 type 으로 종류를 정하고, 값 목록 밖의 거르기는 버린다", async () => {
-    vi.mocked(api.getDocuments).mockResolvedValue(page("unknown"));
-    renderWithQuery(<DocHistoryPage params={{ type: "unknown", grade: "높음", rule_id: "X WT" }} />);
-
-    await screen.findByRole("region", { name: "분류 못 함 서류" });
-    expect(api.getDocuments).toHaveBeenCalledWith("unknown", null, {});
-    expect(screen.queryByLabelText("거르기")).not.toBeInTheDocument();
-  });
-
-  it("거르기만 있고 지금 종류에 서류가 없으면 서류가 있는 첫 종류로 옮긴다", async () => {
-    const onlyPacking = { ...counts, commercial_invoice: 0, packing_list: 2, bill_of_lading: 0, certificate_of_origin: 0, unknown: 0 };
-    vi.mocked(api.getDocuments).mockImplementation((t) =>
-      Promise.resolve({ counts: onlyPacking, items: t === "packing_list" ? all.filter((d) => d.doc_type === t).slice(0, 2) : [], next_cursor: null }),
-    );
-    renderWithQuery(<DocHistoryPage params={{ rule_id: "X-WT-01" }} />);
-
-    expect(await screen.findByRole("region", { name: "포장명세서 서류" })).toBeInTheDocument();
-    expect(api.getDocuments).toHaveBeenLastCalledWith("packing_list", null, { rule_id: "X-WT-01" });
+  it("filtersOf 는 값 목록 밖의 값을 버린다", () => {
+    expect(filtersOf({ job_status: "late", grade: "나쁨", hs: "done", type: "memo", rule_id: "X WT" })).toEqual({});
+    expect(filtersOf({ job_status: "done", grade: "확인 필요", hs: "pending", type: "unknown", rule_id: "X-WT-01" })).toEqual({
+      job_status: "done",
+      grade: "확인 필요",
+      hs: "pending",
+      type: "unknown",
+      rule_id: "X-WT-01",
+    });
   });
 });

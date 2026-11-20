@@ -15,7 +15,7 @@ type MenuKey = "upload" | "documents" | "dashboard" | "chat";
 
 const MENU: { key: MenuKey; path: string; label: string; icon: IconName }[] = [
   { key: "upload", path: "/upload", label: "파일 업로드", icon: "upload" },
-  { key: "documents", path: "/documents", label: "문서 분류 내역", icon: "list" },
+  { key: "documents", path: "/documents", label: "작업 내역", icon: "list" },
   { key: "dashboard", path: "/dashboard", label: "대시보드", icon: "chart" },
   { key: "chat", path: "/chat", label: "AI chat", icon: "chat" },
 ];

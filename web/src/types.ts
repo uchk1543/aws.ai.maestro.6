@@ -286,6 +286,10 @@ export interface DocumentFilters {
   rule_id?: string;
   hs?: "pending";
 }
+/** 작업 내역 거르기 (#281): 문서 분류 거르기 + 그 종류의 서류가 있는 작업 */
+export interface HistoryFilters extends DocumentFilters {
+  type?: DocType;
+}
 
 // GET /api/stats (대시보드, F11 #195). 숫자는 서버가 센 값 그대로 쓴다
 export interface StatsResponse {
@@ -322,6 +326,18 @@ export interface StatsResponse {
 
 // GET /api/jobs?next_action= (#252). 대시보드 카드를 누르면 그 자리에 펼치는 작업 목록
 export type TodoKind = "fix_docs" | "choose_hs" | "approve" | "reupload" | "wait";
+/** 작업 내역 카드의 서류 한 장 (#281, 서버 JobDocBrief) */
+export interface JobDocBrief {
+  file_name: string;
+  doc_type: DocType;
+  classified_by: "model" | "user";
+}
+/** 작업 내역 카드의 걸러낸 문제 한 줄 (#281, 서버 IssueBrief). 불일치·확인 필요만 */
+export interface IssueBrief {
+  grade: Grade;
+  rule_id: string;
+  evidence: string;
+}
 export interface JobSummary {
   job_id: string;
   status: JobStatus;
@@ -331,7 +347,15 @@ export interface JobSummary {
   next_action: NextAction;
   mismatch: number;
   hs_pending: number;
+  /** 남은 확인 필요 건수 (#281) */
+  check?: number;
+  /** 올린 서류와 분류 결과 (#281, all=1 일 때만) */
+  docs?: JobDocBrief[];
+  /** 걸러낸 문제 앞 몇 건 (#281, all=1 일 때만) */
+  issues?: IssueBrief[];
 }
 export interface JobListResponse {
   items: JobSummary[];
+  /** 조건에 맞는 전체 작업 수 (#281, all=1 일 때만) */
+  total?: number | null;
 }

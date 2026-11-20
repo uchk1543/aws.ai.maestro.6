@@ -51,6 +51,7 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 | `GET /api/jobs/{id}/certificate` | - | 검수 완료서 PDF (`application/pdf`, `content-disposition: attachment`, `certificate-<작업 ID>.pdf`). 사람 승인으로 등록된 작업만. 없는 작업 404, 승인 대기·자동 등록·옛 작업은 409 `{"error"}` (X1 #258) |
 | `GET /api/jobs/{id}/notice?format=md\|html` | - | 불일치 통지 문서 내려받기 (F9 #155, 아직 없음. 문서 내용은 아래 `NoticeDocument`, 예시 `docs/examples/notice.json`, C7 #158) |
 | `GET /api/stats` | - | `docs/examples/stats.json` (대시보드 통계, F11 #195) |
+| `GET /api/jobs?all=1&job_status=&grade=&rule_id=&hs=pending&type=` | - | `JobListResponse` (작업 내역, #281). 끝난 작업 포함 최근 50건, 줄마다 `docs`(올린 서류·분류)·`check`·`issues`(불일치·확인 필요 앞 3건), `total`(조건에 맞는 전체 수). 거르기는 문서 분류 내역과 같고 `type`은 그 종류의 서류가 있는 작업. `all` 없이 부르면 예전(#252)처럼 끝난 작업을 빼고 요약 칸은 비운다 |
 | `GET /api/jobs?next_action=<종류>` | - | `docs/examples/jobs.json` (다음 할 일이 같은 작업 목록, #252) |
 
 불일치 통지 문서 (C7 #158. 모양은 `tools/models.py`의 `NoticeDocument`, 만드는 함수는 `tools/validate.py`의 `notice_document(job_id, docs, issues)`)

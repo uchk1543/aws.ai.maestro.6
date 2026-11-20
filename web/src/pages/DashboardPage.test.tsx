@@ -106,12 +106,12 @@ describe("DashboardPage", () => {
     expect(screen.queryByRole("region", { name: /작업 목록/ })).not.toBeInTheDocument();
   });
 
-  it("작업 목록 경로가 아직 없으면(404) 문서 분류 내역으로 가는 길을 준다", async () => {
+  it("작업 목록 경로가 아직 없으면(404) 작업 내역으로 가는 길을 준다", async () => {
     const user = userEvent.setup();
     vi.mocked(api.getJobs).mockRejectedValue(new api.ApiError(404, "없는 경로입니다"));
     renderWithQuery(<DashboardPage open="fix_docs" />);
 
-    await user.click(await screen.findByRole("button", { name: "문서 분류 내역에서 보기" }));
+    await user.click(await screen.findByRole("button", { name: "작업 내역에서 보기" }));
     expect(hashParams()).toEqual({ path: "/documents", params: { job_status: "waiting_approval", grade: "불일치" } });
   });
 
