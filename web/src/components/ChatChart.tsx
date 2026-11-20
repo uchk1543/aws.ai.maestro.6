@@ -1,19 +1,19 @@
 // #257 현황 그래프: 서버가 보낸 chart(값·축·제목은 서버 코드가 집계에서 채움)를 그대로 그린다. 화면은 계산하지 않는다.
-// 막대·선은 SVG, 원은 SVG 부채꼴. 아래에 같은 값의 표를 늘 둔다 (접근성, 숫자 확인). 흑백 단계형: 짙기만 바꾼다.
+// 막대·선은 SVG, 원은 SVG 부채꼴. 아래에 같은 값의 표를 늘 둔다 (접근성, 숫자 확인). 파랑 한 색: 짙기만 바꾼다.
 import { useEffect, useRef, useState } from "react";
 import type { Chart } from "../types";
 
 const DEFAULT_W = 560;
 const H = 220;
 const PAD = { top: 16, right: 12, bottom: 40, left: 36 };
-// 원 그래프 조각 짙기 (흑백 단계). 조각이 더 많으면 되풀이한다
+// 원 그래프 조각 짙기 (파랑 한 색의 단계, web/DESIGN.md '그래프'). 조각이 더 많으면 되풀이한다
 const SHADES = [
-  "#141414",
-  "#4a4a4a",
-  "#7a7a7a",
-  "#a6a6a6",
-  "#cfcfcf",
-  "#e6e6e6",
+  "#0064ff",
+  "#3182f6",
+  "#64a8ff",
+  "#90c2ff",
+  "#c9e2ff",
+  "#e8f3ff",
 ];
 
 /** 축 눈금: 0 부터 최댓값까지 정수 4칸 안팎 */

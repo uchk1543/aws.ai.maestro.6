@@ -1,16 +1,22 @@
-/* 화면 공통 스타일 (G9).
-   흑백 + 빨강 하나(불일치·실패·오류에만). 단계형 화면(가운데 질문, 큰 회색 칸, 아래 검은 버튼)에
-   타일형 메뉴(모바일 아래 탭, 태블릿·PC 위 왼쪽 칩)를 붙였다.
+/* 화면 공통 스타일 (G9). 색·글자·간격 규칙은 web/DESIGN.md 를 따른다.
+   회색 단계 + 파랑 하나(누를 것·고른 것) + 빨강 하나(불일치·실패·오류에만).
+   색 값은 Toss 공개 화면에서 관찰된 회색·파랑 단계를 빌렸다 (web/DESIGN.md '색').
    모바일(767px 이하)을 기본으로 쓰고, 태블릿(768px~)·PC(1200px~)에서 넓힌다. */
 :root {
-  --ink: #141414;
-  --ink-2: #2a2a2a; /* 검은 버튼, 고른 칸 */
-  --muted: #6f6f6f; /* 흰 바탕에서 4.9:1 */
-  --line: #e6e6e6;
-  --fill: #efefef; /* 회색 칸 */
-  --fill-2: #f6f6f6;
+  --ink: #191f28; /* 진한 글자. 흰 바탕 16.6:1 */
+  --ink-secondary: #4e5968; /* 보조 글자. 흰 바탕 7.1:1 */
+  --muted: #6b7684; /* 흐린 글자. 흰 바탕 4.6:1 (회색 칸 위는 4.2:1이라 13px 이하에 쓰지 않는다) */
+  --faint: #8b95a1; /* 장식·꺼진 표시만. 글자로 쓰지 않는다 (3.0:1) */
+  --primary: #0064ff; /* 채운 버튼·고른 칸. 흰 글자 4.9:1 */
+  --primary-strong: #0050cc; /* 채운 버튼 누름 */
+  --primary-line: #3182f6; /* 테두리·포커스 링·막대 (UI 구성요소 3:1 이상, 글자 바탕으로 쓰지 않는다) */
+  --primary-tint: #e8f3ff; /* 파랑 옅은 바탕 */
+  --line: #e5e8eb; /* 가는 선 */
+  --border: #d1d6db; /* 입력칸·표 테두리 */
+  --fill: #f2f4f6; /* 회색 칸 */
+  --fill-2: #f9fafb; /* 더 옅은 회색 칸 */
   --bg: #ffffff;
-  --red: #d6402a; /* 흰 바탕·흰 글자 모두 4.5:1 */
+  --red: #d6402a; /* 불일치·실패·오류에만. 흰 바탕·흰 글자 모두 4.5:1 */
   --tabbar-h: 64px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --gutter: 22px;
@@ -78,11 +84,11 @@ select {
 }
 
 input::placeholder {
-  color: #8a8a8a;
+  color: var(--faint);
 }
 
 :focus-visible {
-  outline: 2px solid var(--ink);
+  outline: 2px solid var(--primary-line);
   outline-offset: 2px;
 }
 
@@ -124,13 +130,14 @@ input::placeholder {
   font-size: 16px;
   font-weight: 600;
   color: #fff;
-  background: var(--ink-2);
+  background: var(--primary);
   border: 0;
   border-radius: 14px;
 }
 
 .primary:active:not(:disabled) {
   transform: scale(0.98);
+  background: var(--primary-strong);
 }
 
 .block {
@@ -156,8 +163,8 @@ button.link {
   padding: 0 10px;
   font-size: 13px;
   font-weight: 500;
-  color: #444;
-  border: 1px solid #c4c4c4;
+  color: var(--ink-secondary);
+  border: 1px solid var(--border);
   border-radius: 999px;
 }
 
@@ -264,7 +271,7 @@ button.link {
     min-height: 40px;
     padding: 0 18px;
     font-size: 15px;
-    color: #555;
+    color: var(--ink-secondary);
     border-radius: 999px;
   }
 
@@ -562,7 +569,7 @@ button.link {
   .file-pick {
     min-height: 196px;
     border-style: dashed;
-    border-color: #8a8a8a;
+    border-color: var(--faint);
   }
 
   .file-pick.dragging {
@@ -633,7 +640,7 @@ button.link {
 }
 
 .example .icon {
-  color: #8a8a8a;
+  color: var(--faint);
 }
 
 /* 대화가 시작되면 모바일·태블릿에서는 예시를 접는다 (PC 는 왼쪽에 늘 둔다) */
@@ -654,7 +661,7 @@ button.link {
   margin: 10px 0 14px;
   padding: 11px 16px;
   color: #fff;
-  background: var(--ink-2);
+  background: var(--primary);
   border-radius: 18px 18px 4px 18px;
 }
 
@@ -741,7 +748,7 @@ button.link {
   width: 52px;
   height: 52px;
   color: #fff;
-  background: var(--ink-2);
+  background: var(--primary);
   border: 0;
   border-radius: 14px;
 }
@@ -913,7 +920,7 @@ table.cells th {
     gap: 10px;
     padding: 8px 0;
     font-size: 15px;
-    border-bottom: 1px solid #e0e0e0;
+    border-bottom: 1px solid var(--line);
     overflow-wrap: anywhere;
   }
 
@@ -999,7 +1006,7 @@ table.cells th {
 .status-running,
 .grade-note {
   color: var(--muted);
-  border-color: #c4c4c4;
+  border-color: var(--border);
 }
 
 .steps {
@@ -1114,16 +1121,16 @@ table.cells tr.suspect td {
   width: 20px;
   height: 20px;
   margin: 2px 0 0;
-  accent-color: var(--ink);
+  accent-color: var(--primary);
 }
 
 .hs-candidate:has(input:checked) {
   color: #fff;
-  background: var(--ink-2);
+  background: var(--primary);
 }
 
 .hs-candidate:has(input:checked) .hs-reason {
-  color: #c9c9c9;
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .hs-reason {
@@ -1149,7 +1156,7 @@ table.cells tr.suspect td {
 .blank-fields {
   margin-top: 14px;
   padding: 12px 14px;
-  border: 1px dashed #b5b5b5;
+  border: 1px dashed #b0b8c1;
   border-radius: 12px;
 }
 
@@ -1251,11 +1258,11 @@ table.cells tr.suspect td {
 .kind.active {
   font-weight: 600;
   color: #fff;
-  background: var(--ink-2);
+  background: var(--primary);
 }
 
 .kind.active .kind-count {
-  color: #c9c9c9;
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .dochist-main {
@@ -1378,7 +1385,7 @@ table.cells tr.suspect td {
 .mark {
   position: absolute;
   padding: 0;
-  background: rgba(20, 20, 20, 0.06);
+  background: rgba(25, 31, 40, 0.06);
   border: 2.5px solid var(--ink);
   border-radius: 4px;
   box-shadow:
@@ -1394,13 +1401,13 @@ table.cells tr.suspect td {
 }
 
 .mark-soft {
-  background: rgba(20, 20, 20, 0.04);
+  background: rgba(25, 31, 40, 0.04);
   border-style: dashed;
-  border-color: var(--ink-2);
+  border-color: var(--primary);
 }
 
 .mark:hover {
-  background: rgba(20, 20, 20, 0.12);
+  background: rgba(25, 31, 40, 0.12);
 }
 
 .mark-mismatch:hover {
@@ -1411,10 +1418,10 @@ table.cells tr.suspect td {
   z-index: 2;
   border-style: solid;
   border-width: 3.5px;
-  background: rgba(20, 20, 20, 0.1);
+  background: rgba(25, 31, 40, 0.1);
   box-shadow:
     0 0 0 2px #fff,
-    0 0 0 6px rgba(20, 20, 20, 0.22),
+    0 0 0 6px rgba(25, 31, 40, 0.22),
     0 2px 10px rgba(0, 0, 0, 0.3);
 }
 
@@ -1457,7 +1464,7 @@ table.cells tr.suspect td {
 .doc-tab.active {
   font-weight: 600;
   color: #fff;
-  background: var(--ink-2);
+  background: var(--primary);
 }
 
 .doc-tab-count {
@@ -1523,7 +1530,7 @@ table.cells tr.suspect td {
 
 .value-tile.active {
   color: #fff;
-  background: var(--ink-2);
+  background: var(--primary);
 }
 
 .value-doc {
@@ -1533,7 +1540,7 @@ table.cells tr.suspect td {
 
 .value-tile.active .value-doc,
 .value-tile.active .value-field {
-  color: #c9c9c9;
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .value-suspect {
@@ -1729,7 +1736,7 @@ table.cells tr.suspect td {
 
 .mark-row.active {
   color: #fff;
-  background: var(--ink-2);
+  background: var(--primary);
 }
 
 .mark-row-label {
@@ -1738,7 +1745,7 @@ table.cells tr.suspect td {
 }
 
 .mark-row.active .mark-row-label {
-  color: #c9c9c9;
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .mark-row-text {
@@ -1898,7 +1905,7 @@ iframe.viewer-original {
   font-size: 14px;
   font-weight: 600;
   color: #fff;
-  background: var(--ink-2);
+  background: var(--primary);
   border-radius: 999px;
 }
 
@@ -1954,7 +1961,7 @@ iframe.viewer-original {
   position: relative;
   width: 40px;
   height: 24px;
-  background: #c9c9c9;
+  background: var(--border);
   border-radius: 999px;
   transition: background 0.2s;
 }
@@ -1973,7 +1980,7 @@ iframe.viewer-original {
 }
 
 .fx-toggle.on .fx-knob {
-  background: var(--ink-2);
+  background: var(--primary);
 }
 
 .fx-toggle.on .fx-knob::after {
@@ -1986,7 +1993,7 @@ iframe.viewer-original {
   height: 240px;
   margin: 0 calc(var(--gutter) * -1);
   overflow: hidden;
-  background: #cfd5da;
+  background: var(--border);
 }
 
 .port-media {
@@ -2063,7 +2070,7 @@ video.port-media.on {
   padding: 0 10px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.86);
-  color: #8a8f98;
+  color: var(--muted);
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
@@ -2072,11 +2079,11 @@ video.port-media.on {
 }
 
 .port-stages li.done {
-  color: #111;
+  color: var(--ink);
 }
 
 .port-stages li.now {
-  background: #111;
+  background: var(--ink);
   color: #fff;
 }
 
@@ -2277,13 +2284,13 @@ video.port-media.on {
   display: block;
   height: 100%;
   min-width: 4px;
-  background: var(--ink-2);
+  background: var(--primary);
   border-radius: 999px;
   transform-origin: left center;
 }
 
 .kind-row.unknown .flow-fill {
-  background: #9a9a9a;
+  background: var(--faint);
 }
 
 .flow-count {
@@ -2349,7 +2356,7 @@ video.port-media.on {
 
 .auto-text .auto-link-note {
   font-size: 12px;
-  color: #8a8f98;
+  color: var(--muted);
 }
 
 .ring {
@@ -2366,11 +2373,11 @@ video.port-media.on {
 }
 
 .ring-back {
-  stroke: #e3e3e3;
+  stroke: var(--line);
 }
 
 .ring-fill {
-  stroke: var(--ink-2);
+  stroke: var(--primary);
   stroke-linecap: round;
   stroke-dashoffset: var(--off);
 }
@@ -2897,7 +2904,7 @@ video.port-media.on {
   border-radius: 3px;
   box-shadow:
     0 0 0 1.5px #fff,
-    0 0 0 9999px rgba(20, 20, 20, 0.12);
+    0 0 0 9999px rgba(25, 31, 40, 0.12);
 }
 
 .mark-pop-ink .lens-mark,
@@ -3388,7 +3395,7 @@ video.port-media.on {
   font: inherit;
   font-weight: 600;
   color: var(--bg);
-  background: var(--ink-2);
+  background: var(--primary);
   border: 0;
   border-radius: 10px;
   cursor: pointer;
@@ -3400,6 +3407,14 @@ video.port-media.on {
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
   margin: 0 0 16px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* 단계 표시줄이 가로로 밀릴 때 페이지 폭을 늘리지 않게 한다 */
+.job {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .stage {
@@ -3440,7 +3455,7 @@ video.port-media.on {
 }
 
 .stage-done .stage-mark {
-  background: var(--ink-2);
+  background: var(--primary);
   color: #fff;
 }
 
