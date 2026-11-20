@@ -49,6 +49,7 @@ Fetch = Callable[[str], bytes]  # S3 키 → 파일 바이트
 OnStep = Callable[[Job], None]  # 단계가 늘 때마다 지금까지의 Job(status=running)을 받는다
 Rereader = Callable[[ExtractedDocument, str, bytes], RereadResult]  # (첫 판독, 칸 경로, 원본) → 다시 확인 (B8)
 HSRecommender = Callable[[list[ExtractedDocument], int], HSResult]  # (읽은 서류, 품목 행) → HS 결과 (C1·C2)
+OnDocs = Callable[[list[ExtractedDocument]], None]  # 처리가 끝날 때 읽은 서류(files 순서)를 받는다 (#122)
 
 _CHECKED_BY_KO = {"pdf_text": "PDF 글자", "textract": "Textract", "model_reread": "모델 다시 읽기", "none": "다른 근거"}
 
@@ -549,10 +550,11 @@ def run_job(
     rereader: Rereader | None = None,
     hs_recommender: HSRecommender | None = None,
     agent_model=None,
+    on_docs: OnDocs | None = None,
 ) -> Job:
     """서류 묶음 하나를 처리해 Job(약속 2)을 돌려준다.
 
-    언제: 처리 Lambda(F3)가 비동기로 부른다 (지금 뼈대에서는 POST /jobs 안에서 동기로).
+    언제: 처리 Lambda(api/worker.py)가 비동기 이벤트를 받아 부른다. API Lambda의 POST /jobs는 작업을 queued로 저장만 한다 (F3).
     받는 것:
       - job_id, files([{"key", "doc_type"}]. doc_type이 null이면 classify_document로 분류한다), fetch(S3 키 → 바이트)
       - reader·classifier: 읽기·분류 모델 (테스트용 가짜). 없으면 Bedrock
@@ -561,6 +563,9 @@ def run_job(
       - rereader: 다시 확인 도구 (테스트용 가짜). 없으면 tools.reread.reread_field (모델 다시 읽기에는 reader를 쓴다)
       - hs_recommender: HS 도구(C1·C2). None이면 부르지 않고 finish_report 조건에서도 뺀다
       - agent_model: 에이전트 루프용 Strands 모델 (테스트용 가짜). 주거나 환경 변수 AGENT_LOOP=1이면 루프로 돈다
+      - on_docs: 처리가 끝날 때 읽은 서류(ExtractedDocument)를 files 순서대로 한 번 받는다. 읽은 서류가 없으면 부르지 않는다.
+        도중에 예외가 나도 그때까지 읽은 서류를 넘긴다. 처리 Lambda가 작업 줄에 docs·importer로 저장해
+        HS 선택(C3)·승인(D3)에 쓴다 (#122). 실패해도 처리 결과는 그대로 돌려준다
     반환: Job. unknown·분류 실패·읽기 실패는 '확인 필요'(DOC-UNKNOWN · CLASSIFY-FAIL · READ-FAIL)로 남기고
           그 서류는 대조에서 뺀다. finish_report 조건을 못 채우면 REPORT-INCOMPLETE '확인 필요'를 더한다.
     """
@@ -572,18 +577,32 @@ def run_job(
         job_id, files, fetch,
         reader=reader, classifier=classifier, on_step=on_step, rereader=rereader, hs_recommender=hs_recommender,
     )
-    if agent_model is not None or os.environ.get("AGENT_LOOP") == "1":
-        try:
-            if agent_model is None:
-                from agent import make_model
+    try:
+        if agent_model is not None or os.environ.get("AGENT_LOOP") == "1":
+            try:
+                if agent_model is None:
+                    from agent import make_model
 
-                agent_model = make_model()
-            _run_agent(run, agent_model)
-        except Exception as exc:  # 모델 호출 실패 등. 코드가 이어서 처리한다
-            print(f"[error] agent job={job_id} {type(exc).__name__}: {exc}")
-            run.step("agent", f"에이전트 루프가 멈춤: {type(exc).__name__}: {exc}", ok=False)
-        check = run.report()
-        if not check.ok:
-            run.step("finish_report", "에이전트가 다 못 끝낸 것을 코드가 이어서 함: " + "; ".join(check.missing), ok=False)
-    _run_fixed(run)
-    return run.finish()
+                    agent_model = make_model()
+                _run_agent(run, agent_model)
+            except Exception as exc:  # 모델 호출 실패 등. 코드가 이어서 처리한다
+                print(f"[error] agent job={job_id} {type(exc).__name__}: {exc}")
+                run.step("agent", f"에이전트 루프가 멈춤: {type(exc).__name__}: {exc}", ok=False)
+            check = run.report()
+            if not check.ok:
+                run.step("finish_report", "에이전트가 다 못 끝낸 것을 코드가 이어서 함: " + "; ".join(check.missing), ok=False)
+        _run_fixed(run)
+        return run.finish()
+    finally:
+        _hand_docs(run, on_docs)
+
+
+def _hand_docs(run: _Run, on_docs: OnDocs | None) -> None:
+    """읽은 서류를 files 순서대로 on_docs에 한 번 넘긴다. 없거나 on_docs가 실패하면 넘기지 않고 이어 간다."""
+    docs = [run.state.docs[k] for k in run.state.files if k in run.state.docs]
+    if on_docs is None or not docs:
+        return
+    try:
+        on_docs(docs)
+    except Exception as exc:  # 저장 실패가 처리 결과를 바꾸지 않게 한다 (on_step과 같다)
+        print(f"[warn] on_docs 실패: {type(exc).__name__}: {exc}")

@@ -6,6 +6,7 @@
 import copy
 import json
 
+import pytest
 from strands.models import Model
 
 from agent import document_agent
@@ -186,6 +187,44 @@ def test_on_step_failure_does_not_stop_job():
     m = Models()
     job = run_job("job-1", files(INV, PL), fetch, reader=m.reader, classifier=m.classifier, on_step=broken)
     assert job.status == "waiting_approval" and len(job.steps) == 7
+
+
+def test_on_docs_gets_read_docs_in_files_order_once():  # #122
+    got: list[list] = []
+    m = Models()
+    job = run_job("job-1", files(PL, MEMO, INV), fetch, reader=m.reader, classifier=m.classifier, on_docs=got.append)
+    [docs] = got
+    assert [d.doc_type for d in docs] == ["packing_list", "commercial_invoice"]  # 못 읽은 memo는 빠지고 files 순서
+    assert [d.file for d in docs] == [PL, INV]
+    assert job.status == "waiting_approval"
+
+
+def test_on_docs_not_called_without_read_docs():
+    got: list = []
+    m = Models()
+    run_job("job-1", files(MEMO), fetch, reader=m.reader, classifier=m.classifier, on_docs=got.append)
+    assert got == []
+
+
+def test_on_docs_on_crash_and_its_failure_does_not_change_job(monkeypatch):
+    got: list[list] = []
+
+    def crash(run):
+        run.read(INV)
+        raise RuntimeError("예상 못 한 오류")
+
+    monkeypatch.setattr(document_agent, "_run_fixed", crash)
+    m = Models()
+    with pytest.raises(RuntimeError):
+        run_job("job-1", files(INV, PL, typed=(INV, PL)), fetch, reader=m.reader, on_docs=got.append)
+    assert [d.file for d in got[0]] == [INV]  # 멈추기 전까지 읽은 서류는 넘긴다
+    monkeypatch.undo()
+
+    def broken(docs):
+        raise RuntimeError("DynamoDB 오류")
+
+    job = run_job("job-1", files(INV, PL, typed=(INV, PL)), fetch, reader=Models().reader, on_docs=broken)
+    assert job.status == "waiting_approval" and len(job.steps) == 5
 
 
 def test_p0_finishes_without_later_tools():
