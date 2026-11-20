@@ -57,7 +57,8 @@ class Models:
         return Classification(doc_type=doc_type, reason=reason)
 
     def reader(self, blocks, prompt):
-        self.read.append(name_of(blocks))
+        if "칸 하나만" not in prompt:  # 다시 확인(B8)의 칸 하나 묻기는 읽기로 세지 않는다
+            self.read.append(name_of(blocks))
         return RawDocument.model_validate(self.raws[name_of(blocks)])
 
 
@@ -80,13 +81,16 @@ def tools_of(job: Job) -> list[str]:
 def test_null_doc_type_is_classified_then_read():
     m = Models()
     job = run_job("job-1", files(INV, PL), fetch, reader=m.reader, classifier=m.classifier)
-    assert tools_of(job) == ["classify_document", "classify_document", "read_document", "read_document", "cross_check"]
+    assert tools_of(job) == [
+        "classify_document", "classify_document", "read_document", "read_document", "cross_check",
+        "reread_field", "reread_field",  # 불일치 칸은 다시 확인 (B8, 텍스트가 아닌 가짜 PDF라 모델 다시 읽기)
+    ]
     assert job.steps[0].summary == "invoice.pdf → 상업송장 (제목 COMMERCIAL INVOICE, 단가·금액 칸)"
     assert job.steps[1].summary == "packing.pdf → 포장명세서 (제목 PACKING LIST, N.W./G.W. 칸, 단가 칸 없음)"
     assert job.steps[2].summary == "invoice.pdf → 상업송장, 2행"
     assert all(s.ok for s in job.steps)
     [issue] = job.result.issues
-    assert (issue.rule_id, issue.grade) == ("X-WT-01", "불일치")
+    assert (issue.rule_id, issue.grade, issue.checked_by) == ("X-WT-01", "불일치", "model_reread")
     assert job.status == "waiting_approval"
 
 
@@ -181,7 +185,7 @@ def test_on_step_failure_does_not_stop_job():
 
     m = Models()
     job = run_job("job-1", files(INV, PL), fetch, reader=m.reader, classifier=m.classifier, on_step=broken)
-    assert job.status == "waiting_approval" and len(job.steps) == 5
+    assert job.status == "waiting_approval" and len(job.steps) == 7
 
 
 def test_p0_finishes_without_later_tools():
@@ -305,14 +309,16 @@ def test_agent_picks_tools_and_finish_report_ends_loop():
         [("classify_document", {"key": INV}), ("classify_document", {"key": PL})],
         [("read_document", {"key": INV}), ("read_document", {"key": PL})],
         [("cross_check", {})],
+        [("reread_field", {"key": INV, "field": "total_gross_kg"}), ("reread_field", {"key": PL, "field": "total_gross_kg"})],
         [("finish_report", {})],
         [("cross_check", {})],  # finish_report가 통과하면 이 차례는 오지 않는다
     ])
     job = run_job("job-1", files(INV, PL), fetch, reader=m.reader, classifier=m.classifier, agent_model=model)
-    assert model.calls == 4
-    assert model.tool_names == {"classify_document", "read_document", "cross_check", "finish_report"}  # 아직 없는 도구는 안 준다
+    assert model.calls == 5
+    # HS(C1·C2)는 처리 Lambda가 넘기지 않았으니 도구로 주지 않는다
+    assert model.tool_names == {"classify_document", "read_document", "cross_check", "reread_field", "finish_report"}
     assert f"{INV}: 종류 미정" in text(model.seen[0])
-    assert tools_of(job) == ["classify_document"] * 2 + ["read_document"] * 2 + ["cross_check", "finish_report"]
+    assert tools_of(job) == ["classify_document"] * 2 + ["read_document"] * 2 + ["cross_check"] + ["reread_field"] * 2 + ["finish_report"]
     assert (job.steps[-1].summary, job.steps[-1].ok) == ("조건을 모두 채움", True)
     assert job.result.issues[0].rule_id == "X-WT-01" and job.status == "waiting_approval"
 
@@ -326,6 +332,7 @@ def test_finish_report_sends_agent_back_for_missing():
         [("finish_report", {})],
         [("read_document", {"key": PL})],
         [("cross_check", {})],
+        [("reread_field", {"key": INV, "field": "total_gross_kg"}), ("reread_field", {"key": PL, "field": "total_gross_kg"})],
         [("finish_report", {})],
     ])
     job = run_job("job-1", files(INV, PL), fetch, reader=m.reader, classifier=m.classifier, agent_model=model)
@@ -333,7 +340,7 @@ def test_finish_report_sends_agent_back_for_missing():
     assert [r.ok for r in reports] == [False, True]
     assert reports[0].summary == f"빠진 것 1개: {PL} 아직 안 읽음 (read_document)"
     assert "아직 빠진 것" in text(model.seen[4])  # 에이전트는 빠진 것 목록을 도구 결과로 받았다
-    assert model.calls == 7 and sorted(m.read) == ["invoice.pdf", "packing.pdf"]
+    assert model.calls == 8 and sorted(m.read) == ["invoice.pdf", "packing.pdf"]
 
 
 def test_agent_cannot_override_user_doc_type():

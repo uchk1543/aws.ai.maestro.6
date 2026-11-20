@@ -103,3 +103,17 @@ def test_apply_leaves_partial_or_other_grades():
     assert apply_rereads([NOTE], [rr("commercial_invoice"), rr("packing_list")]) == [NOTE]
     once = apply_rereads([MISMATCH], [rr("commercial_invoice"), rr("packing_list")])
     assert apply_rereads(once, [rr("commercial_invoice"), rr("packing_list")]) == once  # 다시 불러도 같음
+
+
+def test_same_value_ignores_labels_but_not_numbers_or_units():
+    from tools.reread import same_value
+
+    # 실제로 나온 경우 (D006 스캔본): 첫 판독은 칸 이름까지, 다시 읽기는 값만
+    assert same_value("total_gross_kg", "Total Gross Weight: 241.40 kg", "241.40 kg")
+    assert same_value("total_gross_kg", "6,520.00 KGS", "6,520.00 KG")
+    assert not same_value("total_gross_kg", "6,520.00 KGS", "6,250.00 KGS")
+    assert not same_value("total_gross_kg", "1,947.12 kg", "1,947.12 LBS")
+    assert same_value("items[*].gross_kg", "4,000 KGS + 2,520 KGS", "4,000 + 2,520")
+    assert same_value("doc_no", "Invoice No.: QDT/26/0289", "QDT/26/0289")
+    assert not same_value("doc_no", "QDT/26/0289", "QDT/26/0829")
+    assert not same_value("doc_no", None, "QDT/26/0289")

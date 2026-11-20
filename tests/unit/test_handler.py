@@ -167,7 +167,8 @@ def test_post_then_worker_shows_mismatch(fakes, lambda_client):
     assert status == 200
     Job.model_validate(job)  # 약속 2 형식
     assert job["status"] == "waiting_approval"
-    assert [s["tool"] for s in job["steps"]] == ["read_document", "read_document", "cross_check"]
+    # 불일치 칸은 다시 확인한다 (B8): 상업송장·포장명세서 총중량
+    assert [s["tool"] for s in job["steps"]] == ["read_document", "read_document", "cross_check", "reread_field", "reread_field"]
     [issue] = job["result"]["issues"]
     assert issue["grade"] == "불일치" and issue["rule_id"] == "X-WT-01"
 

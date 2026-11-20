@@ -4,7 +4,8 @@ run_job은 두 길로 돈다. 두 길 모두 같은 도구 묶음(_Run)을 쓰�
 - 고정 순서(기본, P0 첫 배포): 코드가 분류 → 읽기 → 대조 → 다시 확인 → HS 순서로, 해야 할 것만 부른다.
 - 에이전트 루프(AGENT_LOOP=1, 또는 agent_model을 넘길 때): Strands Agent가 도구를 고른다. finish_report가
   빠진 것을 돌려주면 그 도구를 다시 부른다. 횟수·시간 한도를 넘거나 다 못 끝내면 코드가 고정 순서로 마저 한다.
-아직 없는 도구(B8 reread_field, C1·C2 recommend_hs)는 부르지 않고, finish_report 조건에서도 뺀다 (P1에서 넣는다).
+다시 확인(B8 reread_field)은 기본으로 쓴다. HS(C1·C2 recommend_hs)는 처리 Lambda가 hs_recommender로 넘길 때만 부르고,
+넘기지 않으면 finish_report 조건에서도 뺀다.
 """
 
 import os
@@ -32,7 +33,7 @@ from tools.models import (
     Step,
 )
 from tools.report import finish_report, hs_lines
-from tools.reread import apply_rereads
+from tools.reread import apply_rereads, reread_field
 from tools.validate import cross_check
 
 MAX_FILES = 10
@@ -557,11 +558,16 @@ def run_job(
       - reader·classifier: 읽기·분류 모델 (테스트용 가짜). 없으면 Bedrock
       - on_step: 단계가 늘 때마다 지금까지의 Job(status=running)을 받는다. 처리 Lambda가 저장하면 진행 화면에 보인다.
         실패해도 처리는 계속한다
-      - rereader·hs_recommender: 다시 확인(B8)·HS(C1·C2) 도구. None이면 아직 없는 도구로 보고 부르지 않는다
+      - rereader: 다시 확인 도구 (테스트용 가짜). 없으면 tools.reread.reread_field (모델 다시 읽기에는 reader를 쓴다)
+      - hs_recommender: HS 도구(C1·C2). None이면 부르지 않고 finish_report 조건에서도 뺀다
       - agent_model: 에이전트 루프용 Strands 모델 (테스트용 가짜). 주거나 환경 변수 AGENT_LOOP=1이면 루프로 돈다
     반환: Job. unknown·분류 실패·읽기 실패는 '확인 필요'(DOC-UNKNOWN · CLASSIFY-FAIL · READ-FAIL)로 남기고
           그 서류는 대조에서 뺀다. finish_report 조건을 못 채우면 REPORT-INCOMPLETE '확인 필요'를 더한다.
     """
+    if rereader is None:
+        def rereader(doc: ExtractedDocument, field: str, data: bytes) -> RereadResult:
+            return reread_field(doc, field, data, reader=reader)
+
     run = _Run(
         job_id, files, fetch,
         reader=reader, classifier=classifier, on_step=on_step, rereader=rereader, hs_recommender=hs_recommender,

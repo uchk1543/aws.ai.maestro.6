@@ -13,7 +13,8 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import PurePath
 
-from tools.extract import ModelReader, _ask_twice, _strands_reader, content_blocks, system_prompt
+from tools import extract
+from tools.extract import ModelReader, _ask_twice, _unit_after_number, content_blocks, parse_number, system_prompt
 from tools.models import DOC_TYPE_KO, CheckedBy, ExtractedDocument, Issue, OcrResult, RereadResult
 
 # PDF 바이트 → 글자층 글자. 없거나 스캔본이면 ''. 테스트에서는 가짜로 바꾼다.
@@ -102,8 +103,33 @@ def _field_prompt(doc: ExtractedDocument, field: str) -> str:
     )
 
 
-def _same(a: str | None, b: str | None) -> bool:
-    return a is not None and b is not None and _squash(a) == _squash(b)
+_NUMERIC = ("gross_kg", "net_kg", "qty")
+
+
+def _text_core(raw: str) -> str:
+    """'Invoice No.: QDT/26/0289' → 'QDT/26/0289'. 모델이 칸 이름까지 옮긴 경우를 떼고 비교한다."""
+    return _squash(raw.rsplit(":", 1)[-1])
+
+
+def same_value(field: str, a: str | None, b: str | None) -> bool:
+    """두 판독이 같은 값인지. 숫자 칸은 숫자(적힌 그대로)와 단위, 글자 칸은 앞 꼬리표를 뗀 글자로 본다.
+
+    예: 'Total Gross Weight: 241.40 kg'과 '241.40 kg'은 같다. '6,520.00 KGS'와 '6,250.00 KGS'는 다르다.
+    """
+    if a is None or b is None:
+        return False
+    if field.endswith(_NUMERIC):
+        parts_a, parts_b = a.split(" + "), b.split(" + ")
+        if len(parts_a) != len(parts_b):
+            return False
+        for x, y in zip(parts_a, parts_b):
+            if parse_number(x) is None or parse_number(x) != parse_number(y):
+                return False
+            ux, uy = _unit_after_number(x), _unit_after_number(y)
+            if ux and uy and ux.rstrip("S") != uy.rstrip("S"):  # KG·KGS는 같고 KG·LBS는 다르다
+                return False
+        return True
+    return _text_core(a) == _text_core(b)
 
 
 def reread_field(
@@ -143,12 +169,12 @@ def reread_field(
             doc=doc.doc_type, field=field, first_raw=first, second_raw=found, checked_by="textract", same=found is not None
         )
     # 3. 칸 하나만 모델에게 두 번
-    reader = reader or _strands_reader
+    reader = reader or extract._strands_reader  # 부를 때 찾는다 (테스트가 extract._strands_reader를 바꿔 끼움)
     blocks, prompt = content_blocks(doc.file, data), _field_prompt(doc, field)
     with ThreadPoolExecutor(max_workers=2) as pool:  # 두 번 묻기를 동시에 (서로의 답을 보지 않는다)
         futures = [pool.submit(_ask_twice, lambda: reader(blocks, prompt)) for _ in range(2)]
         answers = [field_raw(f.result(), field) for f in futures]
-    same = _same(answers[0], first) and _same(answers[1], first)
+    same = same_value(field, answers[0], first) and same_value(field, answers[1], first)
     return RereadResult(
         doc=doc.doc_type, field=field, first_raw=first, second_raw=answers[0], checked_by="model_reread", same=same
     )
