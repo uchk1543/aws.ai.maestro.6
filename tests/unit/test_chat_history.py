@@ -446,7 +446,10 @@ def test_stored_item_layout(seed, chat_table):
 # ---------------------------------------------------------------------------
 # POST 기록 예시
 # ---------------------------------------------------------------------------
-def test_two_turns_then_get_returns_four_lines(chat_table):
+def test_two_turns_then_get_returns_four_lines(chat_table, monkeypatch):
+    # 실제 시계면 두 요청이 같은 밀리초에 들 수 있고, 그때 순서는 tag 글자 순서라 요청 순서와 다를 수 있다 (설계 열린 점 13)
+    clock = iter(range(MS_2026, MS_2026 + 10_000, 1000))
+    monkeypatch.setattr(handler, "_now_ms", lambda: next(clock))
     assert post({"session_id": "s1", "message": "심사 중인 화물 알려줘"})[0] == 200
     assert post({"session_id": "s1", "message": "  심사 중 몇 건이야? "})[0] == 200
     status, body = get("s1")
