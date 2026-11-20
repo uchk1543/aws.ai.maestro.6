@@ -1,6 +1,7 @@
 """서류 교차 검증. 담당: 검증. 규칙: .kiro/steering/agent-design.md 3·5번, 형식: docs/schema.md 약속 2
 
 P0 규칙 셋(X-INV-01 송장 번호, X-QTY-01 총수량, X-WT-01 총중량)은 서류 전체 값만 비교한다.
+P1 규칙(FB06 #163)은 X-PKG-01 총포장수(서류끼리), X-CNTR-01 컨테이너 번호 체크 디지트와 X-SUM-01 줄 금액 합(서류 한 장 안)이다.
 규칙 문장틀과 허용 오차는 tools/rules/rules.csv, 비교 전에 맞추는 표기(단위 별칭, 번호·품명 정리)는
 tools/rules/units.csv, tools/rules/text_rules.csv 에 있다.
 """
@@ -152,13 +153,18 @@ def _read_invoice_no(doc: ExtractedDocument) -> _Read:
     return _Read(None, "doc_no", cell.raw, cell.unreadable or "칸 없음")
 
 
+def _is_absent(cell: Cell | None) -> bool:
+    """그 서류에 이 칸이 없는가. 칸 자체가 없거나, 아무것도 못 읽었고 이유가 '칸 없음'(또는 이유 없음)일 때."""
+    return cell is None or (cell.value is None and cell.raw is None and cell.unreadable in (None, "칸 없음"))
+
+
 def _read_total_packages(doc: ExtractedDocument) -> _Read:
     """총포장수(Total Packages, No. of Pkgs). 품목 수량 합계(total_qty)와 다르다.
 
     포장명세서는 총포장수를 안 찍는 양식도 있어서, 칸이 없으면 비교에서 뺀다(absent). 행을 더해 만들지 않는다.
     """
     cell = doc.total_packages
-    if cell is None or (cell.value is None and cell.raw is None and cell.unreadable in (None, "칸 없음")):
+    if _is_absent(cell):
         return _Read(None, "total_packages", None, "칸 없음", absent=True)
     if isinstance(cell.value, (int, float)):
         return _Read(float(cell.value), "total_packages", cell.raw, shown=_fmt(float(cell.value)))
@@ -275,6 +281,116 @@ def _check_rule(rule_id: str, docs: list[ExtractedDocument]) -> list[Issue]:
     return issues
 
 
+# ---------------------------------------------------------------------------
+# 서류 한 장 안에서 계산하는 규칙 (agent-design.md 3번 1층)
+# ---------------------------------------------------------------------------
+_CONTAINER_NO = re.compile(r"[A-Z]{3}[UJZ]\s?\d{6}\s?\d")  # 소유자 코드 3자 + 장비 구분(U·J·Z) + 번호 6자 + 체크 디지트 1자
+
+
+@cache
+def _letter_values() -> dict[str, int]:
+    """ISO 6346 글자값. A=10부터 세되 11의 배수(11, 22, 33)는 건너뛴다. 예: K=21, L=23."""
+    values: dict[str, int] = {}
+    n = 10
+    for ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+        if n % 11 == 0:
+            n += 1
+        values[ch] = n
+        n += 1
+    return values
+
+
+def container_check_digit(first10: str) -> int:
+    """컨테이너 번호 앞 10자(영문 4 + 숫자 6)로 ISO 6346 체크 디지트를 계산한다. 예: 'CSQU305438' → 3."""
+    letters = _letter_values()
+    total = sum((letters[ch] if ch.isalpha() else int(ch)) * 2**i for i, ch in enumerate(first10))
+    return total % 11 % 10
+
+
+def _check_container(docs: list[ExtractedDocument]) -> list[Issue]:
+    """X-CNTR-01: 선하증권 컨테이너 번호의 체크 디지트가 맞는지. 번호가 여러 개면 하나씩 본다."""
+    issues: list[Issue] = []
+    for doc in docs:
+        if doc.doc_type != "bill_of_lading" or _is_absent(doc.container_no):
+            continue
+        cell = doc.container_no
+        assert cell is not None  # _is_absent가 None을 걸러 냈다
+        ko = DOC_TYPE_KO[doc.doc_type]
+        issue_cell = IssueCell(doc=doc.doc_type, field="container_no", raw=cell.raw)
+        text = cell.value if isinstance(cell.value, str) else cell.raw
+        if not text or not text.strip():
+            reason = cell.unreadable or "컨테이너 번호로 읽을 글자가 없음"
+            msg = _rule("X-CNTR-01", "확인 필요")["template"].format(doc=ko, reason=reason)
+            issues.append(Issue(rule_id="X-CNTR-01", grade="확인 필요", cells=[issue_cell], evidence=msg))
+            continue
+        numbers = ["".join(m.split()) for m in _CONTAINER_NO.findall(re.sub(r"[-.]", "", text.upper()))]
+        if not numbers:
+            msg = _rule("X-CNTR-01", "확인 필요")["template"].format(doc=ko, reason="컨테이너 번호 형식이 아님")
+            issues.append(Issue(rule_id="X-CNTR-01", grade="확인 필요", cells=[issue_cell], evidence=msg))
+        for number in numbers:
+            expected = container_check_digit(number[:10])
+            if int(number[10]) != expected:
+                msg = _rule("X-CNTR-01", "불일치")["template"].format(doc=ko, val=number, expected=expected)
+                issues.append(Issue(rule_id="X-CNTR-01", grade="불일치", cells=[issue_cell], evidence=msg))
+    return issues
+
+
+def _line_amount_problem(items_amounts: list[Cell | None]) -> str | None:
+    """줄 금액을 하나라도 숫자로 못 구하면 그 이유(예: '2행 금액 흐림'). 모두 구했으면 None."""
+    if not items_amounts:
+        return "줄 금액 칸 없음"
+    for n, cell in enumerate(items_amounts, start=1):
+        if cell is None:
+            return f"{n}행 금액 칸 없음"
+        if not isinstance(cell.value, (int, float)):
+            return f"{n}행 금액 {cell.unreadable or '숫자로 풀 수 없음'}"
+    return None
+
+
+def _check_amount_sum(docs: list[ExtractedDocument]) -> list[Issue]:
+    """X-SUM-01: 상업송장 줄 금액의 합이 총금액과 같은지. 합은 코드가 더한다."""
+    base = _rule("X-SUM-01", "불일치")
+    tol = float(base["tolerance"])
+    issues: list[Issue] = []
+    for doc in docs:
+        if doc.doc_type != "commercial_invoice" or _is_absent(doc.total_amount):
+            continue  # 총금액이 안 찍힌 송장은 비교할 합계가 없다
+        total = doc.total_amount
+        assert total is not None
+        ko = DOC_TYPE_KO[doc.doc_type]
+        total_cell = IssueCell(doc=doc.doc_type, field="total_amount", raw=total.raw)
+        amounts = [item.amount for item in doc.items]
+        problem = (
+            f"총금액 {total.unreadable or '숫자로 풀 수 없음'}"
+            if not isinstance(total.value, (int, float))
+            else _line_amount_problem(amounts)
+        )
+        if problem:
+            msg = _rule("X-SUM-01", "확인 필요")["template"].format(doc=ko, reason=problem)
+            issues.append(Issue(rule_id="X-SUM-01", grade="확인 필요", cells=[total_cell], evidence=msg))
+            continue
+        line_sum = round(sum(float(c.value) for c in amounts if c is not None and isinstance(c.value, (int, float))), 2)
+        diff = abs(line_sum - float(total.value))  # type: ignore[arg-type]
+        if diff <= _EPS:
+            continue
+        grade: Grade = "참고" if diff <= tol + _EPS else "불일치"
+        msg = _rule("X-SUM-01", grade)["template"].format(
+            a_doc=ko, a_val=_fmt(line_sum), b_val=_fmt(float(total.value)), tol=_fmt(tol)  # type: ignore[arg-type]
+        )
+        cells = [total_cell] + [
+            IssueCell(doc=doc.doc_type, field=f"items[{n}].amount", raw=c.raw) for n, c in enumerate(amounts) if c is not None
+        ]
+        issues.append(Issue(rule_id="X-SUM-01", grade=grade, cells=cells, evidence=msg))
+    return issues
+
+
+# 서류 한 장 안에서 판정하는 규칙(rules.csv의 rule_id → 판정 함수). 나머지는 서류끼리 비교(_check_rule)
+_SINGLE_DOC_RULES: dict[str, Callable[[list[ExtractedDocument]], list[Issue]]] = {
+    "X-CNTR-01": _check_container,
+    "X-SUM-01": _check_amount_sum,
+}
+
+
 def cross_check(docs: list[ExtractedDocument]) -> list[Issue]:
     """읽은 서류끼리 대조해 문제 목록을 돌려준다.
 
@@ -285,5 +401,6 @@ def cross_check(docs: list[ExtractedDocument]) -> list[Issue]:
     print(f"[tool] cross_check docs={[d.doc_type for d in docs]}")
     issues: list[Issue] = []
     for rule_id in _rule_ids():
-        issues += _check_rule(rule_id, docs)
+        single = _SINGLE_DOC_RULES.get(rule_id)
+        issues += single(docs) if single else _check_rule(rule_id, docs)
     return issues
