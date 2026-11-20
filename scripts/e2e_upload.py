@@ -4,7 +4,9 @@
 AWS 자격 증명을 쓰지 않고 공개 주소(CloudFront)만 부른다. 화면이 하는 일과 같다.
 
 실행: uv run python -m scripts.e2e_upload https://<CloudFront 주소> samples/dev/D003/doc_a.pdf samples/dev/D003/doc_b.pdf
-  --choose            사람 확인 필요 HS 행마다 후보 1순위를 사람이 고른 것처럼 POST /api/jobs/{id}/hs
+  --choose            사람 확인 필요 HS 행마다 정답지(eval/sets.csv)의 정답 HS를 사람이 고른 것처럼 POST /api/jobs/{id}/hs.
+                      정답을 모르는 행(세트 폴더가 아닌 파일)은 고르지 않는다. 고른 HS는 확정 이력에 남는다 (#160)
+                      시험 뒤에는 infra/reset_demo.py --job <job_id> 로 지운다
   --approve <이름>    이어서 POST /api/jobs/{id}/approve (WMS 등록)
 """
 import json
@@ -34,11 +36,35 @@ def _put(url: str, data: bytes, content_type: str) -> int:
         return res.status
 
 
-def _after(base: str, job: dict, choose: bool, approver: str | None) -> None:
+SETS_CSV = Path(__file__).resolve().parents[1] / "eval" / "sets.csv"
+
+
+def answer_hs(set_id: str | None, sets_csv: Path = SETS_CSV) -> dict[int, str]:
+    """정답지의 품목별 HS (eval/sets.csv hs_answer). 세트를 모르면 빈 dict.
+
+    --choose는 이 값만 고른다. 후보 1순위를 고르면 틀린 HS가 확정 이력에 남아 다음 자동 확정이 틀린다 (#160).
+    """
+    import csv
+
+    if not set_id or not sets_csv.exists():
+        return {}
+    with sets_csv.open(encoding="utf-8", newline="") as fh:
+        return {int(r["line"]): r["hs_answer"] for r in csv.DictReader(fh) if r["set_id"] == set_id and r["hs_answer"]}
+
+
+def choices(hs: list[dict], answers: dict[int, str]) -> tuple[list[dict], list[int]]:
+    """사람 확인 필요 행 중 정답 HS를 아는 행만 고른다. 반환: (고를 것, 정답을 몰라 건너뛴 행)."""
+    waiting = [h["line"] for h in hs if h["status"] == "사람 확인 필요"]
+    return [{"line": n, "hs": answers[n]} for n in waiting if n in answers], [n for n in waiting if n not in answers]
+
+
+def _after(base: str, job: dict, choose: bool, approver: str | None, set_id: str | None = None) -> None:
     """HS 고르기(C3)와 승인(D3)을 화면처럼 부른다."""
     job_id, hs = job["job_id"], (job.get("result") or {}).get("hs", [])
     if choose:
-        picks = [{"line": h["line"], "hs": h["candidates"][0]["hs"]} for h in hs if h["status"] == "사람 확인 필요" and h["candidates"]]
+        picks, skipped = choices(hs, answer_hs(set_id))
+        if skipped:
+            print(f"[e2e] 정답 HS를 몰라 고르지 않은 행 {skipped} (세트 {set_id or '모름'}). 확정 이력을 더럽히지 않으려고 1순위를 고르지 않는다")
         if picks:
             status, body = _call("POST", f"{base}/api/jobs/{job_id}/hs", {"choices": picks})
             filled = len((body.get("declaration_draft") or {}).get("fields", []))
@@ -86,7 +112,8 @@ def main() -> None:
     if job.get("error"):
         print(f"  [오류] {job['error']}")
     if last == "waiting_approval":
-        _after(base, job, choose, approver)
+        set_id = paths[0].parent.name if paths and paths[0].parent.name.startswith("D") else None  # samples/dev/D005/…
+        _after(base, job, choose, approver, set_id)
 
 
 if __name__ == "__main__":
