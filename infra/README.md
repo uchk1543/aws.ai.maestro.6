@@ -71,7 +71,7 @@ MODEL_ID=global.anthropic.claude-sonnet-5-5 bash infra/recreate-table.sh <테이
 
 ## 실행 순서 (PM)
 ```bash
-aws login && aws sts get-caller-identity       # 계정 465105354705, 사용자 확인
+aws login && aws sts get-caller-identity       # 계정 <계정ID>, 사용자 확인
 git switch main && git pull && uv sync && uv run pytest -q
 
 # 처음 한 번: 리소스 만들기 (있으면 건너뜀, 지우지 않음). CloudFront가 퍼지는 데 5~10분
@@ -98,7 +98,7 @@ uv run python -m scripts.e2e_upload https://<CloudFront 주소> samples/dev/D003
 ```
 S3에 직접 올려 보는 옛 방법:
 ```bash
-BUCKET=team06-docs-465105354705
+BUCKET=team06-docs-<계정ID>
 aws s3 cp <상업송장>.pdf s3://$BUCKET/uploads/s1/invoice.pdf
 aws s3 cp <포장명세서>.pdf s3://$BUCKET/uploads/s1/packing_list.pdf
 URL=https://<CloudFront 주소>
