@@ -474,6 +474,9 @@ def put_hs_job(table, *, status="waiting_approval", with_docs=True, with_importe
     table.put_item(Item=item)
 
 
+KNOWN_HS = {"8507600000", "8507609000", "8507800000"}  # 가짜 HS부호 표
+
+
 @pytest.fixture
 def wms_memory(monkeypatch):
     """가상 WMS(team06-wms) 대신 메모리판. 승인(D3)과 HS 선택 뒤 자동 등록(D2)이 여기에 쓴다."""
@@ -503,6 +506,8 @@ def hs_fakes(fakes, wms_memory, monkeypatch):
         return DeclarationDraft(fields=fields, blank_fields=["items[0].gross_kg"])
 
     monkeypatch.setattr(handler, "_hs_history", lambda: history)
+    # HS부호 표 확인(#164)도 가짜로 끼운다. 예시 후보 8507600000은 실제 표에 없다
+    monkeypatch.setattr(handler, "_hs_known", lambda code: code in KNOWN_HS)
     monkeypatch.setattr(hs, "item_key", fake_item_key)
     monkeypatch.setattr(hs, "confirm_by_human", fake_confirm)
     monkeypatch.setattr(declaration, "draft_declaration", fake_draft)
@@ -553,6 +558,51 @@ def test_hs_bad_choices_are_400_and_write_nothing(hs_fakes, body):
     put_hs_job(table)
     assert call("POST", f"/jobs/{HS_JOB}/hs", body)[0] == 400
     assert history.rows == {} and calls["confirm"] == [] and calls["draft"] == []
+
+
+def test_hs_not_in_table_is_400_and_changes_nothing(hs_fakes):
+    """HS부호 표에 없는 코드는 400이다. 이력·작업은 그대로다 (#181)."""
+    table, history, calls = hs_fakes
+    put_hs_job(table)
+    before = dict(table.items[HS_JOB])
+
+    status, body = call("POST", f"/jobs/{HS_JOB}/hs", {"choices": [{"line": 1, "hs": "1234567890"}]})
+
+    assert status == 400
+    assert "HS부호 표에 없는" in body["error"] and "1234567890" in body["error"]
+    assert history.rows == {} and calls["confirm"] == [] and calls["draft"] == []
+    assert table.items[HS_JOB] == before
+
+
+def test_hs_outside_candidates_is_200_and_noted_in_steps(hs_fakes):
+    """표에 있지만 후보 3개 밖의 코드는 받고, 단계 기록에 '후보 밖에서 직접 입력'을 남긴다 (#181)."""
+    table, history, _ = hs_fakes
+    put_hs_job(table)
+
+    status, _ = call("POST", f"/jobs/{HS_JOB}/hs", {"choices": [{"line": 1, "hs": "8507609000"}]})
+
+    assert status == 200
+    assert history.rows == {(IMPORTER, "CI-BP-200"): ("8507609000", HS_JOB)}
+    _, job = call("GET", f"/jobs/{HS_JOB}")
+    [step] = [s for s in job["steps"] if s["tool"] == "confirm_by_human"]
+    assert "1행 8507609000 (후보 밖에서 직접 입력)" in step["summary"]
+
+
+def test_hs_from_candidates_is_not_noted_as_outside(hs_fakes):
+    table, _, _ = hs_fakes
+    put_hs_job(table)
+    assert call("POST", f"/jobs/{HS_JOB}/hs", {"choices": [{"line": 1, "hs": "8507600000"}]})[0] == 200
+    _, job = call("GET", f"/jobs/{HS_JOB}")
+    [step] = [s for s in job["steps"] if s["tool"] == "confirm_by_human"]
+    assert "후보 밖" not in step["summary"]
+
+
+def test_hs_known_uses_real_hs_table():
+    """가짜 없이 실제 HS부호 표(data/hs/hs_codes.csv)로 확인한다."""
+    assert handler._hs_known("8507609000")
+    assert not handler._hs_known("8507600000")  # 6자리 8507.60 아래에는 10자리 세분만 있다
+    assert not handler._hs_known("1234567890")
+    assert not handler._hs_known("８５０７６０９０００")  # 전각 숫자는 10자리 ASCII가 아니다 (is_known_hs, #164)
 
 
 def test_hs_unknown_job_is_404(hs_fakes):

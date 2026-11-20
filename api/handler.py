@@ -218,6 +218,22 @@ def _hs_history() -> DynamoHSHistory:
     return DynamoHSHistory(boto3.resource("dynamodb", config=config).Table(os.environ["HS_HISTORY_TABLE"]))
 
 
+@cache
+def _hs_table() -> hs.CsvHSTable:
+    """HS부호 표(data/hs/hs_codes.csv). Lambda 실행 환경마다 처음 한 번만 읽는다 (처리 Lambda와 같은 zip에 들어 있다)."""
+    return hs.load_hs_table()
+
+
+def _hs_known(code: str) -> bool:
+    """사람이 고른 HS가 HS부호 표에 있는 10자리 코드인지 본다 (#181).
+
+    언제: POST /jobs/{id}/hs에서 이력을 쓰기 전. 표에 없는 코드가 신고서 초안과 확정 이력에 들어가지 않게 한다.
+    받는 것: code(고른 코드). 반환: 10자리 ASCII 숫자이고 표에 있으면 True.
+    표 확인은 tools/hs.py의 is_known_hs(#164)가 한다. 형식은 _validate_choices가 먼저 보지만 여기서도 한 번 더 본다.
+    """
+    return hs.is_known_hs(code, _hs_table())
+
+
 # ---------------------------------------------------------------------------
 # 응답
 # ---------------------------------------------------------------------------
@@ -406,8 +422,9 @@ def choose_hs(job_id: str, body) -> dict:
     등록하면 화물 기록 상태도 '수입신고'로 고친다 (E3).
 
     언제: 화면에서 '사람 확인 필요' 품목의 HS를 고른 뒤 (agent-design.md 6·8번). 모델 호출 없음.
-    받는 것: {"choices": [{"line", "hs"}]}. line은 이 작업의 HS 결과에 있는 행, hs는 10자리.
-    반환: 200 {"declaration_draft"} / 400 요청 형식 / 404 없는 작업
+    받는 것: {"choices": [{"line", "hs"}]}. line은 이 작업의 HS 결과에 있는 행, hs는 HS부호 표에 있는 10자리.
+      후보 3개 밖의 코드도 표에 있으면 받고, 단계 기록에 '후보 밖에서 직접 입력'을 남긴다 (#181).
+    반환: 200 {"declaration_draft"} / 400 요청 형식, HS부호 표에 없는 코드 / 404 없는 작업
       / 409 처리 중, 서류 기록이 없음, 수입자를 몰라 확정 이력을 남길 수 없음.
       WMS 상태는 GET /jobs/{id}의 result.wms로 본다. 등록을 못 해도(조건 미달, B/L 없음, 저장소 오류)
       HS 선택은 저장하고 200이다. 그때는 승인 대기로 남아 사람이 승인한다 (D3).
@@ -424,6 +441,9 @@ def choose_hs(job_id: str, body) -> dict:
     picked, problem = _validate_choices(body, set(results))
     if problem:
         return _error(400, problem)
+    unknown = [f"{line}행 {code}" for line, code in picked.items() if not _hs_known(code)]
+    if unknown:  # 표에 없는 코드는 신고서·이력에 넣지 않는다 (#181)
+        return _error(400, f"HS부호 표에 없는 코드입니다: {', '.join(unknown)}. 10자리 HSK를 확인해 주세요")
     context = load_job_docs(item)
     if context is None:
         return _error(409, "이 작업에는 저장된 서류 기록이 없어 신고서 초안을 다시 채울 수 없습니다")
@@ -435,6 +455,9 @@ def choose_hs(job_id: str, body) -> dict:
     if missing:
         return _error(409, f"서류 기록에 {missing}행이 없습니다")
 
+    # 후보 3개 밖에서 직접 넣은 코드는 단계 기록에 남긴다 (#181). 확정하면 후보가 바뀔 수 있어 먼저 본다
+    outside = {line for line, code in picked.items() if code not in {c.hs for c in results[line].candidates}}
+
     # 모두 검사한 뒤에 이력을 쓴다 (요청이 틀렸는데 이력만 남는 일을 막는다)
     history = _hs_history()
     for line, code in picked.items():
@@ -444,7 +467,9 @@ def choose_hs(job_id: str, body) -> dict:
     job.result.hs = [results[r.line] for r in job.result.hs]
     draft = declaration.draft_declaration(docs, job.result.issues, job.result.hs)
     job.result.declaration_draft = draft
-    chosen = ", ".join(f"{line}행 {code}" for line, code in picked.items())
+    chosen = ", ".join(
+        f"{line}행 {code}" + (" (후보 밖에서 직접 입력)" if line in outside else "") for line, code in picked.items()
+    )
     job.steps.append(Step(tool="confirm_by_human", summary=f"사람 확정: {chosen}", ok=True))
     job.steps.append(draft_step(draft))
 

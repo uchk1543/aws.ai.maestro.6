@@ -236,7 +236,7 @@ def test_docs_and_importer_are_saved_then_hs_and_approve_are_200(api_fakes, monk
     row = shipments.rows[BL]
     assert (row.customs_status, row.arrived_at, row.job_id, row.consignee) == ("입항", TODAY, JOB, IMPORTER)
 
-    status, body = call("POST", f"/api/jobs/{JOB}/hs", {"choices": [{"line": 1, "hs": "8507600000"}]})
+    status, body = call("POST", f"/api/jobs/{JOB}/hs", {"choices": [{"line": 1, "hs": "8507602000"}]})  # 실제 HS부호 표에 있는 코드 (#181)
     assert status == 200 and "declaration_draft" in body
     assert [k[0] for k in history.rows] == [IMPORTER]
 
@@ -349,7 +349,7 @@ def test_without_consignee_docs_saved_but_no_importer(api_fakes, monkeypatch):
     worker.lambda_handler({"job_id": JOB, "files": FILES}, None)
 
     assert table.items[JOB]["docs"] and "importer" not in table.items[JOB]
-    status, body = call("POST", f"/api/jobs/{JOB}/hs", {"choices": [{"line": 1, "hs": "8507600000"}]})
+    status, body = call("POST", f"/api/jobs/{JOB}/hs", {"choices": [{"line": 1, "hs": "8507602000"}]})
     assert status == 409 and "수입자" in body["error"]
     assert history.rows == {}
 
