@@ -602,6 +602,7 @@ def test_hs_known_uses_real_hs_table():
     assert handler._hs_known("8507609000")
     assert not handler._hs_known("8507600000")  # 6자리 8507.60 아래에는 10자리 세분만 있다
     assert not handler._hs_known("1234567890")
+    assert not handler._hs_known("８５０７６０９０００")  # 전각 숫자는 10자리 ASCII가 아니다 (is_known_hs, #164)
 
 
 def test_hs_unknown_job_is_404(hs_fakes):

@@ -228,10 +228,10 @@ def _hs_known(code: str) -> bool:
     """사람이 고른 HS가 HS부호 표에 있는 10자리 코드인지 본다 (#181).
 
     언제: POST /jobs/{id}/hs에서 이력을 쓰기 전. 표에 없는 코드가 신고서 초안과 확정 이력에 들어가지 않게 한다.
-    받는 것: code(10자리 숫자 문자열). 반환: 표에 있으면 True.
-    TODO(#164): 2번이 tools/hs.py에 표 확인 함수를 만들면 그 함수로 바꾼다. 지금은 이미 있는 CsvHSTable.exists를 쓴다.
+    받는 것: code(고른 코드). 반환: 10자리 ASCII 숫자이고 표에 있으면 True.
+    표 확인은 tools/hs.py의 is_known_hs(#164)가 한다. 형식은 _validate_choices가 먼저 보지만 여기서도 한 번 더 본다.
     """
-    return _hs_table().exists(code)
+    return hs.is_known_hs(code, _hs_table())
 
 
 # ---------------------------------------------------------------------------
