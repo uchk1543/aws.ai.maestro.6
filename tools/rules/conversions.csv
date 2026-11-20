@@ -1,0 +1,2 @@
+from_unit,to_unit,factor,source
+LB,KG,0.45359237,agent-design.md 3번 (LBS → kg) · 국제 야드·파운드 협정(1959)의 정의 1lb = 0.45359237kg · tools/extract.py _LB_TO_KG와 같은 값
