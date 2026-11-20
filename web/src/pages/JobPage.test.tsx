@@ -1,5 +1,5 @@
 // G3 진행 화면: 2초 폴링 규칙과 steps 표시
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import jobExample from "../../../docs/examples/job_waiting_approval.json";
 import * as api from "../api";
@@ -50,12 +50,24 @@ describe("JobPage", () => {
     renderWithQuery(<JobPage jobId="job-7c1e" />);
 
     expect(await screen.findByText("bl.jpg → 선하증권")).toBeInTheDocument();
-    const items = screen.getAllByRole("listitem");
+    const items = within(screen.getByRole("list", { name: "진행 단계" })).getAllByRole("listitem");
     expect(items).toHaveLength(example.steps.length);
     expect(items[2]).toHaveTextContent("불일치 1건");
     expect(items[2]).toHaveTextContent("cross_check");
     expect(screen.getByText("승인 대기")).toBeInTheDocument();
     expect(api.getJob).toHaveBeenCalledWith("job-7c1e");
+  });
+
+  it("결과가 있으면 오류 목록을 보여 주고, 결과 전에는 보이지 않는다", async () => {
+    vi.mocked(api.getJob).mockResolvedValue(example);
+    const { unmount } = renderWithQuery(<JobPage jobId="job-7c1e" />);
+    expect(await screen.findByText("오류 목록 (1)")).toBeInTheDocument();
+    unmount();
+
+    vi.mocked(api.getJob).mockResolvedValue(at("running", { steps: [example.steps[0]] }));
+    renderWithQuery(<JobPage jobId="job-0000abcd" />);
+    expect(await screen.findByText("처리 중")).toBeInTheDocument();
+    expect(screen.queryByText("오류 목록", { exact: false })).not.toBeInTheDocument();
   });
 
   it("처리 중이면 새로 고친다는 안내가 보인다", async () => {

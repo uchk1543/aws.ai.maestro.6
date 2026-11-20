@@ -1,6 +1,7 @@
 // G3 진행 화면: GET /api/jobs/{id} 를 2초마다 불러 단계 기록(steps)을 보여 준다
 import { useQuery } from "@tanstack/react-query";
 import { ApiError, getJob } from "../api";
+import { IssueList } from "../components/IssueList";
 import type { Job, JobStatus } from "../types";
 
 export const POLL_MS = 2000;
@@ -57,7 +58,7 @@ export function JobPage({ jobId }: { jobId: string }) {
             {job.steps.length === 0 ? (
               <p className="empty">아직 시작한 단계가 없습니다.</p>
             ) : (
-              <ol className="steps">
+              <ol className="steps" aria-label="진행 단계">
                 {job.steps.map((s, i) => (
                   <li key={i} className={s.ok ? "step ok" : "step fail"}>
                     <span className="step-mark" aria-label={s.ok ? "성공" : "실패"}>
@@ -70,6 +71,8 @@ export function JobPage({ jobId }: { jobId: string }) {
               </ol>
             )}
           </div>
+
+          {job.result && <IssueList issues={job.result.issues} />}
         </>
       )}
     </section>
