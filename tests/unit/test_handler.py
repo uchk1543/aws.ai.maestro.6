@@ -21,7 +21,7 @@ import tools.wms as wms
 from tests.unit.fakes import MemoryHSHistory, MemoryWms
 from tests.unit.test_report_shipment import TODAY, MemoryWriter
 from tools.models import (
-    Cell, DeclarationDraft, DeclarationField, ExtractedDocument, Issue, Job, OcrLine, OcrResult, RawDocument, Shipment,
+    Cell, DeclarationDraft, DeclarationField, ExtractedDocument, ExtractedItem, Issue, Job, OcrLine, OcrResult, RawDocument, Shipment,
     StatsResponse, WmsState,
 )
 from tools.ocr import PageImage
@@ -211,8 +211,14 @@ def test_post_saves_queued_and_invokes_worker_without_processing(fakes, lambda_c
     assert status == 200 and set(body) == {"job_id"}
     job_id = body["job_id"]
     assert call("GET", f"/api/jobs/{job_id}") == (
-        200, {"job_id": job_id, "status": "queued", "steps": [], "result": None, "error": None},
+        200,
+        {
+            "job_id": job_id, "status": "queued", "steps": [], "result": None, "error": None,
+            # 작업 화면 맨 위 '다음 할 일' (FB22 #178). 응답 때 정하고 저장하지 않는다
+            "next_action": {"kind": "wait", "message": "처리 중입니다. 끝나면 할 일을 알려 드립니다", "count": None},
+        },
     )
+    assert "next_action" not in fakes.items[job_id]["data"]
     [invoked] = lambda_client.calls
     assert invoked["FunctionName"] == "team06-worker" and invoked["InvocationType"] == "Event"
     assert json.loads(invoked["Payload"]) == {"job_id": job_id, "files": request["files"]}
@@ -1302,6 +1308,65 @@ def test_job_files_broken_image_still_gives_url(fakes, view_s3):
     [view] = call("GET", "/api/jobs/job-0000cccc/files")[1]["files"]
 
     assert view["pages"] == [] and view["url"].startswith("https://s3.test/")
+
+
+def test_read_fields_spread_container_lines_with_site():
+    """끝난 기준 (F12 #230): B/L 컨테이너 줄 칸은 경로·이름·site true. 경로는 IssueCell.field와 같다."""
+    from tools.models import ExtractedContainer
+
+    bl = ExtractedDocument(
+        doc_type="bill_of_lading", file="uploads/s1/bl.pdf",
+        doc_no=Cell(raw="EXBL-001", value="EXBL-001"),
+        shipper_name=Cell(raw="EXAMPLE SHIPPER CO.", value="EXAMPLE SHIPPER CO."),
+        marks=Cell(raw="EXAMPLE KOREA BUSAN", value="EXAMPLE KOREA BUSAN"),
+        containers=[
+            ExtractedContainer(line=1, container_no=Cell(raw="EXMU6058591", value="EXMU6058591"),
+                               seal_no=Cell(raw="EX1470293", value="EX1470293")),
+            ExtractedContainer(line=2, packages=Cell(raw="53 CTNS", value=53, unit="CTN"),
+                               size_type=Cell(raw="20'GP", value="20'GP"), cbm=Cell(raw="3.710 CBM", value=3.71, unit="CBM")),
+        ],
+    )
+
+    fields = {f.field: f for f in handler.read_fields(bl)}
+
+    assert {k: (f.label, f.site) for k, f in fields.items() if k.startswith("containers")} == {
+        "containers[0].container_no": ("1번 컨테이너 번호", True),
+        "containers[0].seal_no": ("1번 컨테이너 봉인 번호", True),
+        "containers[1].packages": ("2번 컨테이너 포장 수", True),
+        "containers[1].size_type": ("2번 컨테이너 규격", True),
+        "containers[1].cbm": ("2번 컨테이너 용적(CBM)", True),
+    }
+    assert fields["containers[1].packages"].value == 53 and fields["containers[1].packages"].unit == "CTN"
+    assert (fields["marks"].label, fields["marks"].site) == ("화인", True)
+    assert (fields["doc_no"].site, fields["shipper_name"].site) == (True, False)  # 송하인은 현장 칸이 아니다
+
+
+def test_read_fields_site_depends_on_doc_type_and_keeps_admin_fields():
+    """끝난 기준 (F12 #230): 송장 금액·단가·결제 조건은 site false로 그대로 나온다. 같은 칸도 서류마다 다르다."""
+    inv = ExtractedDocument(
+        doc_type="commercial_invoice", file="uploads/s1/invoice.pdf",
+        total_amount=Cell(raw="USD 11,130.00", value=11130.0, unit="USD"),
+        payment_term=Cell(raw="T/T 30 DAYS", value="T/T 30 DAYS"),
+        total_gross_kg=Cell(raw="6,250.00 KGS", value=6250.0, unit="KG"),
+        origin=Cell(raw="VIETNAM", value="VIETNAM"),
+        items=[ExtractedItem(line=1, name=Cell(raw="LI-ION BATTERY", value="LI-ION BATTERY"),
+                             unit_price=Cell(raw="12.50", value=12.5, unit="USD"))],
+    )
+    pl = ExtractedDocument(
+        doc_type="packing_list", file="uploads/s1/pl.pdf",
+        total_gross_kg=Cell(raw="6,250.00 KGS", value=6250.0, unit="KG"),
+        items=[ExtractedItem(line=1, packages=Cell(raw="53 CTNS", value=53, unit="CTN"))],
+    )
+
+    inv_fields = {f.field: f.site for f in handler.read_fields(inv)}
+    pl_fields = {f.field: f for f in handler.read_fields(pl)}
+
+    assert inv_fields == {
+        "total_amount": False, "payment_term": False, "total_gross_kg": False, "origin": True,
+        "items[0].name": True, "items[0].unit_price": False,
+    }
+    assert pl_fields["total_gross_kg"].site is True
+    assert (pl_fields["items[0].packages"].label, pl_fields["items[0].packages"].site) == ("1행 포장 수", True)
 
 
 @pytest.mark.parametrize("job_id", ["job-00000000", "nope"])

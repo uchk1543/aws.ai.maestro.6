@@ -102,12 +102,21 @@ export interface JobResult {
   declaration_draft: DeclarationDraft | null;
   wms: WmsState | null;
 }
+/** 작업 화면 맨 위 '지금 상태와 다음 할 일' (FB22 #178, 서버 tools/models.py NextAction) */
+export type NextActionKind = "wait" | "fix_docs" | "choose_hs" | "approve" | "none" | "reupload";
+export interface NextAction {
+  kind: NextActionKind;
+  message: string;
+  count: number | null;
+}
 export interface Job {
   job_id: string;
   status: JobStatus;
   steps: Step[];
   result: JobResult | null;
   error?: string | null;
+  /** 서버가 응답 때 정한다. 옛 서버는 주지 않는다 (그때는 nextActionOf 가 같은 규칙으로 정한다) */
+  next_action?: NextAction | null;
 }
 
 // POST /api/jobs/{id}/hs

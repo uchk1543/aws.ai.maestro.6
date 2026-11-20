@@ -25,6 +25,8 @@ WmsStatus = Literal["승인 대기", "등록됨"]
 WmsBy = Literal["auto", "human"]
 Period = Literal["today", "this_week", "last_week", "range"]
 ChatRole = Literal["user", "assistant"]
+# 작업 화면 맨 위 '다음 할 일' (FB22 #178). 코드가 결과로 정한다
+NextActionKind = Literal["wait", "fix_docs", "choose_hs", "approve", "none", "reupload"]
 
 DOC_TYPE_KO: dict[str, str] = {
     "bill_of_lading": "선하증권",
@@ -471,6 +473,17 @@ class JobResult(_Strict):
     wms: WmsState | None = Field(default=None, description="WMS 상태")
 
 
+class NextAction(_Strict):
+    """작업 화면 맨 위에 보일 '지금 상태와 다음 할 일' 한 줄 (FB22 #178). 저장하지 않고 GET /jobs/{id} 때 코드가 결과로 정한다."""
+
+    kind: NextActionKind = Field(
+        description="wait 처리 중 · fix_docs 불일치가 남아 서류를 고쳐 다시 올려야 함 · choose_hs HS를 골라야 함 · "
+        "approve 확인하고 승인 · none 할 일 없음(등록됨) · reupload 실패해 다시 올림"
+    )
+    message: str = Field(description="화면에 그대로 보일 한 줄. 예: '불일치 1건: 서류를 고쳐 다시 올려야 등록할 수 있습니다'")
+    count: int | None = Field(default=None, description="불일치 건수·고를 HS 수·확인 필요 건수. 없으면 null")
+
+
 class Job(_Strict):
     """GET /jobs/{id} 응답."""
 
@@ -479,6 +492,9 @@ class Job(_Strict):
     steps: list[Step] = Field(default_factory=list, description="도구 호출 기록")
     result: JobResult | None = Field(default=None, description="결과. 끝나기 전이면 null")
     error: str | None = Field(default=None, description="failed일 때 이유")
+    next_action: NextAction | None = Field(
+        default=None, description="지금 상태와 다음 할 일 (FB22). GET /jobs/{id}가 채운다. 저장된 작업 줄에는 없다"
+    )
 
 
 class NoticeDocument(_Strict):

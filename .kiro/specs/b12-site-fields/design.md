@@ -12,6 +12,8 @@
 
 작업 ID는 tasks.csv에 없는 다음 번호로 제안한 것이다. PM이 정한다.
 
+진행: #228은 PR #237로 main에 합쳐졌다 (`0dfec90`). 리뷰 보완은 `fix/228-site-fields-review`. #229·#230은 아직.
+
 ## Architecture
 
 ```
@@ -45,7 +47,8 @@ ExtractedItem.packages: Cell | None = None                      # 포장명세�
 
 모델이 채우는 모양
 - `RawContainer`: `line` + 여섯 칸 모두 필수 + null 허용 (`RawOriginItem`과 같은 방식).
-- `RawBillOfLading`: `marks`, `containers: list[RawContainer]`를 필수로 더한다.
+- `RawBillOfLading`: `marks`, `containers: list[RawContainer]`를 더한다. 파이썬 기본값(None·빈 목록)을 두고 JSON 스키마에서만 필수로 표시한다
+  (기존 B/L 가짜 응답이 깨지지 않게, `RawDocument`와 같은 방식).
 - `RawDocument`: `marks`를 `RAW_REQUIRED_NEW`에, `RawItem`: `packages`를 필수 목록에 더한다.
 - 선택 속성은 늘지 않는다. `tests/unit/test_extract.py`의 `_optional_count(...) <= 12`가 지킨다.
 
@@ -80,6 +83,7 @@ ExtractedItem.packages: Cell | None = None                      # 포장명세�
 - 판독 캐시 키에 스키마 해시가 들어가므로(`_schema_hash`) 옛 캐시는 저절로 안 쓰인다.
 
 다시 확인 (tools/reread.py): `field_raw`의 경로에 `containers[i].<칸>`, `containers[*].<칸>`을 더한다. 대조 규칙이 짚는 칸을 다시 확인할 수 있어야 한다.
+`same_value`는 `packages`·`cbm`(새 칸과 `total_packages`·`total_cbm`)을 숫자와 단위로 비교한다. 단위는 `CTNS`·`CARTONS` = `CTN`으로 맞춘다 (리뷰 보완).
 
 ### 대조 규칙 (tools/validate.py, tools/rules/rules.csv)
 

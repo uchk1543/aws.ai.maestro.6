@@ -8,7 +8,18 @@ import type { JobStatus, WmsBy, WmsState } from "../types";
 
 const BY_KO: Record<WmsBy, string> = { auto: "자동 등록", human: "사람 승인" };
 
-export function WmsPanel({ jobId, jobStatus, wms }: { jobId: string; jobStatus: JobStatus; wms: WmsState | null }) {
+export function WmsPanel({
+  jobId,
+  jobStatus,
+  wms,
+  blocked = null,
+}: {
+  jobId: string;
+  jobStatus: JobStatus;
+  wms: WmsState | null;
+  /** 승인해도 등록할 수 없는 이유 (불일치가 남음, FB22). 있으면 승인 버튼을 막고 누르기 전에 보인다 */
+  blocked?: string | null;
+}) {
   const queryClient = useQueryClient();
   const [approver, setApprover] = useState("");
   const mutation = useMutation({
@@ -42,6 +53,12 @@ export function WmsPanel({ jobId, jobStatus, wms }: { jobId: string; jobStatus: 
         </p>
       )}
 
+      {canApprove && blocked && (
+        <p className="wms-blocked" role="note">
+          {blocked}
+        </p>
+      )}
+
       {canApprove && (
         <form
           className="wms-approve"
@@ -60,7 +77,7 @@ export function WmsPanel({ jobId, jobStatus, wms }: { jobId: string; jobStatus: 
               onChange={(e) => setApprover(e.target.value)}
             />
           </label>
-          <button type="submit" className="primary" disabled={approver.trim() === "" || mutation.isPending}>
+          <button type="submit" className="primary" disabled={approver.trim() === "" || mutation.isPending || Boolean(blocked)}>
             {mutation.isPending ? "등록하는 중…" : "승인하고 WMS 등록"}
           </button>
         </form>

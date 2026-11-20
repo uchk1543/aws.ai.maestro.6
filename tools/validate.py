@@ -3,11 +3,13 @@
 P0 규칙 셋(X-INV-01 송장 번호, X-QTY-01 총수량, X-WT-01 총중량)은 서류 전체 값만 비교한다.
 P1 규칙(FB06 #163)은 X-PKG-01 총포장수(서류끼리), X-CNTR-01 컨테이너 번호 체크 디지트와 X-SUM-01 줄 금액 합(서류 한 장 안)이다.
 현장 칸 규칙(B13 #229)은 X-MARK-01 화인(선하증권↔포장명세서), X-PKG-02 컨테이너 줄 포장 수 합과 X-PKG-03 품목별 포장 수 합(서류 한 장 안)이다.
+운임·원산지·소급 발급 규칙(FB06 #163)은 X-FRT-01 인코텀즈와 운임 조건, X-OC-01 제조품의 WO 기준, X-RETRO-01 발급 기한이다. 모두 '확인 필요'다.
 규칙 문장틀과 허용 오차는 tools/rules/rules.csv, 비교 전에 맞추는 표기(단위 별칭, 번호·품명 정리)는
 tools/rules/units.csv, tools/rules/text_rules.csv 에 있다.
 """
 
 import csv
+import datetime as dt
 import html
 import re
 from collections import Counter
@@ -486,13 +488,118 @@ def _check_item_packages(docs: list[ExtractedDocument]) -> list[Issue]:
         rows=lambda d: [(i.line, i.packages) for i in d.items],
         rows_field="items",
         row_label="{n}행",
-    )# 서류 한 장 안에서 판정하는 규칙(rules.csv의 rule_id → 판정 함수). 나머지는 서류끼리 비교(_check_rule)
+    )
+def _cell_text(cell: Cell | None) -> str:
+    """칸의 글자. 푼 글자(value)가 있으면 그것, 없으면 적힌 그대로(raw). 없으면 빈 글자."""
+    if cell is None:
+        return ""
+    return cell.value if isinstance(cell.value, str) else (cell.raw or "")
+def _unread_reason(label: str, cell: Cell | None, suffix: str) -> str:
+    """못 구한 이유 문구. 읽지 못한 이유가 있으면 '<칸 이름> <이유>', 없으면 '<칸 이름><suffix>'. 예: '발급일 흐림', '발급일을 날짜로 풀 수 없음'."""
+    return f"{label} {cell.unreadable}" if cell is not None and cell.unreadable else f"{label}{suffix}"
+# 인코텀즈 → 운임을 누가 내나. 수출자가 내면 선불(PREPAID), 수입자가 내면 후불(COLLECT) (Incoterms 2020)
+_PREPAID_TERMS = ("CFR", "CNF", "CIF", "CPT", "CIP", "DAP", "DPU", "DAT", "DDP")
+_COLLECT_TERMS = ("EXW", "FCA", "FAS", "FOB")
+_INCOTERM = re.compile(r"\b(" + "|".join(_PREPAID_TERMS + _COLLECT_TERMS) + r")\b")
+def _check_freight(docs: list[ExtractedDocument]) -> list[Issue]:
+    """X-FRT-01: 상업송장 인코텀즈(CIF·CFR 등은 선불, FOB·EXW 등은 후불)와 선하증권 운임 조건이 맞는지.
+    FOB인데 운임 선불로 찍는 B/L도 있어서 어긋나도 '확인 필요'다. 한쪽이라도 칸이 없거나 서류가 없으면 건너뛴다.
+    """
+    inv = next((d for d in docs if d.doc_type == "commercial_invoice"), None)
+    bl = next((d for d in docs if d.doc_type == "bill_of_lading"), None)
+    if inv is None or bl is None or _is_absent(inv.incoterms) or _is_absent(bl.freight_term):
+        return []
+    template = _rule("X-FRT-01", "확인 필요")["template"]
+    term_cell = IssueCell(doc="commercial_invoice", field="incoterms", raw=inv.incoterms.raw if inv.incoterms else None)
+    freight_cell = IssueCell(doc="bill_of_lading", field="freight_term", raw=bl.freight_term.raw if bl.freight_term else None)
+    def issue(reason: str, cells: list[IssueCell]) -> list[Issue]:
+        return [Issue(rule_id="X-FRT-01", grade="확인 필요", cells=cells, evidence=template.format(reason=reason))]
+    term_match = _INCOTERM.search(_cell_text(inv.incoterms).upper())
+    if term_match is None:
+        return issue(_unread_reason("상업송장 인코텀즈", inv.incoterms, "를 풀 수 없음"), [term_cell])
+    freight = _cell_text(bl.freight_term).upper()
+    prepaid, collect = "PREPAID" in freight, "COLLECT" in freight
+    if prepaid == collect:  # 둘 다 없거나 둘 다 있으면 선불·후불을 가릴 수 없다
+        return issue(_unread_reason("선하증권 운임 조건", bl.freight_term, "을 선불·후불로 풀 수 없음"), [freight_cell])
+    term = term_match.group(1)
+    if (term in _PREPAID_TERMS) == prepaid:
+        return []
+    paid, expected = ("FREIGHT PREPAID", "선불") if prepaid else ("FREIGHT COLLECT", "후불")
+    other = "후불" if prepaid else "선불"
+    return issue(f"상업송장 {term}은 운임 {other}이 보통인데 선하증권은 {paid}({expected})", [term_cell, freight_cell])
+_WO_MAX_CHAPTER = 27  # 완전생산(WO)이 있을 수 있는 HS 류: 제1~27류(농수산물·광물). 제28류 이상은 제조·가공품
+def _check_origin_criterion(docs: list[ExtractedDocument]) -> list[Issue]:
+    """X-OC-01: 원산지증명서에서 제조품 HS(제28류 이상)의 원산지결정기준이 WO(완전생산)이면 확인 필요.
+    HS를 못 읽은 행은 판단하지 않는다. 기준이 비었거나 협정에 없는 코드인지는 서식 종류를 알아야 해서 여기서 보지 않는다.
+    """
+    template = _rule("X-OC-01", "확인 필요")["template"]
+    issues: list[Issue] = []
+    for doc in docs:
+        if doc.doc_type != "certificate_of_origin":
+            continue
+        for n, item in enumerate(doc.items):
+            if _cell_text(item.origin_criterion).strip().upper() != "WO":
+                continue
+            digits = re.sub(r"\D", "", _cell_text(item.hs_code))
+            if len(digits) < 2 or int(digits[:2]) <= _WO_MAX_CHAPTER:
+                continue
+            reason = f"{item.line}행 원산지결정기준이 WO(완전생산)인데 HS {item.hs_code.raw if item.hs_code else digits}는 제{int(digits[:2])}류 제조품"
+            cells = [
+                IssueCell(doc="certificate_of_origin", field=f"items[{n}].origin_criterion", raw=item.origin_criterion.raw if item.origin_criterion else None),
+                IssueCell(doc="certificate_of_origin", field=f"items[{n}].hs_code", raw=item.hs_code.raw if item.hs_code else None),
+            ]
+            issues.append(Issue(rule_id="X-OC-01", grade="확인 필요", cells=cells, evidence=template.format(reason=reason)))
+    return issues
+def _workdays_after(start: dt.date, days: int) -> dt.date:
+    """start 다음 날부터 주말을 빼고 days 근무일 뒤. 공휴일은 모른다."""
+    day = start
+    while days > 0:
+        day += dt.timedelta(days=1)
+        days -= day.weekday() < 5
+    return day
+def _iso_date(cell: Cell | None) -> dt.date | None:
+    """'YYYY-MM-DD'로 푼 칸을 날짜로. 못 풀면 None."""
+    try:
+        return dt.date.fromisoformat(_cell_text(cell).strip())
+    except ValueError:
+        return None
+def _check_retroactive(docs: list[ExtractedDocument]) -> list[Issue]:
+    """X-RETRO-01: 원산지증명서를 출항일 뒤 기한(근무일)을 넘겨 발급했는데 소급 발급 표시가 없으면 확인 필요.
+    서식 종류(한-중 7근무일, AK·VK 3근무일)를 몰라 긴 쪽으로 재고 공휴일은 빼지 않는다. 날짜가 없는 서류는 건너뛴다.
+    """
+    base = _rule("X-RETRO-01", "확인 필요")
+    window = int(float(base["tolerance"]))
+    issues: list[Issue] = []
+    for doc in docs:
+        if doc.doc_type != "certificate_of_origin" or _is_absent(doc.issue_date) or _is_absent(doc.departure_date):
+            continue
+        if _cell_text(doc.issued_retroactively).strip():
+            continue  # 소급 발급 표시가 있으면 기한 뒤 발급도 유효하다
+        issue_cell = IssueCell(doc=doc.doc_type, field="issue_date", raw=doc.issue_date.raw if doc.issue_date else None)
+        departure_cell = IssueCell(doc=doc.doc_type, field="departure_date", raw=doc.departure_date.raw if doc.departure_date else None)
+        issued, departure = _iso_date(doc.issue_date), _iso_date(doc.departure_date)
+        if issued is None or departure is None:
+            bad, label, cell = (doc.issue_date, "발급일", issue_cell) if issued is None else (doc.departure_date, "출항일", departure_cell)
+            reason = _unread_reason(label, bad, "을 날짜로 풀 수 없음")
+            issues.append(Issue(rule_id="X-RETRO-01", grade="확인 필요", cells=[cell], evidence=base["template"].format(reason=reason)))
+            continue
+        deadline = _workdays_after(departure, window)
+        if issued > deadline:
+            reason = f"발급일 {issued}이 출항일 {departure} 뒤 {window}근무일({deadline}) 기한을 넘었는데 소급 발급 표시가 없음"
+            issues.append(
+                Issue(rule_id="X-RETRO-01", grade="확인 필요", cells=[issue_cell, departure_cell], evidence=base["template"].format(reason=reason))
+            )
+    return issues
+# 서류 한 장 안에서 판정하는 규칙(rules.csv의 rule_id → 판정 함수). 나머지는 서류끼리 비교(_check_rule)
 _SINGLE_DOC_RULES: dict[str, Callable[[list[ExtractedDocument]], list[Issue]]] = {
     "X-CNTR-01": _check_container,
     "X-SUM-01": _check_amount_sum,
     "X-MARK-01": _check_marks,
     "X-PKG-02": _check_container_packages,
     "X-PKG-03": _check_item_packages,
+    "X-FRT-01": _check_freight,
+    "X-OC-01": _check_origin_criterion,
+    "X-RETRO-01": _check_retroactive,
 }
 
 
