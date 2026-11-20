@@ -23,6 +23,11 @@ D001,bill_of_lading,total_packages,53
 D001,bill_of_lading,total_gross_kg,842.7
 D001,bill_of_lading,total_cbm,3.71
 D001,bill_of_lading,freight_term,FREIGHT COLLECT
+D001,bill_of_lading,marks,"EXAMPLE DISTRIBUTION KOREA INC. BUSAN, KOREA C/NO. 1-53 MADE IN CHINA"
+D001,bill_of_lading,containers[0].container_no,EXMU6058591
+D001,bill_of_lading,containers[0].seal_no,EX1470293
+D001,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D001,bill_of_lading,containers[0].packages,53
 D001,certificate_of_origin,co_no,K26TAO0001737
 D001,certificate_of_origin,exporter_name,"QINGDAO SAMPLE TYRE CO., LTD."
 D001,certificate_of_origin,consignee_name,EXAMPLE DISTRIBUTION KOREA INC.
@@ -57,6 +62,15 @@ D002,bill_of_lading,total_packages,337
 D002,bill_of_lading,total_gross_kg,4949.46
 D002,bill_of_lading,total_cbm,69.45
 D002,bill_of_lading,freight_term,FREIGHT COLLECT
+D002,bill_of_lading,marks,"EXAMPLE HOME LIVING CO., LTD. BUSAN, KOREA C/NO. 1-337 MADE IN CHINA"
+D002,bill_of_lading,containers[0].container_no,SMCU8393918
+D002,bill_of_lading,containers[0].seal_no,SL6986329
+D002,bill_of_lading,containers[0].size_type,40'HC (45G1)
+D002,bill_of_lading,containers[0].packages,169
+D002,bill_of_lading,containers[1].container_no,SMCU2669249
+D002,bill_of_lading,containers[1].seal_no,SL4803429
+D002,bill_of_lading,containers[1].size_type,40'HC (45G1)
+D002,bill_of_lading,containers[1].packages,168
 D002,certificate_of_origin,co_no,K26NGB0001561
 D002,certificate_of_origin,exporter_name,"NINGBO EXAMPLE HOUSEWARE CO., LTD."
 D002,certificate_of_origin,consignee_name,"EXAMPLE HOME LIVING CO., LTD."
@@ -93,6 +107,16 @@ D003,bill_of_lading,total_packages,467
 D003,bill_of_lading,total_gross_kg,12683.1
 D003,bill_of_lading,total_cbm,92.11
 D003,bill_of_lading,freight_term,FREIGHT COLLECT
+D003,bill_of_lading,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-467 MADE IN VIETNAM"
+D003,bill_of_lading,containers[0].container_no,SOLU1263698
+D003,bill_of_lading,containers[0].seal_no,SO9008622
+D003,bill_of_lading,containers[0].size_type,40'HC (45G1)
+D003,bill_of_lading,containers[0].packages,234
+D003,bill_of_lading,containers[1].container_no,SOCU3917512
+D003,bill_of_lading,containers[1].seal_no,SO3854898
+D003,bill_of_lading,containers[1].size_type,40'HC (45G1)
+D003,bill_of_lading,containers[1].packages,233
+D003,packing_list,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-467 MADE IN VIETNAM"
 D003,certificate_of_origin,co_no,VN-KR 26/04/02422
 D003,certificate_of_origin,exporter_name,BINH DUONG EXAMPLE FURNITURE JSC
 D003,certificate_of_origin,consignee_name,"SAMPLE TRADING KOREA CO., LTD."
@@ -129,6 +153,12 @@ D004,bill_of_lading,total_packages,476
 D004,bill_of_lading,total_gross_kg,11900
 D004,bill_of_lading,total_cbm,19.04
 D004,bill_of_lading,freight_term,FREIGHT COLLECT
+D004,bill_of_lading,marks,"SAMPLE FOODS KOREA CO., LTD. BUSAN, KOREA C/NO. 1-476 MADE IN VIETNAM"
+D004,bill_of_lading,containers[0].container_no,EXMU2119868
+D004,bill_of_lading,containers[0].seal_no,EX5171299
+D004,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D004,bill_of_lading,containers[0].packages,476
+D004,packing_list,marks,"SAMPLE FOODS KOREA CO., LTD. BUSAN, KOREA C/NO. 1-476 MADE IN VIETNAM"
 D004,certificate_of_origin,co_no,VN-KR 26/03/02336
 D004,certificate_of_origin,exporter_name,MEKONG EXAMPLE SEAFOOD & AGRO JSC
 D004,certificate_of_origin,consignee_name,"SAMPLE FOODS KOREA CO., LTD."
@@ -163,6 +193,12 @@ D005,bill_of_lading,total_packages,535
 D005,bill_of_lading,total_gross_kg,7914.6
 D005,bill_of_lading,total_cbm,63.61
 D005,bill_of_lading,freight_term,FREIGHT PREPAID
+D005,bill_of_lading,marks,"EXAMPLE HOME LIVING CO., LTD. BUSAN, KOREA C/NO. 1-535 MADE IN VIETNAM"
+D005,bill_of_lading,containers[0].container_no,SMCU8379226
+D005,bill_of_lading,containers[0].seal_no,SL9847806
+D005,bill_of_lading,containers[0].size_type,40'HC (45G1)
+D005,bill_of_lading,containers[0].packages,535
+D005,packing_list,marks,"EXAMPLE HOME LIVING CO., LTD. BUSAN, KOREA C/NO. 1-535 MADE IN VIETNAM"
 D006,commercial_invoice,invoice_no,SST-26-0141
 D006,commercial_invoice,total_qty,1020
 D006,commercial_invoice,total_gross_kg,241.4
@@ -187,6 +223,11 @@ D006,bill_of_lading,total_packages,17
 D006,bill_of_lading,total_gross_kg,241.4
 D006,bill_of_lading,total_cbm,1.53
 D006,bill_of_lading,freight_term,FREIGHT PREPAID
+D006,bill_of_lading,marks,"EXAMPLE DISTRIBUTION KOREA INC. BUSAN, KOREA C/NO. 1-17 MADE IN VIETNAM"
+D006,bill_of_lading,containers[0].container_no,SMLU6859182
+D006,bill_of_lading,containers[0].seal_no,SL8936383
+D006,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D006,bill_of_lading,containers[0].packages,17
 D006,certificate_of_origin,co_no,VN-KR 26/02/02387
 D006,certificate_of_origin,exporter_name,SAIGON SAMPLE TEXTILE JSC
 D006,certificate_of_origin,consignee_name,EXAMPLE DISTRIBUTION KOREA INC.
@@ -221,6 +262,12 @@ D007,bill_of_lading,total_packages,92
 D007,bill_of_lading,total_gross_kg,883.2
 D007,bill_of_lading,total_cbm,5.52
 D007,bill_of_lading,freight_term,FREIGHT COLLECT
+D007,bill_of_lading,marks,"HANBIT SAMPLE CORPORATION BUSAN, KOREA C/NO. 1-92 MADE IN CHINA"
+D007,bill_of_lading,containers[0].container_no,SMLU9491284
+D007,bill_of_lading,containers[0].seal_no,SL1112493
+D007,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D007,bill_of_lading,containers[0].packages,92
+D007,packing_list,items[0].packages,92
 D008,commercial_invoice,invoice_no,HSF-26-0276
 D008,commercial_invoice,total_qty,7920
 D008,commercial_invoice,total_gross_kg,57868.8
@@ -245,6 +292,11 @@ D008,bill_of_lading,total_packages,660
 D008,bill_of_lading,total_gross_kg,5786.88
 D008,bill_of_lading,total_cbm,46.2
 D008,bill_of_lading,freight_term,FREIGHT COLLECT
+D008,bill_of_lading,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-660 MADE IN VIETNAM"
+D008,bill_of_lading,containers[0].container_no,EXSU9856832
+D008,bill_of_lading,containers[0].seal_no,EX3634043
+D008,bill_of_lading,containers[0].size_type,40'HC (45G1)
+D008,bill_of_lading,containers[0].packages,660
 D009,commercial_invoice,invoice_no,HSF-26-0283
 D009,commercial_invoice,total_qty,2340
 D009,commercial_invoice,total_gross_kg,1669.2
@@ -269,6 +321,12 @@ D009,bill_of_lading,total_packages,195
 D009,bill_of_lading,total_gross_kg,1669.2
 D009,bill_of_lading,total_cbm,13.65
 D009,bill_of_lading,freight_term,FREIGHT PREPAID
+D009,bill_of_lading,marks,"EXAMPLE DISTRIBUTION KOREA INC. BUSAN, KOREA C/NO. 1-195 MADE IN VIETNAM"
+D009,bill_of_lading,containers[0].container_no,EXSU6798666
+D009,bill_of_lading,containers[0].seal_no,EX8712983
+D009,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D009,bill_of_lading,containers[0].packages,195
+D009,packing_list,marks,"EXAMPLE DISTRIBUTION KOREA INC. BUSAN, KOREA C/NO. 1-195 MADE IN VIETNAM"
 D009,certificate_of_origin,co_no,VN-KR 26/04/02266
 D009,certificate_of_origin,exporter_name,"HAIPHONG SAMPLE FOOTWEAR CO., LTD."
 D009,certificate_of_origin,consignee_name,EXAMPLE DISTRIBUTION KOREA INC.
@@ -303,6 +361,12 @@ D010,bill_of_lading,total_packages,156
 D010,bill_of_lading,total_gross_kg,2184
 D010,bill_of_lading,total_cbm,18.72
 D010,bill_of_lading,freight_term,FREIGHT COLLECT
+D010,bill_of_lading,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-156 MADE IN VIETNAM"
+D010,bill_of_lading,containers[0].container_no,SOCU1623170
+D010,bill_of_lading,containers[0].seal_no,SO7415682
+D010,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D010,bill_of_lading,containers[0].packages,156
+D010,packing_list,items[0].packages,156
 D010,certificate_of_origin,co_no,VN-KR 26/03/02316
 D010,certificate_of_origin,exporter_name,"HAIPHONG SAMPLE FOOTWEAR CO., LTD."
 D010,certificate_of_origin,consignee_name,"SAMPLE TRADING KOREA CO., LTD."
@@ -337,6 +401,14 @@ D011,bill_of_lading,total_packages,325
 D011,bill_of_lading,total_gross_kg,8374.46
 D011,bill_of_lading,total_cbm,27.96
 D011,bill_of_lading,freight_term,FREIGHT COLLECT
+D011,bill_of_lading,marks,"HANBIT SAMPLE CORPORATION BUSAN, KOREA C/NO. 1-327 MADE IN CHINA"
+D011,bill_of_lading,containers[0].container_no,SOCU2176631
+D011,bill_of_lading,containers[0].seal_no,SO3751418
+D011,bill_of_lading,containers[0].size_type,40'HC (45G1)
+D011,bill_of_lading,containers[0].packages,325
+D011,packing_list,items[0].packages,92
+D011,packing_list,items[1].packages,167
+D011,packing_list,items[2].packages,68
 D011,certificate_of_origin,co_no,K26TAO0001390
 D011,certificate_of_origin,exporter_name,"QINGDAO SAMPLE TYRE CO., LTD."
 D011,certificate_of_origin,consignee_name,HANBIT SAMPLE CORPORATION
@@ -375,6 +447,11 @@ D012,bill_of_lading,total_packages,346
 D012,bill_of_lading,total_gross_kg,4651.32
 D012,bill_of_lading,total_cbm,47.75
 D012,bill_of_lading,freight_term,FREIGHT COLLECT
+D012,bill_of_lading,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-346 MADE IN CHINA"
+D012,bill_of_lading,containers[0].container_no,SOCU2938784
+D012,bill_of_lading,containers[0].seal_no,SO5670894
+D012,bill_of_lading,containers[0].size_type,40'HC (45G1)
+D012,bill_of_lading,containers[0].packages,346
 D012,certificate_of_origin,co_no,K26NGB0001409
 D012,certificate_of_origin,exporter_name,"NINGBO EXAMPLE HOUSEWARE CO., LTD."
 D012,certificate_of_origin,consignee_name,"SAMPLE TRADING KOREA CO., LTD."
@@ -411,6 +488,21 @@ D013,bill_of_lading,total_packages,560
 D013,bill_of_lading,total_gross_kg,34048
 D013,bill_of_lading,total_cbm,61.6
 D013,bill_of_lading,freight_term,FREIGHT COLLECT
+D013,bill_of_lading,marks,"SAMPLE FOODS KOREA CO., LTD. BUSAN, KOREA C/NO. 1-560 MADE IN VIETNAM"
+D013,bill_of_lading,containers[0].container_no,SOCU7718205
+D013,bill_of_lading,containers[0].seal_no,SO8754084
+D013,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D013,bill_of_lading,containers[0].packages,187
+D013,bill_of_lading,containers[1].container_no,SOLU7986014
+D013,bill_of_lading,containers[1].seal_no,SO4718210
+D013,bill_of_lading,containers[1].size_type,20'GP (22G1)
+D013,bill_of_lading,containers[1].packages,187
+D013,bill_of_lading,containers[2].container_no,SOLU4760466
+D013,bill_of_lading,containers[2].seal_no,SO1720431
+D013,bill_of_lading,containers[2].size_type,20'GP (22G1)
+D013,bill_of_lading,containers[2].packages,186
+D013,packing_list,items[0].packages,292
+D013,packing_list,items[1].packages,268
 D013,certificate_of_origin,co_no,VN-KR 26/04/02115
 D013,certificate_of_origin,exporter_name,"TAY NGUYEN SAMPLE COFFEE CO., LTD."
 D013,certificate_of_origin,consignee_name,"SAMPLE FOODS KOREA CO., LTD."
@@ -447,6 +539,15 @@ D014,bill_of_lading,total_packages,703
 D014,bill_of_lading,total_gross_kg,12956.2
 D014,bill_of_lading,total_cbm,99.73
 D014,bill_of_lading,freight_term,FREIGHT COLLECT
+D014,bill_of_lading,marks,"EXAMPLE HOME LIVING CO., LTD. BUSAN, KOREA C/NO. 1-703 MADE IN VIETNAM"
+D014,bill_of_lading,containers[0].container_no,EXMU0885020
+D014,bill_of_lading,containers[0].seal_no,EX4130699
+D014,bill_of_lading,containers[0].size_type,40'HC (45G1)
+D014,bill_of_lading,containers[0].packages,352
+D014,bill_of_lading,containers[1].container_no,EXSU5333031
+D014,bill_of_lading,containers[1].seal_no,EX5502259
+D014,bill_of_lading,containers[1].size_type,40'HC (45G1)
+D014,bill_of_lading,containers[1].packages,351
 D015,commercial_invoice,invoice_no,SHE-2026-0258
 D015,commercial_invoice,total_qty,17900
 D015,commercial_invoice,total_gross_kg,18140
@@ -471,6 +572,13 @@ D015,bill_of_lading,total_packages,36
 D015,bill_of_lading,total_gross_kg,18140
 D015,bill_of_lading,total_cbm,11.88
 D015,bill_of_lading,freight_term,FREIGHT PREPAID
+D015,bill_of_lading,marks,"EXAMPLE DISTRIBUTION KOREA INC. BUSAN, KOREA C/NO. 1-36 MADE IN CHINA"
+D015,bill_of_lading,containers[0].container_no,SOLU1358638
+D015,bill_of_lading,containers[0].seal_no,SO3875607
+D015,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D015,bill_of_lading,containers[0].packages,36
+D015,packing_list,items[0].packages,24
+D015,packing_list,items[1].packages,12
 D015,certificate_of_origin,co_no,K26SHA0001498
 D015,certificate_of_origin,exporter_name,"SHANGHAI EXAMPLE HARDWARE CO., LTD. (SAMPLE)"
 D015,certificate_of_origin,consignee_name,EXAMPLE DISTRIBUTION KOREA INC.
@@ -507,6 +615,17 @@ D016,bill_of_lading,total_packages,541
 D016,bill_of_lading,total_gross_kg,10365.5
 D016,bill_of_lading,total_cbm,79.25
 D016,bill_of_lading,freight_term,FREIGHT PREPAID
+D016,bill_of_lading,marks,"EXAMPLE HOME LIVING CO., LTD. BUSAN, KOREA C/NO. 1-541 MADE IN VIETNAM"
+D016,bill_of_lading,containers[0].container_no,SMLU7779294
+D016,bill_of_lading,containers[0].seal_no,SL9325800
+D016,bill_of_lading,containers[0].size_type,40'HC (45G1)
+D016,bill_of_lading,containers[0].packages,271
+D016,bill_of_lading,containers[1].container_no,SMCU4612216
+D016,bill_of_lading,containers[1].seal_no,SL9896787
+D016,bill_of_lading,containers[1].size_type,40'HC (45G1)
+D016,bill_of_lading,containers[1].packages,270
+D016,packing_list,items[0].packages,141
+D016,packing_list,items[1].packages,400
 D016,certificate_of_origin,co_no,VN-KR 26/02/02239
 D016,certificate_of_origin,exporter_name,BINH DUONG EXAMPLE FURNITURE JSC
 D016,certificate_of_origin,consignee_name,"EXAMPLE HOME LIVING CO., LTD."
@@ -543,6 +662,16 @@ D017,bill_of_lading,total_packages,535
 D017,bill_of_lading,total_gross_kg,11058.6
 D017,bill_of_lading,total_cbm,83.49
 D017,bill_of_lading,freight_term,FREIGHT PREPAID
+D017,bill_of_lading,marks,"EXAMPLE HOME LIVING CO., LTD. BUSAN, KOREA C/NO. 1-535 MADE IN VIETNAM"
+D017,bill_of_lading,containers[0].container_no,EXMU5157579
+D017,bill_of_lading,containers[0].seal_no,EX4041193
+D017,bill_of_lading,containers[0].size_type,40'HC (45G1)
+D017,bill_of_lading,containers[0].packages,268
+D017,bill_of_lading,containers[1].container_no,EXMU5577550
+D017,bill_of_lading,containers[1].seal_no,EX2719774
+D017,bill_of_lading,containers[1].size_type,40'HC (45G1)
+D017,bill_of_lading,containers[1].packages,267
+D017,packing_list,marks,"EXAMPLE HOME LIVING CO., LTD. BUSAN, KOREA C/NO. 1-535 MADE IN VIETNAM"
 D017,certificate_of_origin,co_no,VN-KR 26/02/02086
 D017,certificate_of_origin,exporter_name,BINH DUONG EXAMPLE FURNITURE JSC
 D017,certificate_of_origin,consignee_name,"EXAMPLE HOME LIVING CO., LTD."
@@ -579,6 +708,12 @@ D018,bill_of_lading,total_packages,155
 D018,bill_of_lading,total_gross_kg,4309
 D018,bill_of_lading,total_cbm,7.75
 D018,bill_of_lading,freight_term,FREIGHT COLLECT
+D018,bill_of_lading,marks,"EXAMPLE HOME LIVING CO., LTD. BUSAN, KOREA C/NO. 1-155 MADE IN CHINA"
+D018,bill_of_lading,containers[0].container_no,SOCU4829421
+D018,bill_of_lading,containers[0].seal_no,SO9915050
+D018,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D018,bill_of_lading,containers[0].packages,155
+D018,packing_list,marks,"EXAMPLE HOME LIVING CO., LTD. BUSAN, KOREA C/NO. 1-155 MADE IN CHINA"
 D018,certificate_of_origin,co_no,K26CAN0001701
 D018,certificate_of_origin,exporter_name,"FOSHAN EXAMPLE CERAMICS CO., LTD."
 D018,certificate_of_origin,consignee_name,"EXAMPLE HOME LIVING CO., LTD."
@@ -613,6 +748,19 @@ D019,bill_of_lading,total_packages,2475
 D019,bill_of_lading,total_gross_kg,53955
 D019,bill_of_lading,total_cbm,74.25
 D019,bill_of_lading,freight_term,FREIGHT PREPAID
+D019,bill_of_lading,marks,"EXAMPLE HOME LIVING CO., LTD. BUSAN, KOREA C/NO. 1-2475 MADE IN CHINA"
+D019,bill_of_lading,containers[0].container_no,SMCU2897589
+D019,bill_of_lading,containers[0].seal_no,SL7932411
+D019,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D019,bill_of_lading,containers[0].packages,825
+D019,bill_of_lading,containers[1].container_no,SMLU1318816
+D019,bill_of_lading,containers[1].seal_no,SL8457639
+D019,bill_of_lading,containers[1].size_type,20'GP (22G1)
+D019,bill_of_lading,containers[1].packages,825
+D019,bill_of_lading,containers[2].container_no,SMCU2717460
+D019,bill_of_lading,containers[2].seal_no,SL5158934
+D019,bill_of_lading,containers[2].size_type,20'GP (22G1)
+D019,bill_of_lading,containers[2].packages,825
 D020,commercial_invoice,invoice_no,QDT/26/0279
 D020,commercial_invoice,total_qty,5926
 D020,commercial_invoice,total_gross_kg,12524.9
@@ -637,6 +785,11 @@ D020,bill_of_lading,total_packages,335
 D020,bill_of_lading,total_gross_kg,12524.9
 D020,bill_of_lading,total_cbm,33.13
 D020,bill_of_lading,freight_term,FREIGHT PREPAID
+D020,bill_of_lading,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-335 MADE IN CHINA"
+D020,bill_of_lading,containers[0].container_no,EXMU8631660
+D020,bill_of_lading,containers[0].seal_no,EX1880141
+D020,bill_of_lading,containers[0].size_type,40'HC (45G1)
+D020,bill_of_lading,containers[0].packages,335
 D020,certificate_of_origin,co_no,K26TAO0001423
 D020,certificate_of_origin,exporter_name,"QINGDAO SAMPLE TYRE CO., LTD."
 D020,certificate_of_origin,consignee_name,"SAMPLE TRADING KOREA CO., LTD."
@@ -675,6 +828,11 @@ D021,bill_of_lading,total_packages,226
 D021,bill_of_lading,total_gross_kg,13740.8
 D021,bill_of_lading,total_cbm,24.86
 D021,bill_of_lading,freight_term,FREIGHT COLLECT
+D021,bill_of_lading,marks,"SAMPLE FOODS KOREA CO., LTD. BUSAN, KOREA C/NO. 1-226 MADE IN VIETNAM"
+D021,bill_of_lading,containers[0].container_no,SOCU0198605
+D021,bill_of_lading,containers[0].seal_no,SO5801812
+D021,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D021,bill_of_lading,containers[0].packages,226
 D021,certificate_of_origin,co_no,VN-KR 26/02/02366
 D021,certificate_of_origin,exporter_name,"TAY NGUYEN SAMPLE COFFEE CO., LTD."
 D021,certificate_of_origin,consignee_name,"SAMPLE FOODS KOREA CO., LTD."
@@ -709,6 +867,20 @@ D022,bill_of_lading,total_packages,2500
 D022,bill_of_lading,total_gross_kg,54500
 D022,bill_of_lading,total_cbm,75.0
 D022,bill_of_lading,freight_term,FREIGHT PREPAID
+D022,bill_of_lading,marks,"EXAMPLE HOME LIVING CO., LTD. BUSAN, KOREA C/NO. 1-2500 MADE IN CHINA"
+D022,bill_of_lading,containers[0].container_no,SOLU2135897
+D022,bill_of_lading,containers[0].seal_no,SO6892199
+D022,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D022,bill_of_lading,containers[0].packages,834
+D022,bill_of_lading,containers[1].container_no,SOCU0295462
+D022,bill_of_lading,containers[1].seal_no,SO3028809
+D022,bill_of_lading,containers[1].size_type,20'GP (22G1)
+D022,bill_of_lading,containers[1].packages,833
+D022,bill_of_lading,containers[2].container_no,SOLU0555191
+D022,bill_of_lading,containers[2].seal_no,SO2068084
+D022,bill_of_lading,containers[2].size_type,20'GP (22G1)
+D022,bill_of_lading,containers[2].packages,833
+D022,packing_list,marks,"EXAMPLE HOME LIVING CO., LTD. BUSAN, KOREA C/NO. 1-2500 MADE IN CHINA"
 D022,certificate_of_origin,co_no,K26CAN0001450
 D022,certificate_of_origin,exporter_name,"FOSHAN EXAMPLE CERAMICS CO., LTD."
 D022,certificate_of_origin,consignee_name,"EXAMPLE HOME LIVING CO., LTD."
@@ -743,6 +915,15 @@ D023,bill_of_lading,total_packages,524
 D023,bill_of_lading,total_gross_kg,7508.98
 D023,bill_of_lading,total_cbm,93.45
 D023,bill_of_lading,freight_term,FREIGHT COLLECT
+D023,bill_of_lading,marks,"EXAMPLE HOME LIVING CO., LTD. BUSAN, KOREA C/NO. 1-524 MADE IN CHINA"
+D023,bill_of_lading,containers[0].container_no,EXSU7524612
+D023,bill_of_lading,containers[0].seal_no,EX9542783
+D023,bill_of_lading,containers[0].size_type,40'HC (45G1)
+D023,bill_of_lading,containers[0].packages,262
+D023,bill_of_lading,containers[1].container_no,EXSU0176449
+D023,bill_of_lading,containers[1].seal_no,EX9348439
+D023,bill_of_lading,containers[1].size_type,40'HC (45G1)
+D023,bill_of_lading,containers[1].packages,262
 D023,certificate_of_origin,co_no,K26NGB0001695
 D023,certificate_of_origin,exporter_name,"NINGBO EXAMPLE HOUSEWARE CO., LTD."
 D023,certificate_of_origin,consignee_name,"EXAMPLE HOME LIVING CO., LTD."
@@ -781,6 +962,12 @@ D024,bill_of_lading,total_packages,263
 D024,bill_of_lading,total_gross_kg,5722.9
 D024,bill_of_lading,total_cbm,19.76
 D024,bill_of_lading,freight_term,FREIGHT PREPAID
+D024,bill_of_lading,marks,"EXAMPLE HOME LIVING CO., LTD. BUSAN, KOREA C/NO. 1-263 MADE IN VIETNAM"
+D024,bill_of_lading,containers[0].container_no,EXSU3335800
+D024,bill_of_lading,containers[0].seal_no,EX3040835
+D024,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D024,bill_of_lading,containers[0].packages,263
+D024,packing_list,marks,"EXAMPLE HOME LIVING CO., LTD. BUSAN, KOREA C/NO. 1-263 MADE IN VIETNAM"
 D024,certificate_of_origin,co_no,VN-KR 26/02/02297
 D024,certificate_of_origin,exporter_name,SAIGON SAMPLE TEXTILE JSC
 D024,certificate_of_origin,consignee_name,"EXAMPLE HOME LIVING CO., LTD."
@@ -817,6 +1004,12 @@ D025,bill_of_lading,total_packages,585
 D025,bill_of_lading,total_gross_kg,23002.8
 D025,bill_of_lading,total_cbm,59.32
 D025,bill_of_lading,freight_term,FREIGHT COLLECT
+D025,bill_of_lading,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-585 MADE IN CHINA"
+D025,bill_of_lading,containers[0].container_no,EXSU4608073
+D025,bill_of_lading,containers[0].seal_no,EX7518253
+D025,bill_of_lading,containers[0].size_type,40'HC (45G1)
+D025,bill_of_lading,containers[0].packages,585
+D025,packing_list,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-585 MADE IN CHINA"
 D025,certificate_of_origin,co_no,K26TAO0001261
 D025,certificate_of_origin,exporter_name,"QINGDAO SAMPLE TYRE CO., LTD."
 D025,certificate_of_origin,consignee_name,"SAMPLE TRADING KOREA CO., LTD."
@@ -855,6 +1048,11 @@ D026,bill_of_lading,total_packages,152
 D026,bill_of_lading,total_gross_kg,3435.78
 D026,bill_of_lading,total_cbm,20.37
 D026,bill_of_lading,freight_term,FREIGHT PREPAID
+D026,bill_of_lading,marks,"HANBIT SAMPLE CORPORATION BUSAN, KOREA C/NO. 1-152 MADE IN CHINA"
+D026,bill_of_lading,containers[0].container_no,SOCU7631147
+D026,bill_of_lading,containers[0].seal_no,SO7680589
+D026,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D026,bill_of_lading,containers[0].packages,152
 D026,certificate_of_origin,co_no,K26SZX0001304
 D026,certificate_of_origin,exporter_name,"SHENZHEN SAMPLE POWER TECHNOLOGY CO., LTD."
 D026,certificate_of_origin,consignee_name,HANBIT SAMPLE CORPORATION
@@ -891,6 +1089,18 @@ D027,bill_of_lading,total_packages,831
 D027,bill_of_lading,total_gross_kg,13375.3
 D027,bill_of_lading,total_cbm,92.57
 D027,bill_of_lading,freight_term,FREIGHT PREPAID
+D027,bill_of_lading,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-831 MADE IN CHINA"
+D027,bill_of_lading,containers[0].container_no,SMLU9892501
+D027,bill_of_lading,containers[0].seal_no,SL7070494
+D027,bill_of_lading,containers[0].size_type,40'HC (45G1)
+D027,bill_of_lading,containers[0].packages,416
+D027,bill_of_lading,containers[1].container_no,SMLU6078770
+D027,bill_of_lading,containers[1].seal_no,SL7448689
+D027,bill_of_lading,containers[1].size_type,40'HC (45G1)
+D027,bill_of_lading,containers[1].packages,415
+D027,packing_list,items[0].packages,23
+D027,packing_list,items[1].packages,498
+D027,packing_list,items[2].packages,310
 D027,certificate_of_origin,co_no,K26SZX0001579
 D027,certificate_of_origin,exporter_name,"SHENZHEN SAMPLE POWER TECHNOLOGY CO., LTD."
 D027,certificate_of_origin,consignee_name,"SAMPLE TRADING KOREA CO., LTD."
@@ -929,6 +1139,12 @@ D028,bill_of_lading,total_packages,34
 D028,bill_of_lading,total_gross_kg,16834
 D028,bill_of_lading,total_cbm,11.33
 D028,bill_of_lading,freight_term,FREIGHT COLLECT
+D028,bill_of_lading,marks,"HANBIT SAMPLE CORPORATION BUSAN, KOREA C/NO. 1-34 MADE IN CHINA"
+D028,bill_of_lading,containers[0].container_no,SMCU4939338
+D028,bill_of_lading,containers[0].seal_no,SL3112483
+D028,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D028,bill_of_lading,containers[0].packages,34
+D028,packing_list,marks,"HANBIT SAMPLE CORPORATION BUSAN, KOREA C/NO. 1-34 MADE IN CHINA"
 D028,certificate_of_origin,co_no,K26SHA0001496
 D028,certificate_of_origin,exporter_name,"SHANGHAI EXAMPLE HARDWARE CO., LTD. (SAMPLE)"
 D028,certificate_of_origin,consignee_name,HANBIT SAMPLE CORPORATION
@@ -965,6 +1181,12 @@ D029,bill_of_lading,total_packages,154
 D029,bill_of_lading,total_gross_kg,3369.2
 D029,bill_of_lading,total_cbm,11.38
 D029,bill_of_lading,freight_term,FREIGHT COLLECT
+D029,bill_of_lading,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-154 MADE IN VIETNAM"
+D029,bill_of_lading,containers[0].container_no,SOCU6364004
+D029,bill_of_lading,containers[0].seal_no,SO8439798
+D029,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D029,bill_of_lading,containers[0].packages,154
+D029,packing_list,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-154 MADE IN VIETNAM"
 D029,certificate_of_origin,co_no,VN-KR 26/04/02319
 D029,certificate_of_origin,exporter_name,SAIGON SAMPLE TEXTILE JSC
 D029,certificate_of_origin,consignee_name,"SAMPLE TRADING KOREA CO., LTD."
@@ -1001,6 +1223,16 @@ D030,bill_of_lading,total_packages,2309
 D030,bill_of_lading,total_gross_kg,25860.8
 D030,bill_of_lading,total_cbm,69.27
 D030,bill_of_lading,freight_term,FREIGHT PREPAID
+D030,bill_of_lading,marks,"SAMPLE FOODS KOREA CO., LTD. BUSAN, KOREA C/NO. 1-2309 MADE IN VIETNAM"
+D030,bill_of_lading,containers[0].container_no,SMLU7531726
+D030,bill_of_lading,containers[0].seal_no,SL4460806
+D030,bill_of_lading,containers[0].size_type,40'RH (45R1)
+D030,bill_of_lading,containers[0].packages,1155
+D030,bill_of_lading,containers[1].container_no,SMLU6624697
+D030,bill_of_lading,containers[1].seal_no,SL2191115
+D030,bill_of_lading,containers[1].size_type,40'RH (45R1)
+D030,bill_of_lading,containers[1].packages,1154
+D030,packing_list,marks,"SAMPLE FOODS KOREA CO., LTD. BUSAN, KOREA C/NO. 1-2309 MADE IN VIETNAM"
 D031,commercial_invoice,invoice_no,MKS-260244
 D031,commercial_invoice,total_qty,23280
 D031,commercial_invoice,total_gross_kg,26073.6
@@ -1025,6 +1257,17 @@ D031,bill_of_lading,total_packages,2328
 D031,bill_of_lading,total_gross_kg,26073.6
 D031,bill_of_lading,total_cbm,69.84
 D031,bill_of_lading,freight_term,FREIGHT COLLECT
+D031,bill_of_lading,marks,"SAMPLE FOODS KOREA CO., LTD. BUSAN, KOREA C/NO. 1-2328 MADE IN VIETNAM"
+D031,bill_of_lading,containers[0].container_no,SOLU4113623
+D031,bill_of_lading,containers[0].seal_no,SO8937547
+D031,bill_of_lading,containers[0].size_type,40'RH (45R1)
+D031,bill_of_lading,containers[0].packages,1164
+D031,bill_of_lading,containers[1].container_no,SOLU7193962
+D031,bill_of_lading,containers[1].seal_no,SO3511385
+D031,bill_of_lading,containers[1].size_type,40'RH (45R1)
+D031,bill_of_lading,containers[1].packages,1164
+D031,packing_list,items[0].packages,770
+D031,packing_list,items[1].packages,1558
 D031,certificate_of_origin,co_no,VN-KR 26/04/02135
 D031,certificate_of_origin,exporter_name,MEKONG EXAMPLE SEAFOOD & AGRO JSC
 D031,certificate_of_origin,consignee_name,"SAMPLE FOODS KOREA CO., LTD."
@@ -1061,6 +1304,12 @@ D032,bill_of_lading,total_packages,262
 D032,bill_of_lading,total_gross_kg,3690.84
 D032,bill_of_lading,total_cbm,23.75
 D032,bill_of_lading,freight_term,FREIGHT COLLECT
+D032,bill_of_lading,marks,"EXAMPLE HOME LIVING CO., LTD. BUSAN, KOREA C/NO. 1-262 MADE IN CHINA"
+D032,bill_of_lading,containers[0].container_no,SOCU5861881
+D032,bill_of_lading,containers[0].seal_no,SO2202467
+D032,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D032,bill_of_lading,containers[0].packages,262
+D032,packing_list,marks,"EXAMPLE HOME LIVING CO., LTD. BUSAN, KOREA C/NO. 1-262 MADE IN CHINA"
 D032,certificate_of_origin,co_no,K26NGB0001330
 D032,certificate_of_origin,exporter_name,"NINGBO EXAMPLE HOUSEWARE CO., LTD."
 D032,certificate_of_origin,consignee_name,"EXAMPLE HOME LIVING CO., LTD."
@@ -1097,6 +1346,12 @@ D033,bill_of_lading,total_packages,35
 D033,bill_of_lading,total_gross_kg,652.5
 D033,bill_of_lading,total_cbm,2.975
 D033,bill_of_lading,freight_term,FREIGHT PREPAID
+D033,bill_of_lading,marks,"EXAMPLE DISTRIBUTION KOREA INC. BUSAN, KOREA C/NO. 1-35 MADE IN VIETNAM"
+D033,bill_of_lading,containers[0].container_no,EXMU1992471
+D033,bill_of_lading,containers[0].seal_no,EX5963544
+D033,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D033,bill_of_lading,containers[0].packages,35
+D033,packing_list,items[0].packages,35
 D033,certificate_of_origin,co_no,VN-KR 26/02/02475
 D033,certificate_of_origin,exporter_name,SAIGON SAMPLE TEXTILE JSC
 D033,certificate_of_origin,consignee_name,EXAMPLE DISTRIBUTION KOREA INC.
@@ -1131,6 +1386,12 @@ D034,bill_of_lading,total_packages,299
 D034,bill_of_lading,total_gross_kg,4031.4
 D034,bill_of_lading,total_cbm,11.152
 D034,bill_of_lading,freight_term,FREIGHT PREPAID
+D034,bill_of_lading,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-299 MADE IN CHINA"
+D034,bill_of_lading,containers[0].container_no,SMLU4817737
+D034,bill_of_lading,containers[0].seal_no,SL7428707
+D034,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D034,bill_of_lading,containers[0].packages,299
+D034,packing_list,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-299 MADE IN CHINA"
 D034,certificate_of_origin,co_no,K26SHA0001438
 D034,certificate_of_origin,exporter_name,"SHANGHAI EXAMPLE HARDWARE CO., LTD. (SAMPLE)"
 D034,certificate_of_origin,consignee_name,"SAMPLE TRADING KOREA CO., LTD."
@@ -1169,6 +1430,11 @@ D035,bill_of_lading,total_packages,79
 D035,bill_of_lading,total_gross_kg,1722.2
 D035,bill_of_lading,total_cbm,0.948
 D035,bill_of_lading,freight_term,FREIGHT COLLECT
+D035,bill_of_lading,marks,"HANBIT SAMPLE CORPORATION BUSAN, KOREA C/NO. 1-79 MADE IN CHINA"
+D035,bill_of_lading,containers[0].container_no,SMCU3785855
+D035,bill_of_lading,containers[0].seal_no,SL7796201
+D035,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D035,bill_of_lading,containers[0].packages,79
 D035,certificate_of_origin,co_no,K26SHA0001746
 D035,certificate_of_origin,exporter_name,"SHANGHAI EXAMPLE HARDWARE CO., LTD. (SAMPLE)"
 D035,certificate_of_origin,consignee_name,HANBIT SAMPLE CORPORATION
@@ -1203,6 +1469,11 @@ D036,bill_of_lading,total_packages,50
 D036,bill_of_lading,total_gross_kg,700
 D036,bill_of_lading,total_cbm,6.0
 D036,bill_of_lading,freight_term,FREIGHT COLLECT
+D036,bill_of_lading,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-50 MADE IN VIETNAM"
+D036,bill_of_lading,containers[0].container_no,SOLU6353198
+D036,bill_of_lading,containers[0].seal_no,SO1559729
+D036,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D036,bill_of_lading,containers[0].packages,50
 D037,commercial_invoice,invoice_no,SZP2600140
 D037,commercial_invoice,total_qty,182
 D037,commercial_invoice,total_gross_kg,1251
@@ -1227,6 +1498,12 @@ D037,bill_of_lading,total_packages,90
 D037,bill_of_lading,total_gross_kg,1251
 D037,bill_of_lading,total_cbm,4.05
 D037,bill_of_lading,freight_term,FREIGHT COLLECT
+D037,bill_of_lading,marks,"HANBIT SAMPLE CORPORATION BUSAN, KOREA C/NO. 1-90 MADE IN CHINA"
+D037,bill_of_lading,containers[0].container_no,SOLU3542686
+D037,bill_of_lading,containers[0].seal_no,SO7155080
+D037,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D037,bill_of_lading,containers[0].packages,90
+D037,packing_list,marks,"HANBIT SAMPLE CORPORATION BUSAN, KOREA C/NO. 1-90 MADE IN CHINA"
 D038,commercial_invoice,invoice_no,FEC-26-0264
 D038,commercial_invoice,total_qty,2575
 D038,commercial_invoice,total_gross_kg,47765
@@ -1251,6 +1528,20 @@ D038,bill_of_lading,total_packages,2575
 D038,bill_of_lading,total_gross_kg,47765
 D038,bill_of_lading,total_cbm,70.5
 D038,bill_of_lading,freight_term,FREIGHT PREPAID
+D038,bill_of_lading,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-2575 MADE IN CHINA"
+D038,bill_of_lading,containers[0].container_no,SMLU9141331
+D038,bill_of_lading,containers[0].seal_no,SL2696834
+D038,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D038,bill_of_lading,containers[0].packages,859
+D038,bill_of_lading,containers[1].container_no,SMLU4211009
+D038,bill_of_lading,containers[1].seal_no,SL6917703
+D038,bill_of_lading,containers[1].size_type,20'GP (22G1)
+D038,bill_of_lading,containers[1].packages,858
+D038,bill_of_lading,containers[2].container_no,SMLU5708659
+D038,bill_of_lading,containers[2].seal_no,SL3617639
+D038,bill_of_lading,containers[2].size_type,20'GP (22G1)
+D038,bill_of_lading,containers[2].packages,858
+D038,packing_list,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-2575 MADE IN CHINA"
 D038,certificate_of_origin,co_no,K26CAN0001774
 D038,certificate_of_origin,exporter_name,"FOSHAN EXAMPLE CERAMICS CO., LTD."
 D038,certificate_of_origin,consignee_name,"SAMPLE TRADING KOREA CO., LTD."
@@ -1287,6 +1578,18 @@ D039,bill_of_lading,total_packages,749
 D039,bill_of_lading,total_gross_kg,16697
 D039,bill_of_lading,total_cbm,116.11
 D039,bill_of_lading,freight_term,FREIGHT COLLECT
+D039,bill_of_lading,marks,"HANBIT SAMPLE CORPORATION BUSAN, KOREA C/NO. 1-749 MADE IN CHINA"
+D039,bill_of_lading,containers[0].container_no,EXSU8624262
+D039,bill_of_lading,containers[0].seal_no,EX4845660
+D039,bill_of_lading,containers[0].size_type,40'HC (45G1)
+D039,bill_of_lading,containers[0].packages,375
+D039,bill_of_lading,containers[1].container_no,EXSU9891746
+D039,bill_of_lading,containers[1].seal_no,EX2469226
+D039,bill_of_lading,containers[1].size_type,40'HC (45G1)
+D039,bill_of_lading,containers[1].packages,374
+D039,packing_list,items[0].packages,87
+D039,packing_list,items[1].packages,135
+D039,packing_list,items[2].packages,527
 D039,certificate_of_origin,co_no,K26SZX0001435
 D039,certificate_of_origin,exporter_name,"SHENZHEN SAMPLE POWER TECHNOLOGY CO., LTD."
 D039,certificate_of_origin,consignee_name,HANBIT SAMPLE CORPORATION
@@ -1325,6 +1628,13 @@ D040,bill_of_lading,total_packages,277
 D040,bill_of_lading,total_gross_kg,3714.9
 D040,bill_of_lading,total_cbm,60.75
 D040,bill_of_lading,freight_term,FREIGHT COLLECT
+D040,bill_of_lading,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-277 MADE IN CHINA"
+D040,bill_of_lading,containers[0].container_no,EXSU6514707
+D040,bill_of_lading,containers[0].seal_no,EX7605438
+D040,bill_of_lading,containers[0].size_type,40'HC (45G1)
+D040,bill_of_lading,containers[0].packages,277
+D040,packing_list,items[0].packages,170
+D040,packing_list,items[1].packages,107
 D040,certificate_of_origin,co_no,K26NGB0001521
 D040,certificate_of_origin,exporter_name,"NINGBO EXAMPLE HOUSEWARE CO., LTD."
 D040,certificate_of_origin,consignee_name,"SAMPLE TRADING KOREA CO., LTD."
@@ -1361,6 +1671,15 @@ D041,bill_of_lading,total_packages,459
 D041,bill_of_lading,total_gross_kg,27907.2
 D041,bill_of_lading,total_cbm,50.49
 D041,bill_of_lading,freight_term,FREIGHT PREPAID
+D041,bill_of_lading,marks,"SAMPLE FOODS KOREA CO., LTD. BUSAN, KOREA C/NO. 1-459 MADE IN VIETNAM"
+D041,bill_of_lading,containers[0].container_no,SOLU5289833
+D041,bill_of_lading,containers[0].seal_no,SO6917851
+D041,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D041,bill_of_lading,containers[0].packages,230
+D041,bill_of_lading,containers[1].container_no,SOLU9690171
+D041,bill_of_lading,containers[1].seal_no,SO4566233
+D041,bill_of_lading,containers[1].size_type,20'GP (22G1)
+D041,bill_of_lading,containers[1].packages,229
 D041,certificate_of_origin,co_no,VN-KR 26/03/02285
 D041,certificate_of_origin,exporter_name,"TAY NGUYEN SAMPLE COFFEE CO., LTD."
 D041,certificate_of_origin,consignee_name,"SAMPLE FOODS KOREA CO., LTD."
@@ -1397,6 +1716,12 @@ D042,bill_of_lading,total_packages,483
 D042,bill_of_lading,total_gross_kg,4293.36
 D042,bill_of_lading,total_cbm,33.81
 D042,bill_of_lading,freight_term,FREIGHT PREPAID
+D042,bill_of_lading,marks,"HANBIT SAMPLE CORPORATION BUSAN, KOREA C/NO. 1-483 MADE IN VIETNAM"
+D042,bill_of_lading,containers[0].container_no,EXMU2071297
+D042,bill_of_lading,containers[0].seal_no,EX3659650
+D042,bill_of_lading,containers[0].size_type,40'HC (45G1)
+D042,bill_of_lading,containers[0].packages,483
+D042,packing_list,marks,"HANBIT SAMPLE CORPORATION BUSAN, KOREA C/NO. 1-483 MADE IN VIETNAM"
 D043,commercial_invoice,invoice_no,TNC-26-0293
 D043,commercial_invoice,total_qty,31260
 D043,commercial_invoice,total_gross_kg,31676.8
@@ -1421,6 +1746,21 @@ D043,bill_of_lading,total_packages,521
 D043,bill_of_lading,total_gross_kg,31676.8
 D043,bill_of_lading,total_cbm,57.31
 D043,bill_of_lading,freight_term,FREIGHT COLLECT
+D043,bill_of_lading,marks,"SAMPLE FOODS KOREA CO., LTD. BUSAN, KOREA C/NO. 1-521 MADE IN VIETNAM"
+D043,bill_of_lading,containers[0].container_no,EXSU6662263
+D043,bill_of_lading,containers[0].seal_no,EX8894965
+D043,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D043,bill_of_lading,containers[0].packages,174
+D043,bill_of_lading,containers[1].container_no,EXSU5892430
+D043,bill_of_lading,containers[1].seal_no,EX2208057
+D043,bill_of_lading,containers[1].size_type,20'GP (22G1)
+D043,bill_of_lading,containers[1].packages,174
+D043,bill_of_lading,containers[2].container_no,EXMU0400731
+D043,bill_of_lading,containers[2].seal_no,EX3404733
+D043,bill_of_lading,containers[2].size_type,20'GP (22G1)
+D043,bill_of_lading,containers[2].packages,173
+D043,packing_list,items[0].packages,313
+D043,packing_list,items[1].packages,208
 D044,commercial_invoice,invoice_no,MKS-260264
 D044,commercial_invoice,total_qty,6950
 D044,commercial_invoice,total_gross_kg,7784
@@ -1445,6 +1785,12 @@ D044,bill_of_lading,total_packages,695
 D044,bill_of_lading,total_gross_kg,7784
 D044,bill_of_lading,total_cbm,20.85
 D044,bill_of_lading,freight_term,FREIGHT COLLECT
+D044,bill_of_lading,marks,"SAMPLE FOODS KOREA CO., LTD. BUSAN, KOREA C/NO. 1-695 MADE IN VIETNAM"
+D044,bill_of_lading,containers[0].container_no,SMCU6376275
+D044,bill_of_lading,containers[0].seal_no,SL7607739
+D044,bill_of_lading,containers[0].size_type,40'RH (45R1)
+D044,bill_of_lading,containers[0].packages,695
+D044,packing_list,marks,"SAMPLE FOODS KOREA CO., LTD. BUSAN, KOREA C/NO. 1-695 MADE IN VIETNAM"
 D044,certificate_of_origin,co_no,VN-KR 26/04/02455
 D044,certificate_of_origin,exporter_name,MEKONG EXAMPLE SEAFOOD & AGRO JSC
 D044,certificate_of_origin,consignee_name,"SAMPLE FOODS KOREA CO., LTD."
@@ -1479,6 +1825,15 @@ D045,bill_of_lading,total_packages,442
 D045,bill_of_lading,total_gross_kg,6295.5
 D045,bill_of_lading,total_cbm,90.8
 D045,bill_of_lading,freight_term,FREIGHT COLLECT
+D045,bill_of_lading,marks,"EXAMPLE HOME LIVING CO., LTD. BUSAN, KOREA C/NO. 1-442 MADE IN CHINA"
+D045,bill_of_lading,containers[0].container_no,SOLU0908811
+D045,bill_of_lading,containers[0].seal_no,SO1557028
+D045,bill_of_lading,containers[0].size_type,40'HC (45G1)
+D045,bill_of_lading,containers[0].packages,221
+D045,bill_of_lading,containers[1].container_no,SOLU2776627
+D045,bill_of_lading,containers[1].seal_no,SO6236645
+D045,bill_of_lading,containers[1].size_type,40'HC (45G1)
+D045,bill_of_lading,containers[1].packages,221
 D045,certificate_of_origin,co_no,K26NGB0001538
 D045,certificate_of_origin,exporter_name,"NINGBO EXAMPLE HOUSEWARE CO., LTD."
 D045,certificate_of_origin,consignee_name,"EXAMPLE HOME LIVING CO., LTD."
@@ -1517,6 +1872,12 @@ D046,bill_of_lading,total_packages,209
 D046,bill_of_lading,total_gross_kg,12707.2
 D046,bill_of_lading,total_cbm,22.99
 D046,bill_of_lading,freight_term,FREIGHT COLLECT
+D046,bill_of_lading,marks,"SAMPLE FOODS KOREA CO., LTD. BUSAN, KOREA C/NO. 1-209 MADE IN VIETNAM"
+D046,bill_of_lading,containers[0].container_no,EXMU9090067
+D046,bill_of_lading,containers[0].seal_no,EX2999292
+D046,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D046,bill_of_lading,containers[0].packages,209
+D046,packing_list,items[0].packages,209
 D046,certificate_of_origin,co_no,VN-KR 26/03/02151
 D046,certificate_of_origin,exporter_name,"TAY NGUYEN SAMPLE COFFEE CO., LTD."
 D046,certificate_of_origin,consignee_name,"SAMPLE FOODS KOREA CO., LTD."
@@ -1551,6 +1912,12 @@ D047,bill_of_lading,total_packages,20
 D047,bill_of_lading,total_gross_kg,9960
 D047,bill_of_lading,total_cbm,7.0
 D047,bill_of_lading,freight_term,FREIGHT COLLECT
+D047,bill_of_lading,marks,"HANBIT SAMPLE CORPORATION BUSAN, KOREA C/NO. 1-20 MADE IN CHINA"
+D047,bill_of_lading,containers[0].container_no,EXSU2209876
+D047,bill_of_lading,containers[0].seal_no,EX1109006
+D047,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D047,bill_of_lading,containers[0].packages,20
+D047,packing_list,items[0].packages,20
 D048,commercial_invoice,invoice_no,MKS-260658
 D048,commercial_invoice,total_qty,23600
 D048,commercial_invoice,total_gross_kg,26432
@@ -1575,6 +1942,17 @@ D048,bill_of_lading,total_packages,2360
 D048,bill_of_lading,total_gross_kg,26432
 D048,bill_of_lading,total_cbm,70.8
 D048,bill_of_lading,freight_term,FREIGHT PREPAID
+D048,bill_of_lading,marks,"SAMPLE FOODS KOREA CO., LTD. BUSAN, KOREA C/NO. 1-2360 MADE IN VIETNAM"
+D048,bill_of_lading,containers[0].container_no,SOLU7655398
+D048,bill_of_lading,containers[0].seal_no,SO1096066
+D048,bill_of_lading,containers[0].size_type,40'RH (45R1)
+D048,bill_of_lading,containers[0].packages,1180
+D048,bill_of_lading,containers[1].container_no,SOLU6285318
+D048,bill_of_lading,containers[1].seal_no,SO1117727
+D048,bill_of_lading,containers[1].size_type,40'RH (45R1)
+D048,bill_of_lading,containers[1].packages,1180
+D048,packing_list,items[0].packages,935
+D048,packing_list,items[1].packages,1425
 D048,certificate_of_origin,co_no,VN-KR 26/03/02441
 D048,certificate_of_origin,exporter_name,MEKONG EXAMPLE SEAFOOD & AGRO JSC
 D048,certificate_of_origin,consignee_name,"SAMPLE FOODS KOREA CO., LTD."
@@ -1611,6 +1989,11 @@ D049,bill_of_lading,total_packages,420
 D049,bill_of_lading,total_gross_kg,3445.8
 D049,bill_of_lading,total_cbm,11.394
 D049,bill_of_lading,freight_term,FREIGHT PREPAID
+D049,bill_of_lading,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-420 MADE IN CHINA"
+D049,bill_of_lading,containers[0].container_no,EXSU3825900
+D049,bill_of_lading,containers[0].seal_no,EX3706351
+D049,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D049,bill_of_lading,containers[0].packages,420
 D049,certificate_of_origin,co_no,K26SHA0001707
 D049,certificate_of_origin,exporter_name,"SHANGHAI EXAMPLE HARDWARE CO., LTD. (SAMPLE)"
 D049,certificate_of_origin,consignee_name,"SAMPLE TRADING KOREA CO., LTD."
@@ -1649,6 +2032,13 @@ D050,bill_of_lading,total_packages,248
 D050,bill_of_lading,total_gross_kg,4415.7
 D050,bill_of_lading,total_cbm,18.94
 D050,bill_of_lading,freight_term,FREIGHT COLLECT
+D050,bill_of_lading,marks,"EXAMPLE DISTRIBUTION KOREA INC. BUSAN, KOREA C/NO. 1-248 MADE IN CHINA"
+D050,bill_of_lading,containers[0].container_no,SOCU0794461
+D050,bill_of_lading,containers[0].seal_no,SO4145448
+D050,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D050,bill_of_lading,containers[0].packages,248
+D050,packing_list,items[0].packages,158
+D050,packing_list,items[1].packages,90
 D050,certificate_of_origin,co_no,K26TAO0001739
 D050,certificate_of_origin,exporter_name,"QINGDAO SAMPLE TYRE CO., LTD."
 D050,certificate_of_origin,consignee_name,EXAMPLE DISTRIBUTION KOREA INC.
@@ -1685,6 +2075,17 @@ D051,bill_of_lading,total_packages,2125
 D051,bill_of_lading,total_gross_kg,23800
 D051,bill_of_lading,total_cbm,63.75
 D051,bill_of_lading,freight_term,FREIGHT COLLECT
+D051,bill_of_lading,marks,"SAMPLE FOODS KOREA CO., LTD. BUSAN, KOREA C/NO. 1-2125 MADE IN VIETNAM"
+D051,bill_of_lading,containers[0].container_no,SMCU4519269
+D051,bill_of_lading,containers[0].seal_no,SL8502640
+D051,bill_of_lading,containers[0].size_type,40'RH (45R1)
+D051,bill_of_lading,containers[0].packages,1063
+D051,bill_of_lading,containers[1].container_no,SMLU6477359
+D051,bill_of_lading,containers[1].seal_no,SL4656770
+D051,bill_of_lading,containers[1].size_type,40'RH (45R1)
+D051,bill_of_lading,containers[1].packages,1062
+D051,packing_list,items[0].packages,862
+D051,packing_list,items[1].packages,1263
 D051,certificate_of_origin,co_no,VN-KR 26/04/02293
 D051,certificate_of_origin,exporter_name,MEKONG EXAMPLE SEAFOOD & AGRO JSC
 D051,certificate_of_origin,consignee_name,"SAMPLE FOODS KOREA CO., LTD."
@@ -1721,6 +2122,11 @@ D052,bill_of_lading,total_packages,157
 D052,bill_of_lading,total_gross_kg,2966.22
 D052,bill_of_lading,total_cbm,13.345
 D052,bill_of_lading,freight_term,FREIGHT PREPAID
+D052,bill_of_lading,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-157 MADE IN VIETNAM"
+D052,bill_of_lading,containers[0].container_no,EXSU9531950
+D052,bill_of_lading,containers[0].seal_no,EX5994700
+D052,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D052,bill_of_lading,containers[0].packages,157
 D052,certificate_of_origin,co_no,VN-KR 26/02/02321
 D052,certificate_of_origin,exporter_name,SAIGON SAMPLE TEXTILE JSC
 D052,certificate_of_origin,consignee_name,"SAMPLE TRADING KOREA CO., LTD."
@@ -1755,6 +2161,12 @@ D053,bill_of_lading,total_packages,293
 D053,bill_of_lading,total_gross_kg,7937.9
 D053,bill_of_lading,total_cbm,25.91
 D053,bill_of_lading,freight_term,FREIGHT COLLECT
+D053,bill_of_lading,marks,"EXAMPLE DISTRIBUTION KOREA INC. BUSAN, KOREA C/NO. 1-293 MADE IN CHINA"
+D053,bill_of_lading,containers[0].container_no,EXSU0746243
+D053,bill_of_lading,containers[0].seal_no,EX7167720
+D053,bill_of_lading,containers[0].size_type,40'HC (45G1)
+D053,bill_of_lading,containers[0].packages,293
+D053,packing_list,marks,"EXAMPLE DISTRIBUTION KOREA INC. BUSAN, KOREA C/NO. 1-293 MADE IN CHINA"
 D054,commercial_invoice,invoice_no,BDF-2026-242
 D054,commercial_invoice,total_qty,791
 D054,commercial_invoice,total_gross_kg,9418.1
@@ -1779,6 +2191,16 @@ D054,bill_of_lading,total_packages,467
 D054,bill_of_lading,total_gross_kg,9418.1
 D054,bill_of_lading,total_cbm,71.39
 D054,bill_of_lading,freight_term,FREIGHT COLLECT
+D054,bill_of_lading,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-467 MADE IN VIETNAM"
+D054,bill_of_lading,containers[0].container_no,SOCU7762722
+D054,bill_of_lading,containers[0].seal_no,SO9215571
+D054,bill_of_lading,containers[0].size_type,40'HC (45G1)
+D054,bill_of_lading,containers[0].packages,234
+D054,bill_of_lading,containers[1].container_no,SOLU5697901
+D054,bill_of_lading,containers[1].seal_no,SO5932641
+D054,bill_of_lading,containers[1].size_type,40'HC (45G1)
+D054,bill_of_lading,containers[1].packages,233
+D054,packing_list,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-467 MADE IN VIETNAM"
 D054,certificate_of_origin,co_no,VN-KR 26/04/02181
 D054,certificate_of_origin,exporter_name,BINH DUONG EXAMPLE FURNITURE JSC
 D054,certificate_of_origin,consignee_name,"SAMPLE TRADING KOREA CO., LTD."
@@ -1815,6 +2237,21 @@ D055,bill_of_lading,total_packages,530
 D055,bill_of_lading,total_gross_kg,32224
 D055,bill_of_lading,total_cbm,58.3
 D055,bill_of_lading,freight_term,FREIGHT COLLECT
+D055,bill_of_lading,marks,"SAMPLE FOODS KOREA CO., LTD. BUSAN, KOREA C/NO. 1-530 MADE IN VIETNAM"
+D055,bill_of_lading,containers[0].container_no,SOCU8499570
+D055,bill_of_lading,containers[0].seal_no,SO6376070
+D055,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D055,bill_of_lading,containers[0].packages,177
+D055,bill_of_lading,containers[1].container_no,SOCU1846786
+D055,bill_of_lading,containers[1].seal_no,SO5911758
+D055,bill_of_lading,containers[1].size_type,20'GP (22G1)
+D055,bill_of_lading,containers[1].packages,177
+D055,bill_of_lading,containers[2].container_no,SOLU5715796
+D055,bill_of_lading,containers[2].seal_no,SO4600572
+D055,bill_of_lading,containers[2].size_type,20'GP (22G1)
+D055,bill_of_lading,containers[2].packages,176
+D055,packing_list,items[0].packages,277
+D055,packing_list,items[1].packages,253
 D055,certificate_of_origin,co_no,VN-KR 26/02/02201
 D055,certificate_of_origin,exporter_name,"TAY NGUYEN SAMPLE COFFEE CO., LTD."
 D055,certificate_of_origin,consignee_name,"SAMPLE FOODS KOREA CO., LTD."
@@ -1851,6 +2288,16 @@ D056,bill_of_lading,total_packages,282
 D056,bill_of_lading,total_gross_kg,4134.6
 D056,bill_of_lading,total_cbm,70.5
 D056,bill_of_lading,freight_term,FREIGHT PREPAID
+D056,bill_of_lading,marks,"EXAMPLE HOME LIVING CO., LTD. BUSAN, KOREA C/NO. 1-282 MADE IN CHINA"
+D056,bill_of_lading,containers[0].container_no,SOLU8958188
+D056,bill_of_lading,containers[0].seal_no,SO1628503
+D056,bill_of_lading,containers[0].size_type,40'HC (45G1)
+D056,bill_of_lading,containers[0].packages,141
+D056,bill_of_lading,containers[1].container_no,SOCU3648080
+D056,bill_of_lading,containers[1].seal_no,SO7234757
+D056,bill_of_lading,containers[1].size_type,40'HC (45G1)
+D056,bill_of_lading,containers[1].packages,141
+D056,packing_list,items[0].packages,282
 D056,certificate_of_origin,co_no,K26NGB0001636
 D056,certificate_of_origin,exporter_name,"NINGBO EXAMPLE HOUSEWARE CO., LTD."
 D056,certificate_of_origin,consignee_name,"EXAMPLE HOME LIVING CO., LTD."
@@ -1885,6 +2332,15 @@ D057,bill_of_lading,total_packages,570
 D057,bill_of_lading,total_gross_kg,12604
 D057,bill_of_lading,total_cbm,83.31
 D057,bill_of_lading,freight_term,FREIGHT COLLECT
+D057,bill_of_lading,marks,"HANBIT SAMPLE CORPORATION BUSAN, KOREA C/NO. 1-570 MADE IN CHINA"
+D057,bill_of_lading,containers[0].container_no,SMCU1366715
+D057,bill_of_lading,containers[0].seal_no,SL7000052
+D057,bill_of_lading,containers[0].size_type,40'HC (45G1)
+D057,bill_of_lading,containers[0].packages,285
+D057,bill_of_lading,containers[1].container_no,SMCU6982971
+D057,bill_of_lading,containers[1].seal_no,SL9235979
+D057,bill_of_lading,containers[1].size_type,40'HC (45G1)
+D057,bill_of_lading,containers[1].packages,285
 D057,certificate_of_origin,co_no,K26SZX0001348
 D057,certificate_of_origin,exporter_name,"SHENZHEN SAMPLE POWER TECHNOLOGY CO., LTD."
 D057,certificate_of_origin,consignee_name,HANBIT SAMPLE CORPORATION
@@ -1921,6 +2377,19 @@ D058,bill_of_lading,total_packages,1925
 D058,bill_of_lading,total_gross_kg,41965
 D058,bill_of_lading,total_cbm,57.75
 D058,bill_of_lading,freight_term,FREIGHT PREPAID
+D058,bill_of_lading,marks,"EXAMPLE HOME LIVING CO., LTD. BUSAN, KOREA C/NO. 1-1925 MADE IN CHINA"
+D058,bill_of_lading,containers[0].container_no,EXSU6106731
+D058,bill_of_lading,containers[0].seal_no,EX6260100
+D058,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D058,bill_of_lading,containers[0].packages,642
+D058,bill_of_lading,containers[1].container_no,EXSU5762632
+D058,bill_of_lading,containers[1].seal_no,EX1813492
+D058,bill_of_lading,containers[1].size_type,20'GP (22G1)
+D058,bill_of_lading,containers[1].packages,642
+D058,bill_of_lading,containers[2].container_no,EXMU4339429
+D058,bill_of_lading,containers[2].seal_no,EX2966534
+D058,bill_of_lading,containers[2].size_type,20'GP (22G1)
+D058,bill_of_lading,containers[2].packages,641
 D058,certificate_of_origin,co_no,K26CAN0001554
 D058,certificate_of_origin,exporter_name,"FOSHAN EXAMPLE CERAMICS CO., LTD."
 D058,certificate_of_origin,consignee_name,"EXAMPLE HOME LIVING CO., LTD."
@@ -1955,6 +2424,12 @@ D059,bill_of_lading,total_packages,204
 D059,bill_of_lading,total_gross_kg,12403.2
 D059,bill_of_lading,total_cbm,22.44
 D059,bill_of_lading,freight_term,FREIGHT PREPAID
+D059,bill_of_lading,marks,"SAMPLE FOODS KOREA CO., LTD. BUSAN, KOREA C/NO. 1-204 MADE IN VIETNAM"
+D059,bill_of_lading,containers[0].container_no,EXSU5365419
+D059,bill_of_lading,containers[0].seal_no,EX8173067
+D059,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D059,bill_of_lading,containers[0].packages,204
+D059,packing_list,items[0].packages,204
 D059,certificate_of_origin,co_no,VN-KR 26/02/02219
 D059,certificate_of_origin,exporter_name,"TAY NGUYEN SAMPLE COFFEE CO., LTD."
 D059,certificate_of_origin,consignee_name,"SAMPLE FOODS KOREA CO., LTD."
@@ -1989,6 +2464,12 @@ D060,bill_of_lading,total_packages,449
 D060,bill_of_lading,total_gross_kg,3843.44
 D060,bill_of_lading,total_cbm,31.43
 D060,bill_of_lading,freight_term,FREIGHT COLLECT
+D060,bill_of_lading,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-449 MADE IN VIETNAM"
+D060,bill_of_lading,containers[0].container_no,SOCU9012136
+D060,bill_of_lading,containers[0].seal_no,SO3125039
+D060,bill_of_lading,containers[0].size_type,40'HC (45G1)
+D060,bill_of_lading,containers[0].packages,449
+D060,packing_list,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-449 MADE IN VIETNAM"
 D060,certificate_of_origin,co_no,VN-KR 26/04/02390
 D060,certificate_of_origin,exporter_name,"HAIPHONG SAMPLE FOOTWEAR CO., LTD."
 D060,certificate_of_origin,consignee_name,"SAMPLE TRADING KOREA CO., LTD."
@@ -2023,6 +2504,12 @@ D061,bill_of_lading,total_packages,14
 D061,bill_of_lading,total_gross_kg,6684
 D061,bill_of_lading,total_cbm,4.48
 D061,bill_of_lading,freight_term,FREIGHT COLLECT
+D061,bill_of_lading,marks,"HANBIT SAMPLE CORPORATION BUSAN, KOREA C/NO. 1-14 MADE IN CHINA"
+D061,bill_of_lading,containers[0].container_no,SOLU4906015
+D061,bill_of_lading,containers[0].seal_no,SO8381264
+D061,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D061,bill_of_lading,containers[0].packages,14
+D061,packing_list,items[0].packages,14
 D061,certificate_of_origin,co_no,K26SHA0001410
 D061,certificate_of_origin,exporter_name,"SHANGHAI EXAMPLE HARDWARE CO., LTD. (SAMPLE)"
 D061,certificate_of_origin,consignee_name,HANBIT SAMPLE CORPORATION
@@ -2057,6 +2544,13 @@ D062,bill_of_lading,total_packages,175
 D062,bill_of_lading,total_gross_kg,3121.6
 D062,bill_of_lading,total_cbm,15.18
 D062,bill_of_lading,freight_term,FREIGHT PREPAID
+D062,bill_of_lading,marks,"EXAMPLE DISTRIBUTION KOREA INC. BUSAN, KOREA C/NO. 1-175 MADE IN VIETNAM"
+D062,bill_of_lading,containers[0].container_no,EXSU1077158
+D062,bill_of_lading,containers[0].seal_no,EX4287176
+D062,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D062,bill_of_lading,containers[0].packages,175
+D062,packing_list,items[0].packages,61
+D062,packing_list,items[1].packages,114
 D062,certificate_of_origin,co_no,VN-KR 26/03/02113
 D062,certificate_of_origin,exporter_name,SAIGON SAMPLE TEXTILE JSC
 D062,certificate_of_origin,consignee_name,EXAMPLE DISTRIBUTION KOREA INC.
@@ -2093,6 +2587,11 @@ D063,bill_of_lading,total_packages,604
 D063,bill_of_lading,total_gross_kg,6598.2
 D063,bill_of_lading,total_cbm,33.45
 D063,bill_of_lading,freight_term,FREIGHT PREPAID
+D063,bill_of_lading,marks,"HANBIT SAMPLE CORPORATION BUSAN, KOREA C/NO. 1-604 MADE IN CHINA"
+D063,bill_of_lading,containers[0].container_no,SOCU6632241
+D063,bill_of_lading,containers[0].seal_no,SO5454909
+D063,bill_of_lading,containers[0].size_type,40'HC (45G1)
+D063,bill_of_lading,containers[0].packages,604
 D063,certificate_of_origin,co_no,K26SZX0001291
 D063,certificate_of_origin,exporter_name,"SHENZHEN SAMPLE POWER TECHNOLOGY CO., LTD."
 D063,certificate_of_origin,consignee_name,HANBIT SAMPLE CORPORATION
@@ -2129,6 +2628,20 @@ D064,bill_of_lading,total_packages,2175
 D064,bill_of_lading,total_gross_kg,47415
 D064,bill_of_lading,total_cbm,65.25
 D064,bill_of_lading,freight_term,FREIGHT COLLECT
+D064,bill_of_lading,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-2175 MADE IN CHINA"
+D064,bill_of_lading,containers[0].container_no,SOCU7350026
+D064,bill_of_lading,containers[0].seal_no,SO6893799
+D064,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D064,bill_of_lading,containers[0].packages,725
+D064,bill_of_lading,containers[1].container_no,SOCU7388905
+D064,bill_of_lading,containers[1].seal_no,SO9761048
+D064,bill_of_lading,containers[1].size_type,20'GP (22G1)
+D064,bill_of_lading,containers[1].packages,725
+D064,bill_of_lading,containers[2].container_no,SOLU5561880
+D064,bill_of_lading,containers[2].seal_no,SO1586778
+D064,bill_of_lading,containers[2].size_type,20'GP (22G1)
+D064,bill_of_lading,containers[2].packages,725
+D064,packing_list,items[0].packages,2175
 D064,certificate_of_origin,co_no,K26CAN0001656
 D064,certificate_of_origin,exporter_name,"FOSHAN EXAMPLE CERAMICS CO., LTD."
 D064,certificate_of_origin,consignee_name,"SAMPLE TRADING KOREA CO., LTD."
@@ -2163,6 +2676,16 @@ D065,bill_of_lading,total_packages,2944
 D065,bill_of_lading,total_gross_kg,32972.8
 D065,bill_of_lading,total_cbm,88.32
 D065,bill_of_lading,freight_term,FREIGHT COLLECT
+D065,bill_of_lading,marks,"SAMPLE FOODS KOREA CO., LTD. BUSAN, KOREA C/NO. 1-2944 MADE IN VIETNAM"
+D065,bill_of_lading,containers[0].container_no,EXSU3229434
+D065,bill_of_lading,containers[0].seal_no,EX7784485
+D065,bill_of_lading,containers[0].size_type,40'RH (45R1)
+D065,bill_of_lading,containers[0].packages,1472
+D065,bill_of_lading,containers[1].container_no,EXMU0509147
+D065,bill_of_lading,containers[1].seal_no,EX1385206
+D065,bill_of_lading,containers[1].size_type,40'RH (45R1)
+D065,bill_of_lading,containers[1].packages,1472
+D065,packing_list,marks,"SAMPLE FOODS KOREA CO., LTD. BUSAN, KOREA C/NO. 1-2944 MADE IN VIETNAM"
 D065,certificate_of_origin,co_no,VN-KR 26/03/02254
 D065,certificate_of_origin,exporter_name,MEKONG EXAMPLE SEAFOOD & AGRO JSC
 D065,certificate_of_origin,consignee_name,"SAMPLE FOODS KOREA CO., LTD."
@@ -2199,6 +2722,12 @@ D066,bill_of_lading,total_packages,50
 D066,bill_of_lading,total_gross_kg,1775
 D066,bill_of_lading,total_cbm,12.5
 D066,bill_of_lading,freight_term,FREIGHT COLLECT
+D066,bill_of_lading,marks,"EXAMPLE HOME LIVING CO., LTD. BUSAN, KOREA C/NO. 1-50 MADE IN VIETNAM"
+D066,bill_of_lading,containers[0].container_no,SMCU8579590
+D066,bill_of_lading,containers[0].seal_no,SL5474083
+D066,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D066,bill_of_lading,containers[0].packages,50
+D066,packing_list,marks,"EXAMPLE HOME LIVING CO., LTD. BUSAN, KOREA C/NO. 1-50 MADE IN VIETNAM"
 D066,certificate_of_origin,co_no,VN-KR 26/03/02364
 D066,certificate_of_origin,exporter_name,BINH DUONG EXAMPLE FURNITURE JSC
 D066,certificate_of_origin,consignee_name,"EXAMPLE HOME LIVING CO., LTD."
@@ -2233,6 +2762,13 @@ D067,bill_of_lading,total_packages,814
 D067,bill_of_lading,total_gross_kg,7134.88
 D067,bill_of_lading,total_cbm,56.98
 D067,bill_of_lading,freight_term,FREIGHT PREPAID
+D067,bill_of_lading,marks,"EXAMPLE DISTRIBUTION KOREA INC. BUSAN, KOREA C/NO. 1-814 MADE IN VIETNAM"
+D067,bill_of_lading,containers[0].container_no,EXMU1813869
+D067,bill_of_lading,containers[0].seal_no,EX1712287
+D067,bill_of_lading,containers[0].size_type,40'HC (45G1)
+D067,bill_of_lading,containers[0].packages,814
+D067,packing_list,items[0].packages,466
+D067,packing_list,items[1].packages,348
 D067,certificate_of_origin,co_no,VN-KR 26/02/02317
 D067,certificate_of_origin,exporter_name,"HAIPHONG SAMPLE FOOTWEAR CO., LTD."
 D067,certificate_of_origin,consignee_name,EXAMPLE DISTRIBUTION KOREA INC.
@@ -2269,6 +2805,23 @@ D068,bill_of_lading,total_packages,3125
 D068,bill_of_lading,total_gross_kg,59910
 D068,bill_of_lading,total_cbm,87.125
 D068,bill_of_lading,freight_term,FREIGHT PREPAID
+D068,bill_of_lading,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-3125 MADE IN CHINA"
+D068,bill_of_lading,containers[0].container_no,SMCU1000921
+D068,bill_of_lading,containers[0].seal_no,SL4424960
+D068,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D068,bill_of_lading,containers[0].packages,782
+D068,bill_of_lading,containers[1].container_no,SMLU7569090
+D068,bill_of_lading,containers[1].seal_no,SL3807959
+D068,bill_of_lading,containers[1].size_type,20'GP (22G1)
+D068,bill_of_lading,containers[1].packages,781
+D068,bill_of_lading,containers[2].container_no,SMCU8945679
+D068,bill_of_lading,containers[2].seal_no,SL3315496
+D068,bill_of_lading,containers[2].size_type,20'GP (22G1)
+D068,bill_of_lading,containers[2].packages,781
+D068,bill_of_lading,containers[3].container_no,SMLU5377592
+D068,bill_of_lading,containers[3].seal_no,SL7984146
+D068,bill_of_lading,containers[3].size_type,20'GP (22G1)
+D068,bill_of_lading,containers[3].packages,781
 D068,certificate_of_origin,co_no,K26CAN0001681
 D068,certificate_of_origin,exporter_name,"FOSHAN EXAMPLE CERAMICS CO., LTD."
 D068,certificate_of_origin,consignee_name,"SAMPLE TRADING KOREA CO., LTD."
@@ -2305,6 +2858,13 @@ D069,bill_of_lading,total_packages,247
 D069,bill_of_lading,total_gross_kg,3410.4
 D069,bill_of_lading,total_cbm,56.5
 D069,bill_of_lading,freight_term,FREIGHT COLLECT
+D069,bill_of_lading,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-247 MADE IN CHINA"
+D069,bill_of_lading,containers[0].container_no,SOLU1652093
+D069,bill_of_lading,containers[0].seal_no,SO9713156
+D069,bill_of_lading,containers[0].size_type,40'HC (45G1)
+D069,bill_of_lading,containers[0].packages,247
+D069,packing_list,items[0].packages,105
+D069,packing_list,items[1].packages,142
 D069,certificate_of_origin,co_no,K26NGB0001475
 D069,certificate_of_origin,exporter_name,"NINGBO EXAMPLE HOUSEWARE CO., LTD."
 D069,certificate_of_origin,consignee_name,"SAMPLE TRADING KOREA CO., LTD."
@@ -2341,6 +2901,11 @@ D070,bill_of_lading,total_packages,85
 D070,bill_of_lading,total_gross_kg,1516.5
 D070,bill_of_lading,total_cbm,6.5
 D070,bill_of_lading,freight_term,FREIGHT COLLECT
+D070,bill_of_lading,marks,"HANBIT SAMPLE CORPORATION BUSAN, KOREA C/NO. 1-85 MADE IN CHINA"
+D070,bill_of_lading,containers[0].container_no,SOLU9056336
+D070,bill_of_lading,containers[0].seal_no,SO1575574
+D070,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D070,bill_of_lading,containers[0].packages,85
 D070,certificate_of_origin,co_no,K26TAO0001270
 D070,certificate_of_origin,exporter_name,"QINGDAO SAMPLE TYRE CO., LTD."
 D070,certificate_of_origin,consignee_name,HANBIT SAMPLE CORPORATION
@@ -2377,6 +2942,11 @@ D071,bill_of_lading,total_packages,71
 D071,bill_of_lading,total_gross_kg,1128.9
 D071,bill_of_lading,total_cbm,4.97
 D071,bill_of_lading,freight_term,FREIGHT PREPAID
+D071,bill_of_lading,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-71 MADE IN CHINA"
+D071,bill_of_lading,containers[0].container_no,EXMU3670622
+D071,bill_of_lading,containers[0].seal_no,EX1856299
+D071,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D071,bill_of_lading,containers[0].packages,71
 D071,certificate_of_origin,co_no,K26TAO0001600
 D071,certificate_of_origin,exporter_name,"QINGDAO SAMPLE TYRE CO., LTD."
 D071,certificate_of_origin,consignee_name,"SAMPLE TRADING KOREA CO., LTD."
@@ -2411,6 +2981,25 @@ D072,bill_of_lading,total_packages,3050
 D072,bill_of_lading,total_gross_kg,54710
 D072,bill_of_lading,total_cbm,82.0
 D072,bill_of_lading,freight_term,FREIGHT PREPAID
+D072,bill_of_lading,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-3050 MADE IN CHINA"
+D072,bill_of_lading,containers[0].container_no,EXMU9669130
+D072,bill_of_lading,containers[0].seal_no,EX5264371
+D072,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D072,bill_of_lading,containers[0].packages,763
+D072,bill_of_lading,containers[1].container_no,EXSU1642290
+D072,bill_of_lading,containers[1].seal_no,EX6149819
+D072,bill_of_lading,containers[1].size_type,20'GP (22G1)
+D072,bill_of_lading,containers[1].packages,763
+D072,bill_of_lading,containers[2].container_no,EXMU2651525
+D072,bill_of_lading,containers[2].seal_no,EX8054978
+D072,bill_of_lading,containers[2].size_type,20'GP (22G1)
+D072,bill_of_lading,containers[2].packages,762
+D072,bill_of_lading,containers[3].container_no,EXMU3471066
+D072,bill_of_lading,containers[3].seal_no,EX7336618
+D072,bill_of_lading,containers[3].size_type,20'GP (22G1)
+D072,bill_of_lading,containers[3].packages,762
+D072,packing_list,items[0].packages,1900
+D072,packing_list,items[1].packages,1150
 D072,certificate_of_origin,co_no,K26CAN0001368
 D072,certificate_of_origin,exporter_name,"FOSHAN EXAMPLE CERAMICS CO., LTD."
 D072,certificate_of_origin,consignee_name,"SAMPLE TRADING KOREA CO., LTD."
@@ -2447,6 +3036,12 @@ D073,bill_of_lading,total_packages,88
 D073,bill_of_lading,total_gross_kg,1223.2
 D073,bill_of_lading,total_cbm,3.96
 D073,bill_of_lading,freight_term,FREIGHT COLLECT
+D073,bill_of_lading,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-88 MADE IN CHINA"
+D073,bill_of_lading,containers[0].container_no,SMLU2631830
+D073,bill_of_lading,containers[0].seal_no,SL4840804
+D073,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D073,bill_of_lading,containers[0].packages,88
+D073,packing_list,marks,"SAMPLE TRADING KOREA CO., LTD. BUSAN, KOREA C/NO. 1-88 MADE IN CHINA"
 D073,certificate_of_origin,co_no,K26SZX0001619
 D073,certificate_of_origin,exporter_name,"SHENZHEN SAMPLE POWER TECHNOLOGY CO., LTD."
 D073,certificate_of_origin,consignee_name,"SAMPLE TRADING KOREA CO., LTD."
@@ -2481,6 +3076,12 @@ D074,bill_of_lading,total_packages,166
 D074,bill_of_lading,total_gross_kg,1840.2
 D074,bill_of_lading,total_cbm,7.6
 D074,bill_of_lading,freight_term,FREIGHT PREPAID
+D074,bill_of_lading,marks,"EXAMPLE DISTRIBUTION KOREA INC. BUSAN, KOREA C/NO. 1-166 MADE IN CHINA"
+D074,bill_of_lading,containers[0].container_no,EXSU0103714
+D074,bill_of_lading,containers[0].seal_no,EX7531591
+D074,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D074,bill_of_lading,containers[0].packages,166
+D074,packing_list,marks,"EXAMPLE DISTRIBUTION KOREA INC. BUSAN, KOREA C/NO. 1-166 MADE IN CHINA"
 D074,certificate_of_origin,co_no,K26SHA0001499
 D074,certificate_of_origin,exporter_name,"SHANGHAI EXAMPLE HARDWARE CO., LTD. (SAMPLE)"
 D074,certificate_of_origin,consignee_name,EXAMPLE DISTRIBUTION KOREA INC.
@@ -2517,6 +3118,12 @@ D075,bill_of_lading,total_packages,107
 D075,bill_of_lading,total_gross_kg,1712
 D075,bill_of_lading,total_cbm,9.63
 D075,bill_of_lading,freight_term,FREIGHT COLLECT
+D075,bill_of_lading,marks,"EXAMPLE DISTRIBUTION KOREA INC. BUSAN, KOREA C/NO. 1-107 MADE IN VIETNAM"
+D075,bill_of_lading,containers[0].container_no,EXSU0652102
+D075,bill_of_lading,containers[0].seal_no,EX9643833
+D075,bill_of_lading,containers[0].size_type,20'GP (22G1)
+D075,bill_of_lading,containers[0].packages,107
+D075,packing_list,marks,"EXAMPLE DISTRIBUTION KOREA INC. BUSAN, KOREA C/NO. 1-107 MADE IN VIETNAM"
 D075,certificate_of_origin,co_no,VN-KR 26/02/02395
 D075,certificate_of_origin,exporter_name,SAIGON SAMPLE TEXTILE JSC
 D075,certificate_of_origin,consignee_name,EXAMPLE DISTRIBUTION KOREA INC.

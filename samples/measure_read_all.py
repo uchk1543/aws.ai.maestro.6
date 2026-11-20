@@ -29,7 +29,7 @@ FIELDS_CSV = ROOT / "eval" / "fields.csv"
 TYPES = ("commercial_invoice", "packing_list", "bill_of_lading", "certificate_of_origin")
 ALIAS = {"invoice_no": "doc_no", "bl_no": "doc_no"}
 LINE_OF = {"total_qty": "qty", "total_gross_kg": "gross_kg"}
-_ITEM = re.compile(r"items\[(\d+)\]\.(\w+)")
+_ITEM = re.compile(r"(items|containers)\[(\d+)\]\.(\w+)")  # containers: B/L 컨테이너 줄 (B12 #228)
 
 
 def load_answers() -> dict[tuple[str, str], dict[str, str]]:
@@ -43,8 +43,8 @@ def load_answers() -> dict[tuple[str, str], dict[str, str]]:
 def value_of(doc: ExtractedDocument, field: str):
     """칸 값과 raw. 합계가 비었으면 줄 값을 더한다."""
     if m := _ITEM.fullmatch(field):
-        i, name = int(m[1]), m[2]
-        cell = getattr(doc.items[i], name, None) if i < len(doc.items) else None
+        rows, i, name = getattr(doc, m[1]), int(m[2]), m[3]
+        cell = getattr(rows[i], name, None) if i < len(rows) else None
     else:
         cell = getattr(doc, ALIAS.get(field, field), None)
         if (cell is None or cell.value is None) and field in LINE_OF and doc.items:
@@ -63,6 +63,8 @@ def same(field: str, got, answer: str) -> bool:
         return got in (None, "")
     if got is None:
         return False
+    if field == "marks":  # 화인은 줄바꿈·구두점이 서류마다 달라 글자·숫자만 맞춘다 (B12 #228)
+        return re.sub(r"[^A-Z0-9]", "", str(got).upper()) == re.sub(r"[^A-Z0-9]", "", answer.upper())
     if field.endswith("hs_code"):
         return re.sub(r"\D", "", str(got)) == re.sub(r"\D", "", answer)
     if isinstance(got, (int, float)):
