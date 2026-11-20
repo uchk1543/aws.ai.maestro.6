@@ -4,11 +4,14 @@ classify_document(B1)는 읽기와 따로 부르는 가벼운 호출이다. 종�
 근거는 단계 기록(steps)에 쓴다. run_job에 분류를 붙이는 것은 B9.
 """
 
+import hashlib
 import json
 import os
 import re
 from collections.abc import Callable
+from functools import cache
 from pathlib import PurePath
+from typing import Protocol
 
 from pydantic import BaseModel, ValidationError
 from strands.types.exceptions import StructuredOutputException
@@ -36,6 +39,82 @@ ClassifyReader = Callable[[list[dict], str], Classification]
 
 class ReadError(Exception):
     """모델 호출 실패 또는 형식 검증 두 번 실패. 호출한 쪽이 '확인 필요(읽기 실패)'로 남긴다."""
+
+
+# ---------------------------------------------------------------------------
+# 판독 캐시 (B3, agent-design.md 2번)
+# ---------------------------------------------------------------------------
+# 키: 파일 해시 + 모델 ID + 지시문 버전(RawDocument 스키마 포함) + 서류 종류 + READ_MODE.
+# 값: 모델이 낸 RawDocument JSON. file(S3 키)은 올릴 때마다 달라서 넣지 않고, 꺼낼 때 to_extracted로 다시 붙인다.
+# 켜는 법: READ_CACHE_BUCKET(S3 버킷, cache/read/ 아래에 저장). 없으면 캐시 없이 읽는다.
+# 끄는 법: read_document(no_cache=True) 또는 NO_CACHE=1. 반복 측정(H4)과 라이브 데모는 끈다.
+# 지시문 안의 오늘 날짜는 키에 넣지 않는다 (날마다 캐시가 비지 않게. 날짜 해석은 코드가 한국 시간으로 한다).
+CACHE_PREFIX = "cache/read/"
+
+
+class ReadCache(Protocol):
+    """판독 캐시 저장소. get은 없으면 None. 테스트에서는 dict로 된 가짜를 쓴다."""
+
+    def get(self, key: str) -> str | None: ...
+
+    def put(self, key: str, value: str) -> None: ...
+
+
+class S3ReadCache:
+    """S3 버킷의 cache/read/<키>.json에 저장한다. Lambda의 /tmp는 호출 사이에 남는다는 보장이 없어 쓰지 않는다."""
+
+    def __init__(self, bucket: str, client=None):
+        self.bucket = bucket
+        self._client = client
+
+    def _s3(self):
+        if self._client is None:
+            import boto3
+            from botocore.config import Config
+
+            self._client = boto3.client("s3", config=Config(connect_timeout=5, read_timeout=5, retries={"max_attempts": 2}))
+        return self._client
+
+    def get(self, key: str) -> str | None:
+        try:
+            return self._s3().get_object(Bucket=self.bucket, Key=f"{CACHE_PREFIX}{key}.json")["Body"].read().decode("utf-8")
+        except Exception as exc:  # 없는 키(NoSuchKey)는 그냥 없음. 권한 등 다른 오류도 캐시 없이 읽게 한다
+            code = getattr(exc, "response", {}).get("Error", {}).get("Code")
+            if code not in ("NoSuchKey", "404"):
+                print(f"[warn] read_cache get 실패: {type(exc).__name__}: {exc}")
+            return None
+
+    def put(self, key: str, value: str) -> None:
+        self._s3().put_object(
+            Bucket=self.bucket, Key=f"{CACHE_PREFIX}{key}.json", Body=value.encode("utf-8"), ContentType="application/json"
+        )
+
+
+@cache
+def _schema_hash() -> str:
+    schema = json.dumps(RawDocument.model_json_schema(), sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(schema.encode("utf-8")).hexdigest()[:16]
+
+
+def cache_key(data: bytes, doc_type: DocType, model_id: str | None = None) -> str:
+    """판독 캐시 키. 파일 바이트·모델 ID·PROMPT_VERSION·스키마·서류 종류·READ_MODE 중 하나라도 다르면 다른 키다."""
+    parts = [
+        hashlib.sha256(data).hexdigest(),
+        model_id if model_id is not None else os.environ.get("MODEL_ID", "-"),
+        PROMPT_VERSION,
+        _schema_hash(),
+        doc_type,
+        os.environ.get("READ_MODE", "structured"),
+    ]
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+
+def _default_cache() -> ReadCache | None:
+    """환경 변수로 정한 캐시. NO_CACHE=1이거나 READ_CACHE_BUCKET이 없으면 None(캐시 안 씀)."""
+    if os.environ.get("NO_CACHE") == "1":
+        return None
+    bucket = os.environ.get("READ_CACHE_BUCKET")
+    return S3ReadCache(bucket) if bucket else None
 
 
 # ---------------------------------------------------------------------------
@@ -273,17 +352,51 @@ def classify_document(file: str, data: bytes, *, reader: ClassifyReader | None =
 
 
 def read_document(
-    file: str, data: bytes, doc_type: DocType, *, reader: ModelReader | None = None
+    file: str,
+    data: bytes,
+    doc_type: DocType,
+    *,
+    reader: ModelReader | None = None,
+    cache: ReadCache | None = None,
+    no_cache: bool = False,
 ) -> ExtractedDocument:
     """서류 한 장을 읽어 약속 1 형식으로 돌려준다.
 
     언제: 서류 종류가 정해진 파일 하나를 읽을 때. 서류마다 따로 부르고, 다른 서류 값은 넣지 않는다.
     받는 것: file(S3 키나 경로, 확장자로 형식 판단), data(파일 바이트), doc_type, reader(테스트용 가짜 모델).
+      cache: 판독 캐시 (B3). 없으면 환경 변수로 정한다(READ_CACHE_BUCKET). no_cache=True면 캐시를 보지도 쓰지도 않는다.
+      키가 같으면 모델을 부르지 않고 저장된 답을 쓴다. 캐시 오류는 캐시 없이 읽는다.
     반환: ExtractedDocument. 모델은 raw만 내고 value·unit은 코드가 채운다.
     실패: 모델 호출 실패 또는 형식 검증이 두 번 실패하면 ReadError.
     """
     print(f"[tool] read_document file={file} doc_type={doc_type} bytes={len(data)}")
+    store = None if no_cache else (cache if cache is not None else _default_cache())
+    key = cache_key(data, doc_type) if store is not None else None
+    if store is not None:
+        hit = store.get(key)
+        if hit is not None:
+            try:
+                doc = to_extracted(RawDocument.model_validate_json(hit), doc_type, file)
+                print(f"[cache] read hit key={key[:12]}")
+                return doc
+            except ValidationError as exc:  # 스키마가 바뀌었는데 버전을 안 올린 경우. 새로 읽는다
+                print(f"[warn] read_cache 값이 형식에 안 맞아 새로 읽음: {exc.error_count()}개 오류")
     reader = reader or _strands_reader
     blocks = content_blocks(file, data)
     prompt = system_prompt(doc_type)
-    return _ask_twice(lambda: to_extracted(reader(blocks, prompt), doc_type, file))
+    answered: list[RawDocument] = []
+
+    def ask() -> ExtractedDocument:
+        raw = reader(blocks, prompt)
+        doc = to_extracted(raw, doc_type, file)
+        answered.append(raw)
+        return doc
+
+    doc = _ask_twice(ask)
+    if store is not None:
+        try:
+            store.put(key, answered[-1].model_dump_json())
+            print(f"[cache] read put key={key[:12]}")
+        except Exception as exc:  # 저장 실패가 읽은 결과를 버리게 하지 않는다
+            print(f"[warn] read_cache put 실패: {type(exc).__name__}: {exc}")
+    return doc

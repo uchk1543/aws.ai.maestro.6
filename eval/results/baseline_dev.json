@@ -1,0 +1,735 @@
+{
+ "D001": {
+  "answer": {
+   "findings": [
+    {
+     "field": "invoice_no",
+     "commercial_invoice_raw": "QDT/26/0289",
+     "packing_list_raw": "QDT/26/0829",
+     "evidence": "상업송장의 송장 번호는 QDT/26/0289이고 포장명세서에는 QDT/26/0829로 적혀 있어 뒤의 숫자 순서가 서로 다르다."
+    }
+   ]
+  },
+  "seconds": 2.7
+ },
+ "D002": {
+  "answer": {
+   "findings": [
+    {
+     "field": "total_gross_kg",
+     "commercial_invoice_raw": "4,949.46 kg",
+     "packing_list_raw": "39,744.36",
+     "evidence": "상업송장의 총중량은 4,949.46 kg인데 포장명세서의 총중량은 39,744.36 kg이라 서로 다르다. 포장명세서 SB-50L 행의 총중량 38,661.00은 순중량 3,550.50보다 훨씬 커서 오기로 보인다."
+    }
+   ]
+  },
+  "seconds": 5.3
+ },
+ "D003": {
+  "answer": {
+   "findings": [
+    {
+     "field": "total_gross_kg",
+     "commercial_invoice_raw": "21,683.10 KGS",
+     "packing_list_raw": "12,683.10 KGS",
+     "evidence": "상업송장의 총중량은 21,683.10 KGS인데 포장명세서는 12,683.10 KGS입니다. 포장명세서의 품목별 중량 합계(2,352.60 + 10,330.50)는 12,683.10으로 포장명세서 총계와 같고, 송장은 앞의 두 자리 숫자가 뒤바뀐 것으로 보입니다."
+    }
+   ]
+  },
+  "seconds": 3.6
+ },
+ "D004": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 1.9
+ },
+ "D005": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 2.3
+ },
+ "D006": {
+  "answer": {
+   "findings": [
+    {
+     "field": "total_gross_kg",
+     "commercial_invoice_raw": "241.40 kg",
+     "packing_list_raw": "224.40",
+     "evidence": "상업송장의 총중량은 241.40 kg이고 포장명세서의 총 Gross Weight는 224.40 kg이라 서로 다르다."
+    }
+   ]
+  },
+  "seconds": 2.8
+ },
+ "D007": {
+  "answer": {
+   "findings": [
+    {
+     "field": "total_gross_kg",
+     "commercial_invoice_raw": "1,947.12 kg",
+     "packing_list_raw": "883.20",
+     "evidence": "상업송장의 총중량은 1,947.12 kg인데 포장명세서의 총중량(Gross Weight)은 883.20 kg이라 서로 다릅니다."
+    }
+   ]
+  },
+  "seconds": 3.5
+ },
+ "D008": {
+  "answer": {
+   "findings": [
+    {
+     "field": "total_qty",
+     "commercial_invoice_raw": "3,432 PRS + 4,488 PRS = 7,920 PRS (총계 칸은 없고 품목 수량의 합)",
+     "packing_list_raw": "7,830 PRS (SF-TX40 3,342 + SF-RN41 4,488)",
+     "evidence": "SF-TX40의 수량이 송장은 3,432이고 포장명세서는 3,342라서(숫자 순서가 바뀜) 총수량이 7,920과 7,830으로 90 PRS 차이 납니다."
+    },
+    {
+     "field": "total_gross_kg",
+     "commercial_invoice_raw": "Total Gross Weight: 57,868.80 kg",
+     "packing_list_raw": "5,786.88 (Gross Weight 총계)",
+     "evidence": "송장의 총중량 57,868.80kg은 포장명세서의 5,786.88kg보다 정확히 10배 크고, 포장명세서의 품목별 총중량 합(2,585.44 + 3,201.44 = 5,786.88)은 포장명세서 총계와 일치합니다."
+    }
+   ]
+  },
+  "seconds": 4.9
+ },
+ "D009": {
+  "answer": {
+   "findings": [
+    {
+     "field": "invoice_no",
+     "commercial_invoice_raw": "HSF-26-0283",
+     "packing_list_raw": "HSF-26-0285",
+     "evidence": "상업송장의 송장 번호는 HSF-26-0283인데 포장명세서에는 HSF-26-0285로 적혀 있어 마지막 자리가 다릅니다."
+    }
+   ]
+  },
+  "seconds": 2.2
+ },
+ "D010": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 1.6
+ },
+ "D011": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 3.3
+ },
+ "D012": {
+  "answer": {
+   "findings": [
+    {
+     "field": "invoice_no",
+     "commercial_invoice_raw": "NBH2026-189",
+     "packing_list_raw": "NBH2026-198",
+     "evidence": "상업송장의 송장 번호는 NBH2026-189이고 포장명세서에는 NBH2026-198로 적혀 있어 끝의 두 자리가 서로 바뀌었다."
+    },
+    {
+     "field": "total_gross_kg",
+     "commercial_invoice_raw": "4,651.32 KGS",
+     "packing_list_raw": "2,557.80 KGS",
+     "evidence": "포장명세서의 총중량은 2,557.80 KGS인데, 이 값은 2번 품목의 총중량과 같고 상업송장의 4,651.32 KGS와 다르다. (포장명세서 품목별 합계 2,093.52 + 2,557.80도 4,651.32이다.)"
+    }
+   ]
+  },
+  "seconds": 5.0
+ },
+ "D013": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 3.3
+ },
+ "D014": {
+  "answer": {
+   "findings": [
+    {
+     "field": "total_gross_kg",
+     "commercial_invoice_raw": "12,956.20 KGS",
+     "packing_list_raw": "8,456.20 KGS",
+     "evidence": "상업송장의 총중량(TOTAL G.W.)은 12,956.20 KGS이고 포장명세서의 총중량은 8,456.20 KGS여서 4,500 KGS 차이가 난다."
+    }
+   ]
+  },
+  "seconds": 4.2
+ },
+ "D015": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 2.4
+ },
+ "D016": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 2.9
+ },
+ "D017": {
+  "answer": {
+   "findings": [
+    {
+     "field": "total_gross_kg",
+     "commercial_invoice_raw": "TOTAL G.W. : 9,796.40 KGS",
+     "packing_list_raw": "11,058.60 KGS",
+     "evidence": "상업송장의 총중량(9,796.40 KGS)은 포장명세서의 순중량 합계와 같은 값인데, 포장명세서의 총중량은 11,058.60 KGS(6,248.00 + 4,810.60)라서 서로 맞지 않는다."
+    }
+   ]
+  },
+  "seconds": 4.1
+ },
+ "D018": {
+  "answer": {
+   "findings": [
+    {
+     "field": "total_qty",
+     "commercial_invoice_raw": "744 PCS",
+     "packing_list_raw": "7,440 PCS",
+     "evidence": "상업송장의 총수량은 744 PCS인데 포장명세서의 총수량은 7,440 PCS로 10배 차이가 납니다. 송장은 744 × $1.15 = $855.60으로 금액이 맞으므로 포장명세서 수량이 틀렸을 가능성이 큽니다."
+    }
+   ]
+  },
+  "seconds": 4.2
+ },
+ "D019": {
+  "answer": {
+   "findings": [
+    {
+     "field": "invoice_no",
+     "commercial_invoice_raw": "FEC-26-0246",
+     "packing_list_raw": "FEC-26-0286",
+     "evidence": "상업송장의 송장 번호는 FEC-26-0246인데 포장명세서에는 FEC-26-0286으로 적혀 있어 끝에서 두 번째 숫자(4와 8)가 다릅니다."
+    }
+   ]
+  },
+  "seconds": 2.3
+ },
+ "D020": {
+  "answer": {
+   "findings": [
+    {
+     "field": "invoice_no",
+     "commercial_invoice_raw": "QDT/26/0279",
+     "packing_list_raw": "QDT26/0279",
+     "evidence": "상업송장은 QDT/26/0279로 'QDT' 뒤에 슬래시가 있는데, 포장명세서는 QDT26/0279로 그 슬래시가 빠져 있어 송장 번호 표기가 서로 다릅니다."
+    }
+   ]
+  },
+  "seconds": 5.9
+ },
+ "D021": {
+  "answer": {
+   "findings": [
+    {
+     "field": "total_qty",
+     "commercial_invoice_raw": "13,560 KGS",
+     "packing_list_raw": "13,500 KGS",
+     "evidence": "상업송장의 총수량은 13,560 KGS인데 포장명세서의 총수량은 13,500 KGS라서 서로 다르다."
+    }
+   ]
+  },
+  "seconds": 4.2
+ },
+ "D022": {
+  "answer": {
+   "findings": [
+    {
+     "field": "invoice_no",
+     "commercial_invoice_raw": "FEC-26-0422",
+     "packing_list_raw": "FEC-26-0242",
+     "evidence": "상업송장의 송장 번호는 FEC-26-0422인데 포장명세서에는 FEC-26-0242로 적혀 있어 끝자리 숫자 순서가 서로 다릅니다."
+    }
+   ]
+  },
+  "seconds": 2.6
+ },
+ "D023": {
+  "answer": {
+   "findings": [
+    {
+     "field": "invoice_no",
+     "commercial_invoice_raw": "NBH2026-214",
+     "packing_list_raw": "NBH2026-294",
+     "evidence": "상업송장의 송장 번호는 NBH2026-214이고 포장명세서에는 NBH2026-294로 적혀 있어 끝 두 자리가 다릅니다."
+    }
+   ]
+  },
+  "seconds": 3.0
+ },
+ "D024": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 2.8
+ },
+ "D025": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 4.1
+ },
+ "D026": {
+  "answer": {
+   "findings": [
+    {
+     "field": "total_gross_kg",
+     "commercial_invoice_raw": "TOTAL G.W. : 3,435.78 KGS",
+     "packing_list_raw": "6,404.57 KGS",
+     "evidence": "상업송장의 총중량은 3,435.78 KGS인데 포장명세서의 총중량은 6,404.57 KGS(971.28 + 5,433.29)라서 서로 다르다."
+    }
+   ]
+  },
+  "seconds": 3.4
+ },
+ "D027": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 2.8
+ },
+ "D028": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 2.3
+ },
+ "D029": {
+  "answer": {
+   "findings": [
+    {
+     "field": "total_gross_kg",
+     "commercial_invoice_raw": "33,692.00 KGS",
+     "packing_list_raw": "3,369.20 KGS",
+     "evidence": "상업송장의 총중량 33,692.00 KGS는 포장명세서의 3,369.20 KGS보다 10배 큰데, 포장명세서의 품목별 총중량(480.00 + 2,889.20)은 3,369.20이라 상업송장의 소수점 위치가 틀린 것으로 보입니다."
+    }
+   ]
+  },
+  "seconds": 3.6
+ },
+ "D030": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 2.4
+ },
+ "D031": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 2.5
+ },
+ "D032": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 3.0
+ },
+ "D033": {
+  "answer": {
+   "findings": [
+    {
+     "field": "total_qty",
+     "commercial_invoice_raw": "4,350 PCS",
+     "packing_list_raw": "3,450 PCS",
+     "evidence": "상업송장의 총수량은 4,350 PCS인데 포장명세서의 총수량은 3,450 PCS라서 서로 다르다."
+    }
+   ]
+  },
+  "seconds": 2.7
+ },
+ "D034": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 3.6
+ },
+ "D035": {
+  "answer": {
+   "findings": [
+    {
+     "field": "total_qty",
+     "commercial_invoice_raw": "39,500 PCS",
+     "packing_list_raw": "3,950 PCS",
+     "evidence": "상업송장의 총수량은 39,500 PCS이고 포장명세서의 총수량은 3,950 PCS여서 10배 차이가 납니다. 송장 금액 $7,110.00은 단가 $0.18에 39,500개를 곱한 값과 같습니다."
+    }
+   ]
+  },
+  "seconds": 4.6
+ },
+ "D036": {
+  "answer": {
+   "findings": [
+    {
+     "field": "invoice_no",
+     "commercial_invoice_raw": "HSF-26-0295",
+     "packing_list_raw": "HSF26-0295",
+     "evidence": "상업송장의 송장 번호는 하이픈이 들어간 HSF-26-0295이고 포장명세서는 HSF26-0295로 하이픈이 없어 표기가 서로 다르다."
+    }
+   ]
+  },
+  "seconds": 2.9
+ },
+ "D037": {
+  "answer": {
+   "findings": [
+    {
+     "field": "total_qty",
+     "commercial_invoice_raw": "182 PCS",
+     "packing_list_raw": "180 PCS",
+     "evidence": "상업송장의 총수량은 182 PCS인데 포장명세서의 총수량은 180 PCS라서 2개 차이가 난다."
+    }
+   ]
+  },
+  "seconds": 2.1
+ },
+ "D038": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 3.1
+ },
+ "D039": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 4.0
+ },
+ "D040": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 2.6
+ },
+ "D041": {
+  "answer": {
+   "findings": [
+    {
+     "field": "total_qty",
+     "commercial_invoice_raw": "14,820 KGS + 12,720 KGS (합계 27,540 KGS)",
+     "packing_list_raw": "54,540 KGS (CB-RB18 줄 수량 41,820)",
+     "evidence": "포장명세서 CB-RB18 수량이 41,820으로 적혀 있어(송장과 순중량은 14,820) 총수량이 54,540 KGS가 되었고, 송장 합계 27,540 KGS와 맞지 않는다."
+    }
+   ]
+  },
+  "seconds": 5.4
+ },
+ "D042": {
+  "answer": {
+   "findings": [
+    {
+     "field": "total_qty",
+     "commercial_invoice_raw": "22,212 PRS",
+     "packing_list_raw": "5,796 PRS",
+     "evidence": "상업송장의 2번 품목 수량은 18,240 PRS인데 포장명세서의 같은 품목(RUNNING SHOES)은 1,824 PRS라서, 총수량이 22,212 PRS와 5,796 PRS로 서로 다릅니다."
+    }
+   ]
+  },
+  "seconds": 3.8
+ },
+ "D043": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 2.7
+ },
+ "D044": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 2.5
+ },
+ "D045": {
+  "answer": {
+   "findings": [
+    {
+     "field": "invoice_no",
+     "commercial_invoice_raw": "NBH2026-023",
+     "packing_list_raw": "NBH2026-203",
+     "evidence": "송장 번호가 상업송장은 NBH2026-023이고 포장명세서는 NBH2026-203이라 뒤 세 자리의 숫자 순서가 서로 바뀌어 있다."
+    },
+    {
+     "field": "total_qty",
+     "commercial_invoice_raw": "3,600 + 1,128 + 2,730 = 7,458 PCS (총수량 합계 표기는 없고 품목별 수량의 합)",
+     "packing_list_raw": "7,470 PCS",
+     "evidence": "SB-30L 수량이 상업송장은 1,128 PCS이고 포장명세서는 1,140 PCS라서 총수량이 7,458 PCS와 7,470 PCS로 12 PCS 차이가 난다."
+    }
+   ]
+  },
+  "seconds": 4.5
+ },
+ "D046": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 2.2
+ },
+ "D047": {
+  "answer": {
+   "findings": [
+    {
+     "field": "total_qty",
+     "commercial_invoice_raw": "9,080 KGS",
+     "packing_list_raw": "9,800 KGS",
+     "evidence": "상업송장의 총수량은 9,080 KGS이고 포장명세서는 9,800 KGS여서 수량이 서로 다르며, 송장은 9,080×3.85=34,958.00 USD로 금액과 맞아떨어진다."
+    }
+   ]
+  },
+  "seconds": 4.1
+ },
+ "D048": {
+  "answer": {
+   "findings": [
+    {
+     "field": "invoice_no",
+     "commercial_invoice_raw": "MKS-260658",
+     "packing_list_raw": "MKS-260258",
+     "evidence": "상업송장의 송장 번호는 MKS-260658인데 포장명세서에는 MKS-260258로 적혀 있어 일곱 번째 자리가 6과 2로 다릅니다."
+    }
+   ]
+  },
+  "seconds": 3.8
+ },
+ "D049": {
+  "answer": {
+   "findings": [
+    {
+     "field": "invoice_no",
+     "commercial_invoice_raw": "SHE-2026-0267",
+     "packing_list_raw": "SHE-20260267",
+     "evidence": "상업송장의 송장 번호는 'SHE-2026-0267'이고 포장명세서는 'SHE-20260267'이라서 하이픈 하나가 빠져 있어 두 번호가 일치하지 않습니다."
+    }
+   ]
+  },
+  "seconds": 6.8
+ },
+ "D050": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 3.0
+ },
+ "D051": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 2.9
+ },
+ "D052": {
+  "answer": {
+   "findings": [
+    {
+     "field": "invoice_no",
+     "commercial_invoice_raw": "SST-26-0135",
+     "packing_list_raw": "SST-260135",
+     "evidence": "상업송장의 송장 번호는 하이픈이 들어간 SST-26-0135인데, 포장명세서에는 SST-260135로 적혀 있어 표기가 다릅니다."
+    }
+   ]
+  },
+  "seconds": 2.2
+ },
+ "D053": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 2.9
+ },
+ "D054": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 2.6
+ },
+ "D055": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 3.7
+ },
+ "D056": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 2.0
+ },
+ "D057": {
+  "answer": {
+   "findings": [
+    {
+     "field": "total_gross_kg",
+     "commercial_invoice_raw": "12,604.00 kg",
+     "packing_list_raw": "11,704.00",
+     "evidence": "상업송장의 총중량은 12,604.00 kg이고 포장명세서 총 Gross Weight는 11,704.00 kg(2,746.00 + 8,958.00)이라 900 kg 차이가 납니다."
+    }
+   ]
+  },
+  "seconds": 3.6
+ },
+ "D058": {
+  "answer": {
+   "findings": [
+    {
+     "field": "invoice_no",
+     "commercial_invoice_raw": "FEC-26-0249",
+     "packing_list_raw": "FEC-26-0429",
+     "evidence": "상업송장의 송장 번호는 FEC-26-0249인데 포장명세서에는 FEC-26-0429로 적혀 있어 뒤 숫자 순서가 서로 다릅니다."
+    }
+   ]
+  },
+  "seconds": 2.3
+ },
+ "D059": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 2.1
+ },
+ "D060": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 3.4
+ },
+ "D061": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 1.6
+ },
+ "D062": {
+  "answer": {
+   "findings": [
+    {
+     "field": "total_gross_kg",
+     "commercial_invoice_raw": "Total Gross Weight: 2,958.00 kg",
+     "packing_list_raw": "3,121.60",
+     "evidence": "상업송장의 총중량 2,958.00kg은 포장명세서의 순중량(Net) 합계 2,958.00과 같고, 포장명세서의 총중량(Gross)은 3,121.60kg(976.00+2,145.60)이라 서로 다릅니다."
+    }
+   ]
+  },
+  "seconds": 4.3
+ },
+ "D063": {
+  "answer": {
+   "findings": [
+    {
+     "field": "total_gross_kg",
+     "commercial_invoice_raw": "6,598.20 KGS",
+     "packing_list_raw": "4,012.80 KGS",
+     "evidence": "포장명세서의 총중량 4,012.80 KGS는 2번 품목의 중량과 같은 값이고, 두 품목을 더한 값(2,585.40 + 4,012.80 = 6,598.20)인 상업송장의 6,598.20 KGS와 다릅니다."
+    }
+   ]
+  },
+  "seconds": 3.5
+ },
+ "D064": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 2.7
+ },
+ "D065": {
+  "answer": {
+   "findings": [
+    {
+     "field": "invoice_no",
+     "commercial_invoice_raw": "MKS-260220",
+     "packing_list_raw": "MKS-260250",
+     "evidence": "송장 번호가 상업송장에는 MKS-260220, 포장명세서에는 MKS-260250으로 적혀 있어 끝에서 둘째 자리(2와 5)가 다릅니다."
+    }
+   ]
+  },
+  "seconds": 3.2
+ },
+ "D066": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 1.5
+ },
+ "D067": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 5.9
+ },
+ "D068": {
+  "answer": {
+   "findings": [
+    {
+     "field": "total_gross_kg",
+     "commercial_invoice_raw": "59,910.00 kg",
+     "packing_list_raw": "84,809.50",
+     "evidence": "상업송장의 총중량은 59,910.00 kg인데 포장명세서 합계는 84,809.50 kg(45,569.50 + 39,240.00)이라 약 24,899.50 kg 차이가 납니다."
+    }
+   ]
+  },
+  "seconds": 3.9
+ },
+ "D069": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 4.7
+ },
+ "D070": {
+  "answer": {
+   "findings": [
+    {
+     "field": "invoice_no",
+     "commercial_invoice_raw": "QDT/26/0272",
+     "packing_list_raw": "QDT/26/0722",
+     "evidence": "상업송장의 송장 번호는 QDT/26/0272인데 포장명세서에는 QDT/26/0722로 적혀 있어, 끝의 숫자 '27'과 '72'의 순서가 서로 다릅니다."
+    }
+   ]
+  },
+  "seconds": 4.2
+ },
+ "D071": {
+  "answer": {
+   "findings": [
+    {
+     "field": "invoice_no",
+     "commercial_invoice_raw": "QDT/26/0236",
+     "packing_list_raw": "QDT/26/0286",
+     "evidence": "송장 번호의 마지막 네 자리가 상업송장은 0236, 포장명세서는 0286으로 서로 다릅니다."
+    },
+    {
+     "field": "total_qty",
+     "commercial_invoice_raw": "3,550 PCS",
+     "packing_list_raw": "35,500 PCS",
+     "evidence": "상업송장 수량은 3,550 PCS이고 포장명세서 총수량은 35,500 PCS라서 10배 차이가 납니다. 상업송장은 3,550 × 4.20 = 14,910.00으로 금액과 맞습니다."
+    }
+   ]
+  },
+  "seconds": 4.2
+ },
+ "D072": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 3.8
+ },
+ "D073": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 2.7
+ },
+ "D074": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 3.2
+ },
+ "D075": {
+  "answer": {
+   "findings": []
+  },
+  "seconds": 1.8
+ }
+}
