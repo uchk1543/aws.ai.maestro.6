@@ -54,3 +54,6 @@ S04,test,certificate_of_origin,items[0].hs_code,6105.10,6109.10,trap_code,X-HS-0
 - 서류마다 찍힌 핵심 칸 값은 eval/fields.csv(set_id,doc,field,answer), 서류 자리·형식과 품목별 HS 정답·헷갈리는 HS는
   eval/sets.csv(set_id,split,consignee,docs,line,item,hs_answer,trap_hs), 현황 조회 질문은
   eval/queries.csv(query_id,question,expected_conditions,expected_count).
+- 신고서 초안 칸별 정답은 eval/declarations.csv(set_id,split,line,field,label,answer,source,expect_blank).
+  line은 품목 줄(1부터, 서류 전체 칸이면 빈칸), source는 값을 가져올 서류 칸(예 bill_of_lading.bl_no),
+  expect_blank=1이면 문제가 남아 비워 두어야 맞는 칸이다. 비워 둔 칸은 틀림과 따로 센다 (agent-design.md 11번).
