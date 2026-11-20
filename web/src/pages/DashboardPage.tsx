@@ -87,15 +87,45 @@ function TodoTile({ todo, fx, order }: { todo: Todo; fx: boolean; order: number 
   );
 }
 
-/** 부산항 장면: 바다에서 터미널로 내려오는 오프닝을 한 번, 그다음 항공샷을 되풀이한다. */
+/**
+ * 인트로 영상에서 통관 단계가 시작하는 때(초). 영상은 컨테이너 하나를 따라간다:
+ * 배 입항 → 안벽 크레인 하역 → 트럭으로 장치장 사이 이동 → 검사대 → 게이트 반출 → 항구 전체로 빠짐.
+ * 영상을 다시 렌더하면 이 시간도 함께 고친다 (AWS_개인/video/blender/dash_port/build_scene.py 의 프레임 ÷ 24).
+ */
+export const STAGE_TIMES: { status: string; from: number }[] = [
+  { status: "입항", from: 0 },
+  { status: "수입신고", from: 4 },
+  { status: "심사 중", from: 11 },
+  { status: "검사 중", from: 15.5 },
+  { status: "수리", from: 17 },
+  { status: "반출", from: 18.5 },
+];
+
+/** 영상 t초에 보이는 단계 번호. */
+export function stageAt(t: number): number {
+  let at = 0;
+  STAGE_TIMES.forEach((s, i) => {
+    if (t >= s.from) at = i;
+  });
+  return at;
+}
+
+/** 부산항 장면: 컨테이너 하나가 입항부터 반출까지 가는 인트로를 한 번, 그다음 항구 전체 항공샷을 되풀이한다. */
 function PortHero({ stats }: { stats: StatsResponse | undefined }) {
   const [phase, setPhase] = useState<"intro" | "loop">("intro");
+  const [stage, setStage] = useState(0);
   const loopRef = useRef<HTMLVideoElement>(null);
   const total = stats ? stats.todo.waiting_approval + stats.todo.unclassified + stats.todo.delayed : null;
+  const countOf = (status: string) => stats?.flow.find((f) => f.status === status)?.count;
 
   function toLoop() {
     setPhase("loop");
     void loopRef.current?.play?.()?.catch?.(() => undefined);
+  }
+
+  function stageClass(i: number): string {
+    if (phase === "loop" || i < stage) return "done";
+    return i === stage ? "now" : "";
   }
 
   return (
@@ -109,9 +139,11 @@ function PortHero({ stats }: { stats: StatsResponse | undefined }) {
         muted
         playsInline
         preload="auto"
+        onTimeUpdate={(e) => setStage(stageAt(e.currentTarget.currentTime))}
         onEnded={toLoop}
         onError={toLoop}
         aria-hidden="true"
+        data-testid="port-intro"
       />
       <video
         ref={loopRef}
@@ -129,11 +161,16 @@ function PortHero({ stats }: { stats: StatsResponse | undefined }) {
         <p className="port-title">부산항 통관 현황</p>
         <p className="port-sub">{total === null ? "불러오는 중" : `확인할 일 ${total}건이 들어와 있습니다`}</p>
       </div>
-      <div className="port-docs" aria-hidden="true">
-        {[0, 1, 2, 3, 4, 5].map((n) => (
-          <span key={n} className="port-doc" style={{ "--n": n } as CSSProperties} />
+      {/* 영상 속 컨테이너가 지금 지나는 통관 단계. 숫자는 그 단계의 화물 수(서버 값) */}
+      <ol className="port-stages" aria-label="영상 속 통관 단계">
+        {STAGE_TIMES.map((s, i) => (
+          <li key={s.status} className={stageClass(i)} aria-current={stageClass(i) === "now" ? "step" : undefined}>
+            <span className="port-stage-dot" aria-hidden="true" />
+            <span className="port-stage-name">{s.status}</span>
+            {countOf(s.status) !== undefined && <b className="port-stage-count">{countOf(s.status)}</b>}
+          </li>
         ))}
-      </div>
+      </ol>
     </div>
   );
 }

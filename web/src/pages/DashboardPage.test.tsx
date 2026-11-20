@@ -1,12 +1,12 @@
 // G15 대시보드: 서버 숫자 그대로, 통계를 누르면 연관된 문서 분류 내역·AI chat 으로, 애니메이션 ON/OFF
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "../api";
 import statsDraft from "../fixtures/stats.draft.json";
 import { renderWithQuery } from "../test-utils";
 import type { StatsResponse } from "../types";
-import { DashboardPage, FX_KEY, initialFx } from "./DashboardPage";
+import { DashboardPage, FX_KEY, initialFx, stageAt } from "./DashboardPage";
 
 vi.mock("../api", async (importOriginal) => {
   const real = await importOriginal<typeof import("../api")>();
@@ -104,6 +104,35 @@ describe("DashboardPage", () => {
     expect(toggle).toHaveTextContent("애니메이션 OFF");
     expect(screen.queryByText("부산항 통관 현황")).not.toBeInTheDocument();
     expect(window.localStorage.getItem(FX_KEY)).toBe("off");
+  });
+
+  it("부산항 영상이 지나는 통관 단계를 영상 시간에 맞춰 짚고, 단계마다 화물 수를 붙인다", async () => {
+    renderWithQuery(<DashboardPage />);
+
+    await screen.findByText("확인할 일 7건이 들어와 있습니다");
+    const stages = screen.getByRole("list", { name: "영상 속 통관 단계" });
+    expect(within(stages).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "입항7",
+      "수입신고9",
+      "심사 중4",
+      "검사 중5",
+      "수리22",
+      "반출29",
+    ]);
+    expect(within(stages).getByText("입항").closest("li")).toHaveAttribute("aria-current", "step");
+
+    const intro = screen.getByTestId("port-intro");
+    Object.defineProperty(intro, "currentTime", { value: 12, configurable: true });
+    fireEvent.timeUpdate(intro);
+    expect(within(stages).getByText("심사 중").closest("li")).toHaveAttribute("aria-current", "step");
+    expect(within(stages).getByText("수입신고").closest("li")).toHaveClass("done");
+
+    fireEvent.ended(intro); // 되풀이 구간은 모두 지난 단계
+    expect(within(stages).getAllByRole("listitem").every((li) => li.classList.contains("done"))).toBe(true);
+  });
+
+  it("stageAt 은 영상 시간을 단계 번호로 바꾼다", () => {
+    expect([0, 3.9, 4, 11, 15.5, 17, 18.5, 24].map(stageAt)).toEqual([0, 0, 1, 2, 3, 4, 5, 5]);
   });
 
   it("움직임 줄이기 설정이면 처음부터 OFF", () => {
