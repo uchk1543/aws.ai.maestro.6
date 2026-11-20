@@ -5,6 +5,8 @@ import chatExample from "../../docs/examples/chat_response.json";
 import jobExample from "../../docs/examples/job_waiting_approval.json";
 // 임시(제안 중): 서버 약속이 합쳐지면 docs/examples/documents.json 으로 바꾼다
 import documentsDraft from "./fixtures/documents.draft.json";
+// 임시(제안 중): F11(#195)이 합쳐지면 docs/examples/stats.json 으로 바꾼다
+import statsDraft from "./fixtures/stats.draft.json";
 import { ApiError } from "./api";
 import { fileViewOf } from "./mockDocs";
 import type {
@@ -19,6 +21,7 @@ import type {
   HSChoice,
   Job,
   JobFilesResponse,
+  StatsResponse,
   UploadRequestFile,
   UploadsResponse,
 } from "./types";
@@ -102,14 +105,37 @@ const DOCS_PAGE = 3;
 const DOC_TYPE_SET = new Set<string>(["commercial_invoice", "packing_list", "bill_of_lading", "certificate_of_origin", "unknown"]);
 
 /** GET /api/documents: 임시 가짜 데이터에서 그 종류만 골라 한 쪽(3건)씩 준다. counts 는 파일에 적힌 값 그대로. */
+// 가짜 작업마다 거르기에 쓰는 사실 (F11 거르기 흉내). 예시 작업(job-7c1e)은 불일치 X-WT-01 과 HS 고를 품목이 있다
+const JOB_FACTS: Record<string, { grades: string[]; rules: string[]; hsPending: boolean }> = {
+  "job-7c1e": { grades: ["불일치"], rules: ["X-WT-01"], hsPending: true },
+};
+
+function jobMatches(record: DocumentRecord, query: URLSearchParams): boolean {
+  const facts = JOB_FACTS[record.job_id] ?? { grades: [], rules: [], hsPending: false };
+  const status = query.get("job_status");
+  const grade = query.get("grade");
+  const rule = query.get("rule_id");
+  if (status && record.job_status !== status) return false;
+  if (grade && !facts.grades.includes(grade)) return false;
+  if (rule && !facts.rules.includes(rule)) return false;
+  if (query.get("hs") === "pending" && !facts.hsPending) return false;
+  return true;
+}
+
 function documents(query: URLSearchParams): DocumentsResponse {
   const docType = query.get("doc_type") ?? "";
   if (!DOC_TYPE_SET.has(docType)) throw new ApiError(400, "doc_type은 commercial_invoice, packing_list, bill_of_lading, certificate_of_origin, unknown 중 하나입니다");
   const draft = documentsDraft as { counts: Record<DocType, number>; items: DocumentRecord[] };
-  const all = draft.items.filter((d) => d.doc_type === docType);
+  const filtered = ["job_status", "grade", "rule_id", "hs"].some((k) => query.get(k));
+  const kept = filtered ? draft.items.filter((d) => jobMatches(d, query)) : draft.items;
+  // 거르기가 있으면 counts 도 그 안에서 센다 (없으면 파일에 적힌 값 그대로)
+  const counts = filtered
+    ? (Object.fromEntries([...DOC_TYPE_SET].map((t) => [t, kept.filter((d) => d.doc_type === t).length])) as Record<DocType, number>)
+    : copy(draft.counts);
+  const all = kept.filter((d) => d.doc_type === docType);
   const start = Number(query.get("cursor") ?? "0") || 0;
   const end = start + DOCS_PAGE;
-  return { counts: copy(draft.counts), items: copy(all.slice(start, end)), next_cursor: end < all.length ? String(end) : null };
+  return { counts, items: copy(all.slice(start, end)), next_cursor: end < all.length ? String(end) : null };
 }
 
 /** GET /api/jobs/{id}/files: 임시 가짜 데이터에서 그 작업의 서류마다 가짜 쪽 그림과 표시를 만든다 (G11). */
@@ -143,6 +169,11 @@ export async function mockRequest(method: string, path: string, body: unknown): 
   }
   const [pathname, search = ""] = path.split("?");
   if (method === "GET" && pathname === "/api/documents") return documents(new URLSearchParams(search));
+  if (method === "GET" && pathname === "/api/stats") {
+    const { _note, ...stats } = statsDraft as StatsResponse & { _note?: string };
+    void _note;
+    return copy(stats);
+  }
   const route = path.match(/^\/api\/jobs\/([^/]+)(?:\/([a-z]+))?$/);
   if (route) {
     const jobId = decodeURIComponent(route[1]);
