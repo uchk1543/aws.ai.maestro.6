@@ -43,7 +43,7 @@ git switch main && git pull && uv sync && uv run pytest -q
 MODEL_ID=global.anthropic.claude-sonnet-5-5 bash infra/create.sh
 curl -s https://<CloudFront 주소>/api/            # 4번 F3 전: 핸들러 404 JSON / F3 뒤: {"ok": true}
 
-# 합칠 때마다: 두 Lambda 코드 갱신
+# 배포 시각(15·18·23·03·07시, 데모 직전)마다: 두 Lambda 코드 갱신
 bash infra/deploy.sh
 
 # 화면 빌드가 생기면 (F5)
@@ -72,7 +72,7 @@ curl -s "$URL/api/jobs/<job_id>"                # queued → running → waiting
 - [ ] F3(4번) 합친 뒤 `deploy.sh`, `/api/` → `{"ok": true}`, 끝까지 한 번
 - [ ] F4 Textract 권한, team06-shipments·hs-history·WMS 테이블 (4번이 infra/ PR로 정의 → PM 실행)
 - [ ] F5 화면 빌드 올리기 (`deploy-web.sh`)
-- [ ] F6 합칠 때마다 배포, `team06-` 아닌 리소스·서울 밖 리소스(CloudFront 제외) 점검
+- [ ] F6 배포 시각마다 배포, `team06-` 아닌 리소스·서울 밖 리소스(CloudFront 제외) 점검
 
 ## 알려진 문제와 주의
 - **패키징 플랫폼**: `x86_64-manylinux_2_28`을 쓴다. pillow 13(strands-agents-tools 의존성)에 manylinux2014 휠이 없다. 2_28은 Lambda Python 3.13(Amazon Linux 2023, glibc 2.34)에서 돈다.

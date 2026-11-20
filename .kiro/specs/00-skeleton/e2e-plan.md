@@ -87,7 +87,7 @@ PM이 만든 회의 자료다. Spec이 아니다. 각 담당은 이 표에서 �
 | F3 | 비동기 처리: API Lambda → 처리 Lambda (POST는 바로 job_id) | api/, infra/ | API Gateway 30초 안에 응답, 화면 코드는 그대로 | 서버 | P0 | 없음 |
 | F4 | 권한 추가 (Textract, 새 테이블, Lambda 사이 호출) | infra/policy-*.json | 실행 역할 2개, 필요한 것만 | PM | P1 | 없음 |
 | F5 | 화면 호스팅: CloudFront + S3 | infra/ | CloudFront 주소에서 화면, /api/*는 API Gateway | PM + 화면 | P0~P1 | 없음 |
-| F6 | 합치는 시각마다 배포, 8장 점검 | infra/ | team06- 밖·서울 밖 리소스 없음 (CloudFront는 전역 예외) | PM | 계속 | 없음 |
+| F6 | 배포 시각마다 배포, 8장 점검 | infra/ | team06- 밖·서울 밖 리소스 없음 (CloudFront는 전역 예외) | PM | 계속 | 없음 |
 
 ### G. 화면 (web/)
 | ID | 작업 | 쓰는 API·예시 | 끝난 기준 | 제안 담당 | 단계 | 상태 |
