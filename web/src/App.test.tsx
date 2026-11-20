@@ -21,6 +21,17 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: "파일 업로드" })).toBeInTheDocument();
   });
 
+  it("앱 바(모바일)에 앱 이름과 지금 화면 제목을 적는다", async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithQuery(<App />);
+
+    expect(container.querySelector(".appbar-name")).toHaveTextContent("통관 서류 검토");
+    expect(container.querySelector(".appbar-title")).toHaveTextContent("파일 업로드");
+
+    await user.click(screen.getByRole("button", { name: "AI chat" }));
+    expect(container.querySelector(".appbar-title")).toHaveTextContent("AI chat");
+  });
+
   it("모르는 주소는 업로드 화면", async () => {
     window.location.hash = "#/nothing";
     await act(async () => {

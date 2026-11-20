@@ -1,18 +1,29 @@
-/* 화면 공통 스타일 */
+/* 화면 공통 스타일. 모바일(767px 이하)을 기본으로 쓰고, 태블릿(768px~)·PC(1200px~)에서 넓힌다. */
 :root {
-  --bg: #f4f5f7;
+  --bg: #f3f5f8;
   --panel: #ffffff;
-  --menu: #2f3a4a;
-  --menu-active: #4a5a70;
-  --text: #1f2933;
-  --muted: #6b7785;
-  --line: #d9dee5;
-  --primary: #1f5fbf;
-  --danger: #c0392b;
-  --warn: #b7791f;
+  --menu: #243044;
+  --menu-active: #36465f;
+  --text: #1b2430;
+  --muted: #5d6b7a;
+  --line: #d5dbe3;
+  --primary: #1d5fc4;
+  --primary-soft: #e8f0fc;
+  --danger: #b3261e;
+  --danger-soft: #fbe4e1;
+  --warn: #8a5a00;
+  --warn-soft: #fdf0d5;
+  --ok: #17683b;
+  --ok-soft: #dcf3e5;
+  --note-soft: #e6e9ee;
+  --appbar-h: 52px;
+  --tabbar-h: 60px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
   font-family: system-ui, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
   color: var(--text);
   background: var(--bg);
+  -webkit-text-size-adjust: 100%;
 }
 
 * {
@@ -21,6 +32,7 @@
 
 body {
   margin: 0;
+  line-height: 1.5;
 }
 
 h1 {
@@ -33,6 +45,17 @@ h2 {
   margin: 0 0 0.75rem;
 }
 
+h3 {
+  font-size: 0.95rem;
+  margin: 0 0 0.3rem;
+}
+
+code {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+
 button {
   font: inherit;
   cursor: pointer;
@@ -43,48 +66,224 @@ button:disabled {
   opacity: 0.55;
 }
 
-/* 왼쪽 메뉴 + 오른쪽 화면 */
+/* 입력칸 글자는 16px 이상 (iOS 가 입력할 때 화면을 확대하지 않게) */
+input[type="text"],
+select {
+  font: inherit;
+  font-size: 16px;
+  min-height: 44px;
+  padding: 0.5rem 0.7rem;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.icon {
+  flex-shrink: 0;
+}
+
+/* 화면에는 안 보이지만 읽기 프로그램과 키보드는 쓸 수 있다 */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* 배치: 위 앱 바 + 화면 + 아래 탭 메뉴 (모바일) */
 .layout {
   display: flex;
+  flex-direction: column;
   min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.appbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  height: calc(var(--appbar-h) + var(--safe-top));
+  padding: calc(var(--safe-top) + 0.85rem) 16px 0;
+  color: #fff;
+  background: var(--menu);
+}
+
+.appbar-name {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  color: #c3ccd9;
+}
+
+.appbar-title {
+  min-width: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .menu {
-  width: 200px;
-  flex-shrink: 0;
-  background: var(--menu);
-  padding: 1rem 0.75rem;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
   display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  height: calc(var(--tabbar-h) + var(--safe-bottom));
+  padding-bottom: var(--safe-bottom);
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+}
+
+.menu-brand {
+  display: none;
 }
 
 .menu-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 44px;
   border: 0;
-  border-radius: 8px;
-  padding: 0.75rem 1rem;
-  text-align: left;
-  color: #fff;
+  border-top: 3px solid transparent;
+  font-size: 0.75rem;
+  color: var(--muted);
   background: transparent;
 }
 
-.menu-item:hover,
 .menu-item.active {
-  background: var(--menu-active);
+  font-weight: 700;
+  color: var(--primary);
+  border-top-color: var(--primary);
 }
 
 .content {
   flex: 1;
-  padding: 1.5rem 2rem;
-  max-width: 1100px;
+  min-width: 0;
+  padding: 16px 16px calc(var(--tabbar-h) + var(--safe-bottom) + 24px);
 }
 
+@media (max-width: 767px) {
+  /* 화면 제목은 앱 바가 보여 준다. h1 은 읽기 프로그램용으로만 남긴다 */
+  .content h1 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+/* 태블릿: 왼쪽 좁은 메뉴 (아이콘 + 글자), 한 줄 배치 */
+@media (min-width: 768px) {
+  .layout {
+    flex-direction: row;
+  }
+
+  .appbar {
+    display: none;
+  }
+
+  .menu {
+    position: sticky;
+    top: 0;
+    flex-direction: column;
+    flex-shrink: 0;
+    gap: 6px;
+    width: 88px;
+    height: 100vh;
+    height: 100dvh;
+    padding: 12px 8px;
+    background: var(--menu);
+    border-top: 0;
+  }
+
+  .menu-item {
+    flex: none;
+    gap: 4px;
+    min-height: 64px;
+    padding: 8px 2px;
+    border-top: 0;
+    border-radius: 10px;
+    font-size: 0.72rem;
+    color: #cfd6e0;
+  }
+
+  .menu-item:hover,
+  .menu-item.active {
+    color: #fff;
+    background: var(--menu-active);
+  }
+
+  .content {
+    max-width: 960px;
+    padding: 24px 28px 40px;
+  }
+}
+
+/* PC: 왼쪽 메뉴 (앱 이름 + 아이콘과 글자를 한 줄로) */
+@media (min-width: 1200px) {
+  .menu {
+    width: 220px;
+    padding: 16px 12px;
+  }
+
+  .menu-brand {
+    display: block;
+    padding: 6px 14px 14px;
+    font-weight: 700;
+    color: #fff;
+  }
+
+  .menu-item {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 10px;
+    min-height: 48px;
+    padding: 10px 14px;
+    font-size: 0.95rem;
+  }
+
+  .content {
+    max-width: 1480px;
+    padding: 28px 36px 48px;
+  }
+}
+
+/* 공통 부품 */
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 1rem 1.25rem;
-  margin: 1rem 0;
+  border-radius: 12px;
+  padding: 1rem;
+  margin: 0.75rem 0;
+}
+
+@media (min-width: 768px) {
+  .panel {
+    padding: 1rem 1.25rem;
+    margin: 1rem 0;
+  }
 }
 
 .hint,
@@ -102,11 +301,58 @@ button:disabled {
 }
 
 .primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 44px;
   border: 0;
-  border-radius: 8px;
-  padding: 0.7rem 1.6rem;
+  border-radius: 10px;
+  padding: 0.6rem 1.4rem;
+  font-weight: 600;
   color: #fff;
   background: var(--primary);
+}
+
+/* 표를 모바일에서 카드로 바꾼다. <table> 은 그대로 두고 칸 이름은 td 의 data-label 로 보여 준다 */
+@media (max-width: 767px) {
+  table.cards,
+  table.cards tbody,
+  table.cards tr {
+    display: block;
+  }
+
+  table.cards thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  table.cards tr {
+    margin-bottom: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--panel);
+  }
+
+  table.cards td {
+    display: grid;
+    grid-template-columns: 6.5em minmax(0, 1fr);
+    gap: 0.6rem;
+    padding: 0.25rem 0;
+    border-bottom: 0;
+    overflow-wrap: anywhere;
+  }
+
+  table.cards td::before {
+    content: attr(data-label);
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
 }
 
 /* 업로드 */
@@ -184,22 +430,22 @@ button:disabled {
 
 .status-running,
 .status-queued {
-  background: #dbe7fb;
+  background: var(--primary-soft);
   color: var(--primary);
 }
 
 .status-waiting_approval {
-  background: #fdf0d5;
+  background: var(--warn-soft);
   color: var(--warn);
 }
 
 .status-done {
-  background: #d9f2e3;
-  color: #1e7a46;
+  background: var(--ok-soft);
+  color: var(--ok);
 }
 
 .status-failed {
-  background: #f9dcd8;
+  background: var(--danger-soft);
   color: var(--danger);
 }
 
@@ -219,7 +465,7 @@ button:disabled {
 }
 
 .step.ok .step-mark {
-  color: #1e7a46;
+  color: var(--ok);
 }
 
 .step.fail .step-mark {
@@ -242,17 +488,17 @@ button:disabled {
 }
 
 .grade-mismatch {
-  background: #f9dcd8;
+  background: var(--danger-soft);
   color: var(--danger);
 }
 
 .grade-check {
-  background: #fdf0d5;
+  background: var(--warn-soft);
   color: var(--warn);
 }
 
 .grade-note {
-  background: #e6e9ee;
+  background: var(--note-soft);
   color: var(--muted);
 }
 
@@ -318,8 +564,8 @@ table.cells tr.suspect td {
 
 /* 결과: HS 선택 */
 .grade-ok {
-  background: #d9f2e3;
-  color: #1e7a46;
+  background: var(--ok-soft);
+  color: var(--ok);
 }
 
 .hs-list {
@@ -376,7 +622,7 @@ table.cells tr.suspect td {
 
 .hs-candidate:has(input:checked) {
   border-color: var(--primary);
-  background: #eef4fd;
+  background: var(--primary-soft);
 }
 
 .hs-reason {
@@ -396,11 +642,6 @@ table.cells tr.suspect td {
   background: #fdf6e6;
   color: var(--warn);
   font-weight: 600;
-}
-
-h3 {
-  font-size: 0.95rem;
-  margin: 0 0 0.3rem;
 }
 
 .blank-fields {
