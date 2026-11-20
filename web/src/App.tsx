@@ -1,5 +1,6 @@
 // 왼쪽 메뉴 + 오른쪽 화면 (web/README.md 구조)
 import type { ReactNode } from "react";
+import { JobPage } from "./pages/JobPage";
 import { UploadPage } from "./pages/UploadPage";
 import { navigate, useHashPath } from "./route";
 
@@ -14,16 +15,7 @@ function resolve(path: string): { page: ReactNode; active: MenuKey | null } {
   const job = path.match(/^\/jobs\/([^/]+)$/);
   if (job) {
     const jobId = decodeURIComponent(job[1]);
-    // 진행·결과 화면은 G3 에서 채운다
-    return {
-      page: (
-        <section>
-          <h1>작업 {jobId}</h1>
-          <p>작업을 만들었습니다.</p>
-        </section>
-      ),
-      active: null,
-    };
+    return { page: <JobPage key={jobId} jobId={jobId} />, active: null };
   }
   return { page: <UploadPage />, active: "upload" };
 }

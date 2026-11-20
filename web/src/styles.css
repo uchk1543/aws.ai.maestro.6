@@ -172,3 +172,61 @@ button:disabled {
   margin-top: 0.5rem;
   font-size: 0.9rem;
 }
+
+/* 진행 */
+.status {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0.2rem 0.75rem;
+  font-weight: 600;
+  background: var(--line);
+}
+
+.status-running,
+.status-queued {
+  background: #dbe7fb;
+  color: var(--primary);
+}
+
+.status-waiting_approval {
+  background: #fdf0d5;
+  color: var(--warn);
+}
+
+.status-done {
+  background: #d9f2e3;
+  color: #1e7a46;
+}
+
+.status-failed {
+  background: #f9dcd8;
+  color: var(--danger);
+}
+
+.steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.step {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.step.ok .step-mark {
+  color: #1e7a46;
+}
+
+.step.fail .step-mark {
+  color: var(--danger);
+}
+
+.step-tool {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
