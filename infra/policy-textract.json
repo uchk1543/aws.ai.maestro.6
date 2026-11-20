@@ -1,0 +1,12 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "TextractSyncOcr",
+      "Effect": "Allow",
+      "Action": ["textract:AnalyzeDocument", "textract:DetectDocumentText"],
+      "Resource": "*",
+      "Condition": { "StringEquals": { "aws:RequestedRegion": "ap-northeast-2" } }
+    }
+  ]
+}

@@ -168,5 +168,5 @@ git switch main && git branch -D chore/ruleset-check
 2) TEAM.md에서 내 번호 확인 → GitHub 이슈에서 라벨 "담당:<내 담당>"으로 보기. P0 마일스톤부터
 3) main 직접 push는 막혀 있어요. 브랜치 feat/<작업ID>-이름 → PR (본문에 Closes #이슈번호)
 4) 자기 담당 폴더만 고치기 (CONTRIBUTING.md 표). 공용 파일 바꾸면 단톡에 알리기
-5) 합치는 시각: 15 · 18 · 23 · 03 · 07시
+5) PR은 승인 + CI 통과하면 바로 합쳐요. 배포는 15 · 18 · 23 · 03 · 07시에 PM이
 ```

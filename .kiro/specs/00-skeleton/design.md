@@ -46,7 +46,7 @@ curl GET /jobs/{id} → 저장된 Job 그대로
 
 ## S4 상태
 - 2026-11-19: PM의 IAM 사용자에 `iam:CreateRole` 권한이 없어 `create.sh` 첫 단계에서 멈춤. 만든 리소스 없음.
-- 필요한 권한: `infra/policy-deployer.json`. 권한을 받은 뒤 `create.sh`를 다시 실행한다.
+- 2026-11-20: 대회 측이 그룹 `pnu6`(5명, AdministratorAccess)으로 권한을 열었다. 새 구조(#67)로 F1에서 배포한다.
 
 ## S5 결과
 | 항목 | 결과 |

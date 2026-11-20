@@ -59,7 +59,8 @@ git fetch && git merge origin/main
 | `web/` | 3번 화면 |
 | `api/`, `tools/ocr.py`, `tools/wms.py` | 4번 서버 |
 | `infra/` | PM (리소스 생성·배포 실행은 PM만. 4번은 PR로 고칠 수 있다) |
-| `data/seed/`, `docs/presentation/` | 5번 발표 |
+| `docs/presentation/` | 5번 발표 (담당 정해질 때까지 PM) |
+| `data/seed/` | 1번 판독 (A5, #79) |
 | `.kiro/`, `docs/schema.md`, `docs/examples/`, `tools/models.py`, `pyproject.toml`, `uv.lock`, `.github/`, `TEAM.md`, `tests/unit/test_contracts.py`, `tests/unit/fakes.py` | 공용 (PM 또는 대리 승인) |
 
 이 표는 `.github/CODEOWNERS`와 같다. 남의 파일을 고쳐야 하면 직접 고치지 말고 담당자에게 요청한다.
@@ -79,8 +80,11 @@ git fetch && git merge origin/main
 - **`tests/unit/test_contracts.py`(담당 사이 연결 약속)**: 담당끼리 부르는 함수의 이름·받는 것·반환이 여기 고정되어 있다. 약속된 인자를 바꾸거나 빼면 CI가 실패하고 메시지에 담당과 순서가 나온다. 끝에 키워드 전용 인자를 기본값과 함께 더하는 것은 이슈 없이 해도 된다.
 - **`pyproject.toml`, `uv.lock`(의존성)**: `uv add <패키지>`만 쓴다. `uv.lock`이 충돌하면 손으로 고치지 말고 최신 main을 합친 뒤 `uv lock`으로 다시 만든다.
 - **`.kiro/steering/`**: 모든 사람의 Kiro 동작이 바뀐다. 합친 뒤 공지에 무엇이 바뀌었는지 한 줄로 적는다.
-## 합치는 시각
-15 · 18 · 23 · 03 · 07시. 각자 그 전에 PR을 올리고, PM이 공용 파일 관련 PR부터 하나씩 합친 뒤 main이 도는지 확인해 단톡에 알린다. 그다음 PM이 main으로 배포하고, 전원 `git pull`.
+## 합치기와 배포 시각
+- **합치기는 수시로**: 승인 1명 + CI 통과하면 PM이 바로 합친다 (PM이 자리에 없으면 대리 승인자). 몰아서 합치지 않는다. PR이 쌓이면 충돌이 커지고, 남은 PR마다 Update branch와 CI를 다시 돌려야 한다.
+- **공용 파일 PR은 한 번에 하나**: 순서는 PM이 정한다 ("공용 파일 바꾸는 순서").
+- **배포는 정해진 시각**: 15 · 18 · 23 · 03 · 07시와 데모 직전에 PM이 그 시각의 main으로 배포하고 단톡에 알린다.
+- **각자 최신으로**: 내 PR이 합쳐졌을 때, 공용 파일 변경 공지를 봤을 때, 새 이슈를 시작할 때 `git switch main && git pull` (작업 중인 브랜치는 `git merge origin/main`).
 토요일 09시 기능 동결 뒤에는 데모에 나오는 버그 수정만 합친다. 데모 전 정상 커밋에 `git tag demo-v1 && git push --tags`.
 ## 충돌이 나면
 PR 작성자가 자기 브랜치에서 해결한다 (Kiro 병합 편집기). 해결 후 반드시 `uv run pytest`를 돌리고 push한다. 30분 넘게 막히면 바로 말한다.

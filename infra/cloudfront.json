@@ -1,0 +1,59 @@
+{
+  "CallerReference": "__CALLER_REF__",
+  "Comment": "team06-web",
+  "Enabled": true,
+  "DefaultRootObject": "index.html",
+  "PriceClass": "PriceClass_200",
+  "HttpVersion": "http2",
+  "Origins": {
+    "Quantity": 2,
+    "Items": [
+      {
+        "Id": "web",
+        "DomainName": "__WEB_BUCKET__.s3.ap-northeast-2.amazonaws.com",
+        "OriginAccessControlId": "__OAC_ID__",
+        "S3OriginConfig": { "OriginAccessIdentity": "" }
+      },
+      {
+        "Id": "api",
+        "DomainName": "__API_DOMAIN__",
+        "CustomOriginConfig": {
+          "HTTPPort": 80,
+          "HTTPSPort": 443,
+          "OriginProtocolPolicy": "https-only",
+          "OriginSslProtocols": { "Quantity": 1, "Items": ["TLSv1.2"] },
+          "OriginReadTimeout": 30
+        }
+      }
+    ]
+  },
+  "DefaultCacheBehavior": {
+    "TargetOriginId": "web",
+    "ViewerProtocolPolicy": "redirect-to-https",
+    "CachePolicyId": "__CACHE_OPTIMIZED__",
+    "Compress": true,
+    "AllowedMethods": {
+      "Quantity": 2,
+      "Items": ["GET", "HEAD"],
+      "CachedMethods": { "Quantity": 2, "Items": ["GET", "HEAD"] }
+    }
+  },
+  "CacheBehaviors": {
+    "Quantity": 1,
+    "Items": [
+      {
+        "PathPattern": "/api/*",
+        "TargetOriginId": "api",
+        "ViewerProtocolPolicy": "https-only",
+        "CachePolicyId": "__CACHE_DISABLED__",
+        "OriginRequestPolicyId": "__ORIGIN_ALL_EXCEPT_HOST__",
+        "Compress": true,
+        "AllowedMethods": {
+          "Quantity": 7,
+          "Items": ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
+          "CachedMethods": { "Quantity": 2, "Items": ["GET", "HEAD"] }
+        }
+      }
+    ]
+  }
+}
