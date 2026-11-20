@@ -318,6 +318,17 @@ def test_off_topic_without_tools_is_blocked():
     assert (res.answer, res.blocked, res.rows) == (BLOCKED_ANSWER, OFF_TOPIC, [])
 
 
+def test_follow_up_without_cargo_words_is_not_blocked_when_there_is_history():
+    """#285: 앞 대화가 있는 세션의 짧은 이어 묻기("그래프로 보여줘", "그중에")는 화물 낱말이 없어도 막지 않는다."""
+    first, _ = ask("지난주 입항 화물", [[("query_shipments", {"period": "last_week"})], "지난주 입항 화물입니다."])
+    history = remember([], "지난주 입항 화물", first)
+    res, _ = ask("그중에 뭐가 제일 많아?", ["어떤 기준으로 볼까요?"], history=history)
+    assert res.blocked is None and res.answer == "어떤 기준으로 볼까요?"
+    # 앞 대화가 없으면 지금처럼 막는다
+    res, _ = ask("그중에 뭐가 제일 많아?", ["어떤 기준으로 볼까요?"])
+    assert (res.blocked, res.answer) == (OFF_TOPIC, BLOCKED_ANSWER)
+
+
 def test_cargo_question_without_tools_uses_text_only_without_numbers():
     res, _ = ask("통관 현황 알려줘", ["어떤 상태나 기간의 화물을 볼까요?"])
     assert res.answer == "어떤 상태나 기간의 화물을 볼까요?" and res.blocked is None

@@ -260,7 +260,7 @@ def answer(
         return ChatResponse(answer=BLOCKED_ANSWER, filters=ChatFilters(), blocked=reason)
 
     def legacy() -> ChatResponse:
-        return _convert_answer(question, session_id, store=store, today=today, parser=parser)
+        return _convert_answer(question, session_id, store=store, today=today, parser=parser, has_history=bool(history))
 
     if agent_model is None and os.environ.get("QUERY_AGENT") == "1":
         agent_model = chat_model()
@@ -276,9 +276,17 @@ _AGENT_ONLY = {"and_status": "그중 상태", "consignee": "수하인", "item": 
 
 
 def _convert_answer(
-    question: str, session_id: str, *, store: ShipmentStore, today: date, parser: FilterParser | None
+    question: str,
+    session_id: str,
+    *,
+    store: ShipmentStore,
+    today: date,
+    parser: FilterParser | None,
+    has_history: bool = False,
 ) -> ChatResponse:
-    """조건 변환(옛 경로, E5): 모델은 질문을 ChatFilters로 바꾸기만 하고, 조회·답 문장은 코드가 한다. 반환은 answer 설명과 같다."""
+    """조건 변환(옛 경로, E5): 모델은 질문을 ChatFilters로 바꾸기만 하고, 조회·답 문장은 코드가 한다. 반환은 answer 설명과 같다.
+    has_history: 같은 세션에 앞 대화가 있는지. 있으면 화물 낱말이 없는 짧은 이어 묻기("그래프로 보여줘", "그중에")를
+      '무관한 질문'으로 막지 않고 되묻는다 (#285. 막으면 사용자에게는 고장으로 보인다)."""
     from tools.extract import ReadError, _ask_twice
 
     parser = parser or _strands_parser
@@ -298,10 +306,10 @@ def _convert_answer(
         print(f"[agent] query session={session_id} 못 담는 조건 {len(filters.unsupported)}개 → 조회 안 함")
         return ChatResponse(answer=f"{named} 조건은 아직 조회할 수 없습니다. {CAN_ASK}", filters=filters)
     if not (filters.status or filters.period):  # 조건이 없으면 전체를 답하지 않는다
-        if not _about_cargo(question):  # 화물 현황과 무관한 질문(잡담·코딩 등). 가드레일은 이것을 막지 않는다 (#151)
+        if not _about_cargo(question) and not has_history:  # 화물 현황과 무관한 질문(잡담·코딩 등). 가드레일은 이것을 막지 않는다 (#151)
             print(f"[agent] query session={session_id} 조건 없음·화물 낱말 없음 → {OFF_TOPIC}")
             return ChatResponse(answer=BLOCKED_ANSWER, filters=filters, blocked=OFF_TOPIC)
-        return ChatResponse(answer=ASK_BACK, filters=filters)  # 화물 질문인데 조건이 없으면 되묻는다 (#165)
+        return ChatResponse(answer=ASK_BACK, filters=filters)  # 화물 질문(또는 앞 대화가 있는 이어 묻기)인데 조건이 없으면 되묻는다 (#165)
     status = _known_status(filters.status)
     if filters.status and status is None:
         known = ", ".join((*STATUSES, DELAY_STATUS))
@@ -760,7 +768,7 @@ def agent_answer(
             return legacy()
         text = ""
     if not talk.tools:
-        if not _about_cargo(question):
+        if not _about_cargo(question) and not history:  # 앞 대화가 있으면 이어 묻기일 수 있어 막지 않는다 (#285)
             if any(w in question.lower() for w in CHART_WORDS):
                 return ChatResponse(answer=NO_CHART, filters=ChatFilters())
             print(f"[agent] query session={session_id} 도구 없음·화물 낱말 없음 → {OFF_TOPIC}")

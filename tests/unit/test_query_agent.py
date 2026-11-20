@@ -117,6 +117,17 @@ def test_fb08_questions_do_not_answer_everything(question, filters, kind):
     assert res.filters.unsupported == filters.get("unsupported", [])
 
 
+def test_legacy_path_asks_back_instead_of_blocking_a_follow_up_with_history():
+    """#285: 조건 변환(옛 경로)에서도 앞 대화가 있으면 조건 없는 짧은 이어 묻기를 '무관한 질문'으로 막지 않고 되묻는다."""
+    from tools.models import ChatHistoryLine
+
+    history = [ChatHistoryLine(session_id="s1", ts="20261121090000000#a1b2c3d4#0", role="user", text="지난주 입항 화물")]
+    res = answer("그래프로 보여줘", "s1", store=STORE, today=TODAY, parser=parser_of(), history=history)
+    assert res.blocked is None and "어떤 화물을 찾을지 알려 주세요" in res.answer
+    res = answer("그래프로 보여줘", "s1", store=STORE, today=TODAY, parser=parser_of())
+    assert res.blocked == "무관한 질문"
+
+
 def test_unsupported_names_the_condition_and_what_works():
     res = answer("이그잼플유통 화물만 보여줘", "s1", store=STORE, today=TODAY,
                  parser=parser_of(unsupported=["수하인 이그잼플유통"]))
