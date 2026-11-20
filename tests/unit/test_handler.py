@@ -1,5 +1,6 @@
-"""api/handler.py 단위 테스트. DynamoDB·S3·Bedrock은 가짜로 바꾼다."""
+"""api/handler.py 단위 테스트. DynamoDB·S3·Bedrock·Lambda 호출은 가짜로 바꾼다."""
 
+import base64
 import json
 import re
 from pathlib import Path
@@ -10,6 +11,7 @@ import pytest
 from botocore.exceptions import ClientError
 
 import api.handler as handler
+import api.worker as worker
 import tools.declaration as declaration
 import tools.extract as extract
 import tools.hs as hs
@@ -34,8 +36,38 @@ class FakeTable:
         return {"Item": item} if item else {}
 
 
+class FakeLambda:
+    """boto3 lambda 클라이언트 대신. invoke 인자를 calls에 남긴다. 실제 처리는 process()가 한다."""
+
+    def __init__(self):
+        self.calls = []
+        self.status = 202  # 비동기 호출(Event)이 받아들여졌을 때의 값
+        self.error = None
+
+    def invoke(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.error:
+            raise self.error
+        return {"StatusCode": self.status}
+
+
 @pytest.fixture
-def fakes(monkeypatch):
+def lambda_client(monkeypatch):
+    client = FakeLambda()
+    monkeypatch.setenv("WORKER_FUNCTION", "team06-worker")
+    monkeypatch.setattr(handler, "_lambda", lambda: client)
+    return client
+
+
+def process(client: FakeLambda) -> list[dict]:
+    """API가 처리 Lambda에 보낸 이벤트를 차례로 돌린다 (배포에서는 Lambda가 비동기로 돌린다)."""
+    done = [worker.lambda_handler(json.loads(c["Payload"]), None) for c in client.calls]
+    client.calls.clear()
+    return done
+
+
+@pytest.fixture
+def fakes(monkeypatch, lambda_client):
     table = FakeTable()
     monkeypatch.setattr(handler, "_table", lambda: table)
     # S3 대신 키 이름을 바이트로 돌려준다
@@ -72,14 +104,69 @@ def files(*names):
     return {"files": [{"key": f"uploads/s1/{n}", "doc_type": types.get(n, "packing_list")} for n in names]}
 
 
-def test_health():
-    assert call("GET", "/") == (200, {"ok": True})
+def http_api_event(method, raw_path, body=None, *, encoded=False):
+    """CloudFront 뒤의 API Gateway HTTP API가 보내는 페이로드 2.0 모양. encoded면 본문을 base64로 싼다."""
+    event = {
+        "version": "2.0",
+        "routeKey": "ANY /api/{proxy+}",
+        "rawPath": raw_path,
+        "rawQueryString": "",
+        "headers": {"content-type": "application/json", "user-agent": "Amazon CloudFront", "via": "2.0 x.cloudfront.net"},
+        "requestContext": {
+            "apiId": "abc123",
+            "domainName": "abc123.execute-api.ap-northeast-2.amazonaws.com",
+            "http": {"method": method, "path": raw_path, "protocol": "HTTP/1.1", "sourceIp": "203.0.113.1"},
+            "requestId": "req-1",
+            "routeKey": "ANY /api/{proxy+}",
+            "stage": "$default",
+        },
+        "isBase64Encoded": encoded,
+    }
+    if body is not None:
+        text = json.dumps(body, ensure_ascii=False)
+        event["body"] = base64.b64encode(text.encode("utf-8")).decode() if encoded else text
+    res = handler.lambda_handler(event, None)
+    return res["statusCode"], json.loads(res["body"])
 
 
-def test_post_then_get_shows_mismatch(fakes):
-    status, body = call("POST", "/jobs", files("invoice.pdf", "packing_list.pdf"))
+@pytest.mark.parametrize("path", ["/api", "/api/", "/"])
+def test_health(path):
+    """배포 확인: GET /api/ → {"ok": true} (F1 끝난 기준). /api 없는 옛 주소도 받는다."""
+    assert call("GET", path) == (200, {"ok": True})
+
+
+@pytest.mark.parametrize(
+    "raw, routed",
+    [
+        ("/api", "/"), ("/api/", "/"), ("/api/jobs", "/jobs"), ("/api/jobs/job-1234abcd/hs/", "/jobs/job-1234abcd/hs"),
+        ("/jobs", "/jobs"), ("/", "/"), ("", "/"), (None, "/"), ("/apix", "/apix"), ("/api-jobs", "/api-jobs"),
+    ],
+)
+def test_route_path_strips_api_prefix(raw, routed):
+    assert handler._route_path(raw) == routed
+
+
+def test_post_saves_queued_and_invokes_worker_without_processing(fakes, lambda_client):
+    """끝난 기준: POST /api/jobs는 queued로 저장하고 job_id를 바로 응답한다. 처리 Lambda를 약속(#36)대로 부른다."""
+    request = files("invoice.pdf", "packing_list.pdf")
+
+    status, body = call("POST", "/api/jobs", request)
+
+    assert status == 200 and set(body) == {"job_id"}
+    job_id = body["job_id"]
+    assert call("GET", f"/api/jobs/{job_id}") == (
+        200, {"job_id": job_id, "status": "queued", "steps": [], "result": None, "error": None},
+    )
+    [invoked] = lambda_client.calls
+    assert invoked["FunctionName"] == "team06-worker" and invoked["InvocationType"] == "Event"
+    assert json.loads(invoked["Payload"]) == {"job_id": job_id, "files": request["files"]}
+
+
+def test_post_then_worker_shows_mismatch(fakes, lambda_client):
+    status, body = call("POST", "/api/jobs", files("invoice.pdf", "packing_list.pdf"))
     assert status == 200
-    status, job = call("GET", f"/jobs/{body['job_id']}")
+    assert process(lambda_client) == [{"job_id": body["job_id"], "status": "waiting_approval"}]
+    status, job = call("GET", f"/api/jobs/{body['job_id']}")
     assert status == 200
     Job.model_validate(job)  # 약속 2 형식
     assert job["status"] == "waiting_approval"
@@ -88,18 +175,62 @@ def test_post_then_get_shows_mismatch(fakes):
     assert issue["grade"] == "불일치" and issue["rule_id"] == "X-WT-01"
 
 
-def test_matching_docs_are_done(fakes):
-    _, body = call("POST", "/jobs", files("invoice.pdf", "pl_ok.pdf"))
-    _, job = call("GET", f"/jobs/{body['job_id']}")
+def test_matching_docs_are_done(fakes, lambda_client):
+    _, body = call("POST", "/api/jobs", files("invoice.pdf", "pl_ok.pdf"))
+    process(lambda_client)
+    _, job = call("GET", f"/api/jobs/{body['job_id']}")
     assert job["status"] == "done" and job["result"]["issues"] == []
 
 
-def test_read_failure_is_check_needed(fakes):
-    _, body = call("POST", "/jobs", files("invoice.pdf", "broken.pdf"))
-    _, job = call("GET", f"/jobs/{body['job_id']}")
+def test_read_failure_is_check_needed(fakes, lambda_client):
+    _, body = call("POST", "/api/jobs", files("invoice.pdf", "broken.pdf"))
+    process(lambda_client)
+    _, job = call("GET", f"/api/jobs/{body['job_id']}")
     assert job["status"] == "waiting_approval"
     assert job["result"]["issues"][0]["rule_id"] == "READ-FAIL"
     assert job["steps"][1]["ok"] is False
+
+
+def test_old_paths_without_api_prefix_still_work(fakes, lambda_client):
+    """옮기는 동안 /api 없는 경로도 받는다 (#36)."""
+    _, body = call("POST", "/jobs", files("invoice.pdf", "pl_ok.pdf"))
+    process(lambda_client)
+    status, job = call("GET", f"/jobs/{body['job_id']}")
+    assert status == 200 and job["status"] == "done"
+
+
+def test_http_api_v2_events_end_to_end(fakes, lambda_client):
+    """API Gateway HTTP API 2.0 이벤트(본문 base64 포함)로 상태 확인 → 작업 생성 → 처리 → 조회."""
+    assert http_api_event("GET", "/api/") == (200, {"ok": True})
+
+    status, body = http_api_event("POST", "/api/jobs", files("invoice.pdf", "packing_list.pdf"), encoded=True)
+    assert status == 200
+    assert http_api_event("GET", f"/api/jobs/{body['job_id']}")[1]["status"] == "queued"
+
+    process(lambda_client)
+    status, job = http_api_event("GET", f"/api/jobs/{body['job_id']}")
+    assert status == 200 and job["status"] == "waiting_approval"
+
+
+@pytest.mark.parametrize("problem", ["error", "status"])
+def test_worker_invoke_failure_is_502_and_job_failed(fakes, lambda_client, problem):
+    """처리 Lambda를 못 부르면 화면이 끝없이 기다리지 않게 작업을 failed로 남기고 502를 준다."""
+    if problem == "error":
+        lambda_client.error = ClientError({"Error": {"Code": "AccessDeniedException", "Message": "가짜"}}, "Invoke")
+    else:
+        lambda_client.status = 200
+
+    status, body = call("POST", "/api/jobs", files("invoice.pdf", "packing_list.pdf"))
+
+    assert status == 502 and "다시 올려" in body["error"]
+    [item] = fakes.items.values()
+    job = Job.model_validate_json(item["data"])
+    assert job.status == "failed" and job.error.startswith("처리를 시작하지 못했습니다")
+
+
+def test_bad_post_does_not_invoke_worker(fakes, lambda_client):
+    assert call("POST", "/api/jobs", {"files": []})[0] == 400
+    assert lambda_client.calls == [] and fakes.items == {}
 
 
 @pytest.mark.parametrize(
@@ -119,11 +250,14 @@ def test_bad_requests_are_400(fakes, body):
 
 def test_unknown_job_and_path_are_404(fakes):
     assert call("GET", "/jobs/job-00000000")[0] == 404
+    assert call("GET", "/api/jobs/job-00000000")[0] == 404
     assert call("GET", "/jobs/../../etc")[0] == 404
     assert call("GET", "/nothing")[0] == 404
+    assert call("GET", "/api/nothing")[0] == 404
+    assert call("GET", "/apix")[0] == 404
 
 
-@pytest.mark.parametrize("path", ["/chat"])
+@pytest.mark.parametrize("path", ["/chat", "/api/chat"])
 def test_planned_routes_are_501(fakes, path):
     """약속 2의 경로가 모두 자리를 갖고 있다. 만들면 이 목록에서 뺀다."""
     assert call("POST", path, {})[0] == 501
@@ -182,6 +316,13 @@ def test_each_upload_request_gets_new_batch(s3):
     req = {"files": [{"name": "a.pdf", "content_type": "application/pdf"}]}
     first, second = call("POST", "/uploads", req)[1], call("POST", "/uploads", req)[1]
     assert first["uploads"][0]["key"] != second["uploads"][0]["key"]
+
+
+def test_uploads_route_with_api_prefix(s3):
+    """배포에서는 rawPath에 /api가 붙어 온다 (F3 _route_path). 화면은 /api/uploads를 부른다."""
+    status, body = call("POST", "/api/uploads/", {"files": [{"name": "a.pdf", "content_type": "application/pdf"}]})
+    assert status == 200 and body["uploads"][0]["key"].endswith("/1-a.pdf")
+    assert len(s3.signed) == 1
 
 
 @pytest.mark.parametrize(

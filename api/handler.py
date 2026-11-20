@@ -1,16 +1,18 @@
-"""Lambda 진입점 (Function URL, 이벤트 형식 2.0). 담당: 서버. 형식: docs/schema.md 약속 2
+"""API Lambda team06-api 진입점 (API Gateway HTTP API, 이벤트 형식 2.0). 담당: 서버. 형식: docs/schema.md 약속 2
 
-뼈대 경로
-    GET  /               → {"ok": true}            (S4 배포 확인)
-    POST /uploads        → {"uploads"}             (F2, 파일마다 S3에 직접 PUT할 미리 서명된 URL)
-    POST /jobs           → {"job_id"}              (S5, 안에서 끝까지 처리)
-    GET  /jobs/{id}      → Job                     (S5)
-    POST /jobs/{id}/hs   → {"declaration_draft"}   (C3, 사람이 고른 HS 반영)
-    POST /jobs/{id}/approve → {"wms"}              (D3, 사람 승인으로 WMS 등록. 불일치가 남았으면 409)
+CloudFront가 /api/*를 API Gateway로 보내고, rawPath에 /api가 붙어 온다 (/api/jobs). 앞의 /api를 떼고 나눈다.
+옮기는 동안 /api 없는 경로(/jobs)도 같은 곳으로 간다.
+    GET  /api/               → {"ok": true}            (배포 확인)
+    POST /api/uploads        → {"uploads"}             (F2, 파일마다 S3에 직접 PUT할 미리 서명된 URL)
+    POST /api/jobs           → {"job_id"}              (F3, queued로 저장하고 처리 Lambda를 비동기로 부른 뒤 바로 응답)
+    GET  /api/jobs/{id}      → Job                     (화면이 2초마다)
+    POST /api/jobs/{id}/hs   → {"declaration_draft"}   (C3, 사람이 고른 HS 반영)
+    POST /api/jobs/{id}/approve → {"wms"}              (D3, 사람 승인으로 WMS 등록. 불일치가 남았으면 409)
 나머지 경로(/chat)는 501을 돌려준다. Spec 2·3에서 채운다.
+서류 처리(run_job)는 처리 Lambda team06-worker(api/worker.py)가 한다. API Gateway는 요청 하나를 30초 안에 끝내야 한다.
 
 환경 변수: JOBS_TABLE(team06-jobs), DOCS_BUCKET(team06-docs-...), MODEL_ID, HS_HISTORY_TABLE(team06-hs-history),
-WMS_TABLE(team06-wms)
+WMS_TABLE(team06-wms), WORKER_FUNCTION(team06-worker, API Lambda에만)
 """
 
 import base64
@@ -33,6 +35,7 @@ JOB_ID = re.compile(r"^job-[0-9a-f]{8}$")
 HS_CODE = re.compile(r"^[0-9]{10}$")  # 10자리 HSK
 APPROVER_MAX = 50  # 승인자 이름 길이. 화면 입력칸(WmsPanel maxLength)과 같다
 KEY_PREFIX = "uploads/"
+API_PREFIX = "/api"  # CloudFront → API Gateway가 rawPath 앞에 붙여 보낸다
 # 올릴 수 있는 형식 (화면 web/src/pages/UploadPage.tsx ACCEPT와 같다). 읽기(tools/extract.py)는 확장자로 PDF·이미지를 가른다
 UPLOAD_TYPES = {".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
 UNKNOWN_TYPE = "application/octet-stream"  # 브라우저가 type을 모를 때 화면이 보내는 값 (web/src/api.ts contentTypeOf)
@@ -68,6 +71,14 @@ def _s3():
     return boto3.client("s3", config=config)
 
 
+@cache
+def _lambda():
+    import boto3
+    from botocore.config import Config
+
+    return boto3.client("lambda", config=Config(connect_timeout=5, read_timeout=5, retries={"max_attempts": 2}))
+
+
 def fetch_object(key: str) -> bytes:
     """DOCS_BUCKET에서 파일을 받는다."""
     print(f"[tool] s3_get key={key}")
@@ -88,6 +99,24 @@ def presign_upload(key: str, content_type: str) -> str:
         ExpiresIn=UPLOAD_SECONDS,
         HttpMethod="PUT",
     )
+
+
+def invoke_worker(job_id: str, files: list[dict]) -> None:
+    """처리 Lambda(WORKER_FUNCTION)를 비동기로 부른다. 기다리지 않는다.
+
+    언제: POST /jobs가 작업을 queued로 저장한 직후 (F3).
+    받는 것: job_id, files([{"key", "doc_type"}], 검사를 마친 값). 처리 Lambda가 받는 이벤트가 이 둘이다 (#36 약속).
+    반환: 없음. Lambda가 이벤트를 받지 않았으면(202가 아니면) RuntimeError, 호출 오류는 botocore 예외를 그대로 낸다.
+    """
+    function = os.environ["WORKER_FUNCTION"]
+    print(f"[api] invoke_worker function={function} job={job_id} files={len(files)}")
+    res = _lambda().invoke(
+        FunctionName=function,
+        InvocationType="Event",
+        Payload=json.dumps({"job_id": job_id, "files": files}, ensure_ascii=False).encode("utf-8"),
+    )
+    if res.get("StatusCode") != 202:
+        raise RuntimeError(f"처리 Lambda가 이벤트를 받지 않았습니다 (StatusCode={res.get('StatusCode')})")
 
 
 def save_job(job: Job, keep: dict | None = None) -> None:
@@ -300,21 +329,25 @@ def create_uploads(body) -> dict:
 
 
 def create_job(body) -> dict:
+    """POST /jobs. 작업을 queued로 저장하고 처리 Lambda를 비동기로 부른 뒤 job_id를 바로 돌려준다 (F3).
+
+    언제: 화면이 서류를 S3에 올린 뒤. 서류 처리는 처리 Lambda(api/worker.py)가 하고, 화면은 GET /jobs/{id}로 진행을 본다.
+    받는 것: {"files": [{"key", "doc_type"}]}.
+    반환: 200 {"job_id"} / 400 요청 형식 / 502 처리 Lambda를 부르지 못함 (작업은 failed로 남긴다).
+    """
     files, problem = _validate_files(body)
     if problem:
         return _error(400, problem)
-    from agent.document_agent import run_job
 
     job_id = f"job-{uuid.uuid4().hex[:8]}"
-    save_job(Job(job_id=job_id, status="running"))
-    started = time.perf_counter()
+    save_job(Job(job_id=job_id, status="queued"))  # 처리 Lambda보다 먼저 저장해야 바로 오는 GET이 작업을 찾는다
     try:
-        job = run_job(job_id, files, fetch_object)
-    except Exception as exc:  # 예상 못 한 오류도 작업 상태로 남긴다
-        print(f"[error] job={job_id} {type(exc).__name__}: {exc}")
-        job = Job(job_id=job_id, status="failed", error=f"{type(exc).__name__}: {exc}")
-    print(f"[job] {job_id} status={job.status} {time.perf_counter() - started:.1f}초")
-    save_job(job)
+        invoke_worker(job_id, files)
+    except Exception as exc:  # 권한·이름·제한 오류. queued로 두면 화면이 끝없이 기다리므로 failed로 바꾼다
+        print(f"[error] invoke_worker job={job_id} {type(exc).__name__}: {exc}")
+        save_job(Job(job_id=job_id, status="failed", error=f"처리를 시작하지 못했습니다 ({type(exc).__name__})"))
+        return _error(502, "서류 처리를 시작하지 못했습니다. 잠시 뒤 다시 올려 주세요")
+    print(f"[job] {job_id} status=queued files={len(files)}")
     return _response(200, {"job_id": job_id})
 
 
@@ -442,11 +475,22 @@ def _planned_route(method: str, path: str) -> str | None:
     return _PLANNED.get((method, path))
 
 
+def _route_path(raw_path: str | None) -> str:
+    """rawPath에서 앞의 /api와 끝의 /를 뗀다. '/api/jobs/' → '/jobs', '/api' → '/', '/jobs' → '/jobs'.
+
+    /api로 시작해도 '/apix'처럼 다음 글자가 '/'가 아니면 떼지 않는다.
+    """
+    path = (raw_path or "/").rstrip("/") or "/"
+    if path == API_PREFIX or path.startswith(API_PREFIX + "/"):
+        path = path[len(API_PREFIX):] or "/"
+    return path
+
+
 def lambda_handler(event, context):
-    """Function URL 요청을 경로별로 나눈다."""
+    """API Gateway HTTP API(페이로드 2.0) 요청을 경로별로 나눈다. /api 없는 옛 경로도 받는다."""
     http = event.get("requestContext", {}).get("http", {})
-    method, path = http.get("method", "GET"), event.get("rawPath", "/").rstrip("/") or "/"
-    print(f"[api] {method} {path}")
+    method, path = http.get("method", "GET"), _route_path(event.get("rawPath"))
+    print(f"[api] {method} {event.get('rawPath')} → {path}")
     try:
         if method == "GET" and path == "/":
             return _response(200, {"ok": True})
