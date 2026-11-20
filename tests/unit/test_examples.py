@@ -24,6 +24,7 @@ CASES = [
     ("extract_packing_list.json", ExtractedDocument),
     ("job_waiting_approval.json", Job),
     ("chat_response.json", ChatResponse),
+    ("chat_chart_response.json", ChatResponse),
     ("shipment.json", Shipment),
     ("documents.json", DocumentsResponse),
     ("job_files.json", JobFilesResponse),

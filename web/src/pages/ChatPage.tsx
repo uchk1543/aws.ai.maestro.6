@@ -1,12 +1,14 @@
 // G8·G9 현황 채팅: POST /api/chat. 답마다 답 문장·조회 조건·결과 표를 보여 준다.
 // 조회·집계·기간 계산은 서버 코드가 한다. 화면은 받은 값을 그대로 보여 준다 (agent-design.md 9번).
 // 처음에는 예시 질문 칸을 보여 주고, 누르면 그 질문을 바로 보낸다. PC 는 예시를 왼쪽에 늘 둔다.
-// 서버는 앞 질문을 기억하지 않으므로 입력칸 아래에 "질문마다 따로 답합니다"를 적는다 (FB09 #166).
+// #257: 현황 Agent 가 같은 세션의 앞 대화를 이어 받는다. 입력칸 아래에 이어 물을 수 있다고 적는다 (FB09 #166 의 안내를 바꿈).
+//       그래프(chart)는 서버가 채운 값을 그대로 그리고 아래에 같은 값의 표를 둔다. 답에 작업 ID 가 있으면 작업 화면으로 가는 버튼.
 // G14: 열 때 서버 기록(GET /api/chat/{session_id}, E6 #157)을 불러와 새로 고쳐도 대화가 남는다.
 //      서버 경로가 없으면(404·501) 이 탭의 메모리(sessionStorage)만 쓴다. "새 대화"는 새 session_id.
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, getChatHistory, sendChat } from "../api";
+import { ChatChart } from "../components/ChatChart";
 import { Icon } from "../components/Icon";
 import { navigate } from "../route";
 import type { ChatHistoryLine, ChatResponse, Period } from "../types";
@@ -16,12 +18,21 @@ const MESSAGES_KEY = "team06-chat-messages";
 export const MAX_MESSAGE = 500;
 
 // 예시 질문 (eval/queries.csv 의 질문 모양을 따른다)
-export const EXAMPLES = ["이번 주 통관 지연 건은?", "오늘 입항한 화물", "심사 중인 화물", "지난주 입항 화물"];
+export const EXAMPLES = [
+  "이번 주 통관 지연 건은?",
+  "오늘 입항한 화물",
+  "심사 중인 화물",
+  "이번 달 수입자별 통관 지연 그래프",
+];
+export const CHAT_NOTE = "앞 질문을 이어 물을 수 있습니다. 예: 그중 검사 중인 건은?";
+const JOB_ID = /\bjob-[0-9a-f]{4,8}\b/g;
 
 const PERIOD_KO: Record<Period, string> = {
   today: "오늘",
   this_week: "이번 주",
   last_week: "지난주",
+  this_month: "이번 달",
+  last_month: "지난달",
   range: "기간 지정",
 };
 
@@ -82,6 +93,10 @@ function loadMessages(): ChatMessage[] {
 export function describeFilters(r: ChatResponse): string[] {
   const parts: string[] = [];
   if (r.filters.status) parts.push(`상태: ${r.filters.status}`);
+  if (r.filters.and_status) parts.push(`그중 상태: ${r.filters.and_status}`);
+  if (r.filters.consignee) parts.push(`수입자: ${r.filters.consignee}`);
+  if (r.filters.item) parts.push(`품명: ${r.filters.item}`);
+  if (r.filters.bl_no) parts.push(`B/L: ${r.filters.bl_no}`);
   if (r.filters.period) {
     const range = r.period_resolved ? ` (${r.period_resolved.from} ~ ${r.period_resolved.to})` : "";
     parts.push(`기간: ${PERIOD_KO[r.filters.period]}${range}`);
@@ -101,9 +116,23 @@ function Answer({ response, count, restored }: { response: ChatResponse; count?:
     );
   }
   const total = restored ? count : response.rows.length;
+  // 답에 나온 작업 ID (#257 get_job). 표에 이미 있는 작업은 표의 버튼을 쓴다
+  const inRows = new Set(response.rows.map((s) => s.job_id));
+  const jobs = [...new Set(response.answer.match(JOB_ID) ?? [])].filter((id) => !inRows.has(id));
   return (
     <div className="chat-answer">
       <p className="chat-text">{response.answer}</p>
+      {jobs.length > 0 && (
+        <div className="chat-jobs">
+          {jobs.map((id) => (
+            <button key={id} type="button" className="chat-job" onClick={() => navigate(`/jobs/${encodeURIComponent(id)}`)}>
+              작업 화면 열기 · {id}
+              <Icon name="chevron" size={18} />
+            </button>
+          ))}
+        </div>
+      )}
+      {response.chart && <ChatChart chart={response.chart} />}
       <ul className="chat-conds" aria-label="조회 조건">
         {conditions.length === 0 ? (
           <li className="tag">조건 없음</li>
@@ -298,9 +327,9 @@ export function ChatPage({ ask: askOnOpen }: { ask?: string } = {}) {
           <button type="submit" className="send" aria-label="보내기" disabled={!input.trim() || mutation.isPending}>
             <Icon name="arrow-up" />
           </button>
-          {/* 서버는 앞 질문을 기억하지 않는다 (FB09 #166). 아래 고정 입력칸과 함께 움직이게 form 안에 둔다 */}
+          {/* 같은 대화의 앞 질문을 이어 받는다 (#257). 아래 고정 입력칸과 함께 움직이게 form 안에 둔다 */}
           <p className="chat-note" id="chat-note">
-            질문마다 따로 답합니다. 조건을 한 문장에 모두 적어 주세요
+            {CHAT_NOTE}
           </p>
         </form>
       </div>

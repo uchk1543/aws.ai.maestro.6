@@ -138,7 +138,7 @@ export interface ApproveResponse {
 }
 
 // POST /api/chat (docs/examples/chat_response.json)
-export type Period = "today" | "this_week" | "last_week" | "range";
+export type Period = "today" | "this_week" | "last_week" | "this_month" | "last_month" | "range";
 export interface ChatRequest {
   session_id: string;
   message: string;
@@ -150,6 +150,23 @@ export interface ChatFilters {
   date_to?: string | null;
   /** 모델이 칸으로 나타내지 못한 조건 (#165). 비어 있지 않으면 서버는 조회하지 않는다 */
   unsupported?: string[];
+  /** 현황 Agent 칸 (#257): status 와 함께 거르는 두 번째 상태('그중 검사 중'), 수입자·품명 일부, B/L 번호 */
+  and_status?: string | null;
+  consignee?: string | null;
+  item?: string | null;
+  bl_no?: string | null;
+}
+/** 현황 그래프 (#257). 값·축·제목은 서버 코드가 집계에서 채운다. 화면은 계산하지 않고 그린다 */
+export interface ChartPoint {
+  label: string;
+  value: number;
+}
+export interface Chart {
+  type: "bar" | "line" | "pie";
+  title: string;
+  x_label: string;
+  y_label: string;
+  points: ChartPoint[];
 }
 export interface PeriodResolved {
   from: string;
@@ -171,6 +188,8 @@ export interface ChatResponse {
   rows: Shipment[];
   /** 가드레일이 막았으면 그 이유 (E7 #152), 아니면 null */
   blocked?: string | null;
+  /** 그래프 (#257). 현황 Agent 가 만들었을 때만 */
+  chart?: Chart | null;
 }
 // GET /api/chat/{session_id} 대화 기록 (E6 #157, docs/examples/chat_history.json). 줄마다 질문 또는 답 하나
 export interface ChatHistoryLine {

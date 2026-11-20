@@ -1,6 +1,7 @@
 // 가짜 서버 (npm run dev 전용). docs/examples/ 의 예시로 /api 에 답한다.
 // 예시를 직접 읽으므로 예시가 바뀌면 가짜 응답도 같이 바뀐다.
 // 판정·신고서 채우기는 흉내 내지 않는다. 사람이 고른 값을 상태에 반영하는 것만 한다.
+import chatChartExample from "../../docs/examples/chat_chart_response.json";
 import chatExample from "../../docs/examples/chat_response.json";
 import jobExample from "../../docs/examples/job_waiting_approval.json";
 // 임시(제안 중): 서버 약속이 합쳐지면 docs/examples/documents.json 으로 바꾼다
@@ -216,8 +217,9 @@ export async function mockRequest(method: string, path: string, body: unknown): 
   if (method === "POST" && path === "/api/chat") {
     const req = body as Partial<ChatRequest> | undefined;
     if (!req?.session_id || !req.message?.trim()) throw new ApiError(400, "session_id와 message가 필요합니다");
-    // 가짜는 질문과 상관없이 예시 답을 준다. 서버처럼 질문·답 두 줄을 기록에 남긴다 (E6)
-    const res = copy(chatExample as ChatResponse);
+    // 가짜는 질문과 상관없이 예시 답을 준다 (그래프·차트를 물으면 그래프 예시, #257). 서버처럼 질문·답 두 줄을 기록에 남긴다 (E6)
+    const wantsChart = /그래프|차트/.test(req.message);
+    const res = copy((wantsChart ? chatChartExample : chatExample) as ChatResponse);
     saveChatLines(req.session_id, req.message.trim(), res);
     return res;
   }

@@ -42,7 +42,7 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 | `GET /api/jobs/{id}` | - | 작업 상태 (`docs/examples/job_waiting_approval.json`) |
 | `POST /api/jobs/{id}/hs` | `{"choices":[{"line","hs"}]}` | `{"declaration_draft":{...}}` |
 | `POST /api/jobs/{id}/approve` | `{"approver"}` | `{"wms":{"status","wms_id"}}`, 불일치가 남았으면 409 |
-| `POST /api/chat` | `{"session_id","message"}` | `docs/examples/chat_response.json` |
+| `POST /api/chat` | `{"session_id","message"}` | `docs/examples/chat_response.json`, 그래프가 있는 답 `docs/examples/chat_chart_response.json` (#257) |
 | `GET /api/chat/{session_id}` | - | `docs/examples/chat_history.json` (대화 기록 최근 50줄, 오래된 순. #157) |
 | `GET /api/documents?doc_type=<종류>&cursor=<다음 쪽>` | - | `docs/examples/documents.json` (문서 분류 내역, #143) |
 | `GET /api/jobs/{id}/files` | - | `docs/examples/job_files.json` (서류 보기: 원본 주소 + 읽은 칸, #156) |
@@ -134,8 +134,14 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
   - 오늘은 한국 시간(Asia/Seoul) 날짜다. 지연 일수 `DELAY_DAYS = 3`은 코드 한 곳에 상수로 둔다.
   - 3일은 데모용으로 정한 값이다. 법령이나 관세청 기준이 아니다. 바꿀 때는 이 문서와 `DELAY_DAYS`, 현황 질문 정답(`eval/queries.csv`)을 함께 고친다.
   - 답에는 쓴 규칙을 함께 보여 준다. 답 문장 끝에 "(통관 지연 기준: …)"으로 붙이고(`ChatResponse`에는 따로 칸이 없다), 대화 기록 줄에는 `rule` 칸으로 남긴다. 예: "입항 후 3일 지나도 수리·반출 아님".
-- 기간 조건(`today` · `this_week` · `last_week` · `range`)은 `arrived_at`(입항일) 기준이다. 주는 월요일부터 일요일까지이고, 날짜 계산은 코드가 한국 시간으로 한다.
-- 현황 조회 조건(`ChatFilters`, `POST /api/chat` 응답의 `filters`)은 상태 하나·기간만 담는다 (#165).
+- 기간 조건(`today` · `this_week` · `last_week` · `this_month` · `last_month` · `range`)은 `arrived_at`(입항일) 기준이다. 주는 월요일부터 일요일까지, 달은 1일부터 말일까지이고, 날짜 계산은 코드가 한국 시간으로 한다.
+- 현황 Agent (#257, `QUERY_AGENT=1`, agent-design.md 9번): 모델이 읽기 도구를 고르고 앞 대화(같은 세션 최근 6줄)를 이어 받아 답을 쓴다.
+  - `ChatFilters`에 Agent 도구만 쓰는 칸 `and_status`(status와 함께 거르는 두 번째 상태, '그중 검사 중'), `consignee`·`item`(띄어쓰기·대소문자 무시 포함), `bl_no`(같음)가 있다. 조건 변환(옛 경로)은 이 칸을 쓰지 않고 `unsupported`로 옮긴다.
+  - 대화 기록(team06-chat)의 `filters`에는 이 네 칸을 값이 있을 때만 쓴다 (옛 줄과 같은 모양). `count`는 조회·집계한 답일 때 `rows` 수, `rule`은 `status`나 `and_status`가 통관 지연일 때.
+  - `chart` (`ChatResponse`, null 가능): `{"type": "bar"|"line"|"pie", "title", "x_label", "y_label": "건수", "points": [{"label", "value"}]}`. `count_shipments` 결과를 코드가 그대로 옮긴 것이고 화면은 계산 없이 그린다. 그래프 아래에 같은 값의 표를 둔다.
+    묶음: `status`(진행 순서), `consignee`·`item`(많은 순), `day`(`11/17`)·`week`(`11/16~11/22`, 월~일)·`month`(`2026-11`) 날짜 순. 집계가 없거나 0건이면 `chart`는 null.
+  - 답에 나온 숫자·B/L 번호·작업 ID가 질문·앞 대화·도구 결과에 없으면 문장틀 답으로 바꾼다. `rows`·`filters`·`period_resolved`는 마지막 조회·집계 결과 그대로.
+- 조건 변환(옛 경로, `QUERY_AGENT`가 없을 때)의 현황 조회 조건(`ChatFilters`, `POST /api/chat` 응답의 `filters`)은 상태 하나·기간만 담는다 (#165).
   - `unsupported`: 모델이 이 칸으로 나타내지 못한 조건 목록 (예: 수하인, B/L 번호, 상태 둘 이상). 비어 있지 않으면 조회하지 않고 "… 조건은 아직 조회할 수 없습니다"로 답한다 (`rows` 빈 목록).
   - 조건이 하나도 없으면(상태·기간·`unsupported` 모두 비었음) 조회하지 않고 되묻는다. 전체 목록을 답하지 않는다.
 - 가드레일 (E7 #152, `ChatResponse.blocked`): 막으면 조회하지 않고 "통관·화물 현황 질문만 답합니다. 예: …"로 답하고 `blocked`에 이유를 넣는다. 막지 않았으면 `null`.

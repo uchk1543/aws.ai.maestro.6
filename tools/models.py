@@ -23,7 +23,10 @@ HSStatus = Literal["자동 확정", "사람 확인 필요", "사람 확정"]
 HSBy = Literal["history", "auto_match", "human"]
 WmsStatus = Literal["승인 대기", "등록됨"]
 WmsBy = Literal["auto", "human"]
-Period = Literal["today", "this_week", "last_week", "range"]
+Period = Literal["today", "this_week", "last_week", "this_month", "last_month", "range"]
+# 현황 Agent의 집계 기준 (#257). 날짜 묶음(day·week·month)은 입항일, 주는 월요일~일요일
+GroupBy = Literal["status", "consignee", "item", "day", "week", "month"]
+ChartType = Literal["bar", "line", "pie"]
 ChatRole = Literal["user", "assistant"]
 # 작업 화면 맨 위 '다음 할 일' (FB22 #178). 코드가 결과로 정한다
 NextActionKind = Literal["wait", "fix_docs", "choose_hs", "approve", "none", "reupload"]
@@ -535,7 +538,9 @@ class ChatFilters(_Strict):
     """모델이 질문을 바꾼 조회 조건."""
 
     status: str | None = Field(default=None, description="상태 조건. 예: '통관 지연'")
-    period: Period | None = Field(default=None, description="today · this_week · last_week · range")
+    period: Period | None = Field(
+        default=None, description="today · this_week · last_week · this_month · last_month · range. 날짜는 코드가 한국 시간으로 계산한다"
+    )
     date_from: date | None = Field(default=None, description="period가 range일 때만: 시작일. 모델은 질문에 적힌 날짜만 옮긴다")
     date_to: date | None = Field(default=None, description="period가 range일 때만: 끝일")
     unsupported: list[str] = Field(
@@ -543,6 +548,14 @@ class ChatFilters(_Strict):
         description="질문에 있지만 위 칸으로 나타낼 수 없는 조건을 짧게. 예: '수하인 이그잼플유통', 'B/L 번호 EXSHSZX26003555', "
         "'상태 둘 이상: 수리, 반출'. 비어 있지 않으면 코드는 조회하지 않고 볼 수 없는 조건이라고 답한다 (#165)",
     )
+    # 현황 Agent 도구가 쓰는 칸 (#257). 조건 변환(옛 경로)은 쓰지 않는다
+    and_status: str | None = Field(
+        default=None,
+        description="status와 함께 거르는 두 번째 상태 (이어 묻기 '그중 검사 중인 건'). 예: status '통관 지연' + and_status '검사 중'",
+    )
+    consignee: str | None = Field(default=None, description="수하인(수입자) 이름 일부. 띄어쓰기·대소문자를 무시하고 포함하면 맞음")
+    item: str | None = Field(default=None, description="품명 일부. 띄어쓰기·대소문자를 무시하고 포함하면 맞음")
+    bl_no: str | None = Field(default=None, description="B/L 번호. 띄어쓰기·대소문자를 무시하고 같으면 맞음")
 
 
 class PeriodResolved(_Strict):
@@ -552,6 +565,23 @@ class PeriodResolved(_Strict):
 
     from_: date = Field(alias="from", description="시작일(포함)")
     to: date = Field(description="끝일(포함)")
+
+
+class ChartPoint(_Strict):
+    """그래프 점 하나 = 집계 묶음 하나 (#257)."""
+
+    label: str = Field(description="묶음 이름. 예: '샘플무역', '11/16~11/22'")
+    value: int = Field(description="코드가 센 건수")
+
+
+class Chart(_Strict):
+    """현황 그래프 (#257). 모델은 종류와 그릴 집계만 고르고, 값·축·제목은 코드가 집계 결과에서 채운다. 화면은 계산하지 않고 그린다."""
+
+    type: ChartType = Field(description="bar · line · pie")
+    title: str = Field(description="제목. 예: '이번 달(11/1~11/30) 수입자별 통관 지연'")
+    x_label: str = Field(description="묶음 축 이름. 예: '수입자'")
+    y_label: str = Field(description="값 축 이름. 지금은 '건수'")
+    points: list[ChartPoint] = Field(default_factory=list, description="집계 결과(count_shipments)와 같은 값, 같은 순서")
 
 
 class ChatResponse(_Strict):
@@ -566,6 +596,7 @@ class ChatResponse(_Strict):
         description="막았으면 그 이유, 막지 않았으면 null. 가드레일 필터 이름(예: '프롬프트 공격') 또는 '무관한 질문'. "
         "막으면 모델·조회를 하지 않고 정해 둔 답을 준다 (E7 #152). 채팅 기록(E6 #157)이 이 값을 남긴다",
     )
+    chart: Chart | None = Field(default=None, description="그래프 (#257). 현황 Agent가 make_chart로 만들었을 때만. 그 밖은 null")
 
 
 class ChatHistoryLine(_Strict):
@@ -823,6 +854,18 @@ class QueryResult(_Strict):
     rule: str | None = Field(default=None, description="쓴 상태 규칙 설명. 예: '입항 후 3일 지나도 수리 안 됨'")
     rows: list[Shipment] = Field(default_factory=list, description="조회 결과")
     count: int = Field(description="코드가 센 건수")
+
+
+class CountResult(_Strict):
+    """count_shipments 반환값 (#257). 조회 조건으로 고른 화물을 group_by로 묶어 코드가 센다."""
+
+    filters: ChatFilters = Field(description="실제로 쓴 조회 조건")
+    period_resolved: PeriodResolved | None = Field(default=None, description="코드가 계산한 기간")
+    rule: str | None = Field(default=None, description="쓴 상태 규칙 설명 (통관 지연일 때만)")
+    group_by: GroupBy = Field(description="묶은 기준")
+    groups: list[ChartPoint] = Field(default_factory=list, description="묶음별 건수. 날짜 묶음은 날짜 순, 그 밖은 많은 순")
+    total: int = Field(description="고른 화물 수 (묶음 건수의 합)")
+    rows: list[Shipment] = Field(default_factory=list, description="고른 화물")
 
 
 class OcrLine(_Strict):

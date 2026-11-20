@@ -3266,3 +3266,130 @@ video.port-media.on {
 .auto-box {
   margin-bottom: 4px;
 }
+
+/* #257 현황 그래프: 흑백 단계형. 아래 표와 같은 값 */
+.chat-chart {
+  margin: 12px 0 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg);
+}
+
+.chat-chart-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.chat-chart-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.chat-chart-svg.pie {
+  max-width: 180px;
+}
+
+.chat-chart-pie {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+
+.chart-grid {
+  stroke: var(--line);
+}
+
+.chart-axis {
+  stroke: var(--ink);
+}
+
+.chart-tick {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.chart-value {
+  fill: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.chart-bar {
+  fill: var(--ink);
+}
+
+.chart-line {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2.5;
+}
+
+.chart-dot {
+  fill: var(--bg);
+  stroke: var(--ink);
+  stroke-width: 2.5;
+}
+
+.chart-slice {
+  stroke: var(--bg);
+  stroke-width: 2;
+}
+
+.chart-legend {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+
+.chart-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chart-swatch {
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+
+.chart-table {
+  margin-top: 10px;
+}
+
+.chart-table td:last-child,
+.chart-table th:last-child {
+  text-align: right;
+}
+
+.chat-jobs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 0;
+}
+
+.chat-job {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 14px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--bg);
+  background: var(--ink-2);
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+}
