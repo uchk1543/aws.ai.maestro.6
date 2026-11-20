@@ -1266,73 +1266,12 @@ table.cells tr.suspect td {
   font-size: 14px;
 }
 
-.more {
-  width: 100%;
-  min-height: 52px;
-  margin-top: 8px;
-  font-weight: 600;
-  background: #fff;
-  border: 1.5px solid var(--ink);
-  border-radius: 14px;
-}
-
-/* 서류 표: PC 전까지는 줄마다 카드 (칸 이름은 data-label) */
-@media (max-width: 1199px) {
-  table.doc-table,
-  table.doc-table tbody {
-    display: grid;
-    gap: 8px;
-  }
-
-  table.doc-table thead {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: -1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-  }
-
-  table.doc-table tr {
-    display: block;
-    padding: 6px 18px;
-    background: var(--fill);
-    border-radius: 14px;
-  }
-
-  table.doc-table td {
-    display: grid;
-    grid-template-columns: 76px minmax(0, 1fr);
-    gap: 10px;
-    padding: 7px 0;
-    font-size: 15px;
-    border-bottom: 1px solid #e0e0e0;
-    overflow-wrap: anywhere;
-  }
-
-  table.doc-table td:last-child {
-    border-bottom: 0;
-  }
-
-  table.doc-table td::before {
-    content: attr(data-label);
-    color: var(--muted);
-  }
-
-  table.doc-table .status {
-    justify-self: start;
-  }
-}
-
 @media (min-width: 768px) and (max-width: 1199px) {
   .dochist {
     max-width: 760px;
     margin: 0 auto;
   }
 
-  table.doc-table tbody {
-    grid-template-columns: 1fr 1fr;
-  }
 }
 
 @media (min-width: 1200px) {
@@ -1374,30 +1313,6 @@ table.cells tr.suspect td {
   .dochist-main h2 {
     margin-top: 0;
     font-size: 22px;
-  }
-
-  table.doc-table td {
-    vertical-align: top;
-  }
-
-  table.doc-table .doc-file,
-  table.doc-table td:nth-child(2),
-  table.doc-table td:nth-child(3),
-  table.doc-table td:nth-child(4),
-  table.doc-table td:nth-child(6),
-  table.doc-table td:nth-child(7),
-  table.doc-table td:nth-child(8) {
-    white-space: nowrap;
-  }
-
-  table.doc-table .doc-reason {
-    min-width: 200px;
-    color: #444;
-  }
-
-  .more {
-    width: auto;
-    padding: 0 32px;
   }
 }
 
@@ -1645,79 +1560,111 @@ table.cells tr.suspect td {
   }
 }
 
-/* 문서 분류 내역: 파일 이름 버튼, 서류 보기 창 */
-button.doc-open {
-  font-weight: 700;
-  overflow-wrap: anywhere;
-}
-
-.sheet-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  display: flex;
-  align-items: stretch;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.45);
-}
-
-.sheet {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  max-height: 100%;
-  background: #fff;
-}
-
-.sheet-head {
+/* 문서 분류 내역: 서류 카드 (G11). 좌우로 밀어 넘긴다(scroll-snap).
+   모바일·태블릿: 서류 원본 위 · 인식 결과 아래. PC: 서류 원본 | 인식 결과 */
+.deck-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 8px 12px var(--gutter);
-  border-bottom: 1px solid var(--line);
 }
 
-.sheet-title {
+.deck-nav {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-width: 0;
+  gap: 6px;
 }
 
-.sheet-title h2 {
-  overflow: hidden;
-  font-size: 18px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.deck-count {
+  min-width: 56px;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
-.sheet-close {
-  flex: none;
+.deck-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 44px;
   height: 44px;
-  background: none;
+  color: var(--ink);
+  background: var(--fill);
   border: 0;
-  border-radius: 12px;
+  border-radius: 999px;
 }
 
-.sheet-body {
+.deck-btn.prev .icon {
+  transform: rotate(180deg);
+}
+
+.deck {
+  display: flex;
+  margin: 0 calc(var(--gutter) * -1);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.deck::-webkit-scrollbar {
+  display: none;
+}
+
+.deck:focus-visible {
+  outline-offset: -2px;
+}
+
+.deck-slide {
+  flex: 0 0 100%;
+  min-width: 0;
+  padding: 0 var(--gutter);
+  scroll-snap-align: center;
+}
+
+.doc-card {
+  padding: 16px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+}
+
+.doc-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.doc-card-head h3 {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-card-body {
   display: grid;
-  gap: 20px;
-  padding: 16px var(--gutter) calc(24px + var(--safe-bottom));
-  overflow: auto;
+  gap: 18px;
 }
 
-.sheet-info {
+.doc-card-missing {
+  padding: 40px 16px;
+  text-align: center;
+  background: var(--fill);
+  border-radius: 14px;
+}
+
+.doc-card-info {
   display: grid;
-  gap: 20px;
+  gap: 18px;
 }
 
-.sheet-info h3 {
-  margin-bottom: 8px;
+.doc-card-info h4 {
+  margin: 0 0 8px;
   font-size: 15px;
 }
 
@@ -1785,43 +1732,26 @@ button.doc-open {
   overflow-wrap: anywhere;
 }
 
-.sheet .viewer {
-  max-height: none;
-}
-
-@media (min-width: 768px) {
-  .sheet-backdrop {
-    align-items: center;
-    padding: 24px;
-  }
-
-  .sheet {
-    max-width: 760px;
-    max-height: 92vh;
-    border-radius: 18px;
-  }
-
-  .sheet-head {
-    padding-left: 24px;
-  }
-
-  .sheet-body {
-    padding: 20px 24px 24px;
-  }
-}
-
 @media (min-width: 1200px) {
-  .sheet {
-    max-width: 1180px;
+  .deck {
+    margin: 0;
   }
 
-  .sheet-body {
-    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  .deck-slide {
+    padding: 0;
+  }
+
+  .doc-card {
+    padding: 20px;
+  }
+
+  .doc-card-body {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
     align-items: start;
-    gap: 28px;
+    gap: 24px;
   }
 
-  .sheet .viewer {
-    max-height: calc(92vh - 120px);
+  .doc-card .viewer {
+    max-height: calc(100vh - 220px);
   }
 }
