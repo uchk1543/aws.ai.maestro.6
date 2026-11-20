@@ -187,23 +187,27 @@ def test_post_then_worker_shows_mismatch(fakes, lambda_client):
     assert status == 200
     Job.model_validate(job)  # 약속 2 형식
     assert job["status"] == "waiting_approval"
-    # 불일치 칸은 다시 확인한다 (B8): 상업송장·포장명세서 총중량
+    # 선하증권이 없어 먼저 빠진 서류로 남긴다 (#168). 불일치 칸은 다시 확인한다 (B8): 상업송장·포장명세서 총중량
     # 끝나면 화물 기록 한 줄 (E3). 이 서류에는 선하증권이 없어 쓰지 않았다는 줄이다
     assert [s["tool"] for s in job["steps"]] == [
-        "read_document", "read_document", "cross_check", "reread_field", "reread_field", "record_shipment",
+        "check_missing_docs", "read_document", "read_document", "cross_check", "reread_field", "reread_field",
+        "record_shipment",
     ]
     assert "B/L 번호가 없어" in job["steps"][-1]["summary"]
-    [issue] = job["result"]["issues"]
+    issue, missing = job["result"]["issues"]
     assert issue["grade"] == "불일치" and issue["rule_id"] == "X-WT-01"
+    assert (missing["rule_id"], missing["grade"]) == ("DOC-MISSING", "확인 필요")
     # 승인 대기로 끝나면 화면이 승인 입력을 그리도록 wms를 채운다 (#159, 실제 run_job 출력 FB14)
     assert job["result"]["wms"] == {"status": "승인 대기", "by": None, "wms_id": None}
 
 
 def test_matching_docs_are_done(fakes, lambda_client):
+    """서로 맞는 두 장은 불일치가 없다. 선하증권이 없어 빠진 서류 '확인 필요'만 남고 승인 대기다 (#168)."""
     _, body = call("POST", "/api/jobs", files("invoice.pdf", "pl_ok.pdf"))
     process(lambda_client)
     _, job = call("GET", f"/api/jobs/{body['job_id']}")
-    assert job["status"] == "done" and job["result"]["issues"] == []
+    assert job["status"] == "waiting_approval"
+    assert [i["rule_id"] for i in job["result"]["issues"]] == ["DOC-MISSING"]
 
 
 def test_read_failure_is_check_needed(fakes, lambda_client):
@@ -212,7 +216,7 @@ def test_read_failure_is_check_needed(fakes, lambda_client):
     _, job = call("GET", f"/api/jobs/{body['job_id']}")
     assert job["status"] == "waiting_approval"
     assert job["result"]["issues"][0]["rule_id"] == "READ-FAIL"
-    assert job["steps"][1]["ok"] is False
+    assert [s["tool"] for s in job["steps"] if not s["ok"]] == ["read_document"]  # 첫 단계는 빠진 서류 (#168)
 
 
 def test_old_paths_without_api_prefix_still_work(fakes, lambda_client):
@@ -220,7 +224,7 @@ def test_old_paths_without_api_prefix_still_work(fakes, lambda_client):
     _, body = call("POST", "/jobs", files("invoice.pdf", "pl_ok.pdf"))
     process(lambda_client)
     status, job = call("GET", f"/jobs/{body['job_id']}")
-    assert status == 200 and job["status"] == "done"
+    assert status == 200 and job["status"] == "waiting_approval"  # 끝까지 처리됨. 선하증권이 없어 승인 대기 (#168)
 
 
 def test_http_api_v2_events_end_to_end(fakes, lambda_client):

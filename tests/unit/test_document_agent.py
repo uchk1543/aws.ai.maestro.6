@@ -34,6 +34,10 @@ RAWS = {
         "total_qty": {"raw": "1,000 PCS"}, "total_gross_kg": {"raw": "6,520 KGS"},
     },
 }
+# 서로 맞는 4종. 선하증권까지 있으면 빠진 서류(DOC-MISSING, #168)가 없다
+BL_RAW = {"doc_no": {"raw": "BL-1"}, "total_gross_kg": {"raw": "6,250 KGS"}, "consignee_name": {"raw": "EXAMPLE CO., LTD."}}
+CO_RAW = {"doc_no": {"raw": "INV-1"}, "items": [{"line": 1}, {"line": 2}]}
+SAME_RAWS = {**RAWS, "packing.pdf": RAWS["invoice.pdf"], "bl.pdf": BL_RAW, "co.pdf": CO_RAW}
 
 
 def key_of(blocks) -> str:
@@ -85,14 +89,17 @@ def test_null_doc_type_is_classified_then_read():
     m = Models()
     job = run_job("job-1", files(INV, PL), fetch, reader=m.reader, classifier=m.classifier)
     assert tools_of(job) == [
-        "classify_document", "classify_document", "read_document", "read_document", "cross_check",
+        "classify_document", "classify_document",
+        "check_missing_docs",  # 선하증권이 없다 (#168)
+        "read_document", "read_document", "cross_check",
         "reread_field", "reread_field",  # 불일치 칸은 다시 확인 (B8, 텍스트가 아닌 가짜 PDF라 모델 다시 읽기)
     ]
     assert job.steps[0].summary == "invoice.pdf → 상업송장 (제목 COMMERCIAL INVOICE, 단가·금액 칸)"
     assert job.steps[1].summary == "packing.pdf → 포장명세서 (제목 PACKING LIST, N.W./G.W. 칸, 단가 칸 없음)"
-    assert job.steps[2].summary == "invoice.pdf → 상업송장, 2행"
+    assert job.steps[3].summary == "invoice.pdf → 상업송장, 2행"
     assert all(s.ok for s in job.steps)
-    [issue] = job.result.issues
+    issue, missing = job.result.issues
+    assert missing.rule_id == "DOC-MISSING"
     assert (issue.rule_id, issue.grade, issue.checked_by) == ("X-WT-01", "불일치", "model_reread")
     assert job.status == "waiting_approval"
 
@@ -206,7 +213,7 @@ def test_on_step_failure_does_not_stop_job():
 
     m = Models()
     job = run_job("job-1", files(INV, PL), fetch, reader=m.reader, classifier=m.classifier, on_step=broken)
-    assert job.status == "waiting_approval" and len(job.steps) == 7
+    assert job.status == "waiting_approval" and len(job.steps) == 8
 
 
 def test_on_docs_gets_read_docs_in_files_order_once():  # #122
@@ -244,14 +251,14 @@ def test_on_docs_on_crash_and_its_failure_does_not_change_job(monkeypatch):
         raise RuntimeError("DynamoDB 오류")
 
     job = run_job("job-1", files(INV, PL, typed=(INV, PL)), fetch, reader=Models().reader, on_docs=broken)
-    assert job.status == "waiting_approval" and len(job.steps) == 5
+    assert job.status == "waiting_approval" and len(job.steps) == 6  # 빠진 서류 1 + 읽기 2 + 대조 1 + 다시 확인 2
 
 
 def test_p0_finishes_without_later_tools():
     """B8·C1·C2가 없으면 다시 확인·HS를 부르지 않고 finish_report 조건에서도 뺀다."""
-    m = Models(raws={**RAWS, "packing.pdf": RAWS["invoice.pdf"]})
-    job = run_job("job-1", files(INV, PL, typed=(INV, PL)), fetch, reader=m.reader)
-    assert tools_of(job) == ["read_document", "read_document", "cross_check"]
+    m = Models(raws=SAME_RAWS)
+    job = run_job("job-1", files(INV, PL, BL, typed=(INV, PL, BL)), fetch, reader=m.reader)
+    assert tools_of(job) == ["read_document", "read_document", "read_document", "cross_check"]
     assert job.status == "done" and job.result.issues == [] and job.result.hs == []
 
 
@@ -262,8 +269,8 @@ def test_cross_check_crash_is_report_incomplete(monkeypatch):
     monkeypatch.setattr(document_agent, "cross_check", crash)
     m = Models()
     job = run_job("job-1", files(INV, PL, typed=(INV, PL)), fetch, reader=m.reader)
-    assert tools_of(job) == ["read_document", "read_document", "cross_check", "finish_report"]
-    assert [s.ok for s in job.steps] == [True, True, False, False]
+    assert tools_of(job) == ["check_missing_docs", "read_document", "read_document", "cross_check", "finish_report"]
+    assert [s.ok for s in job.steps] == [True, True, True, False, False]
     last = job.result.issues[-1]
     assert (last.rule_id, last.grade) == ("REPORT-INCOMPLETE", "확인 필요") and "cross_check" in last.evidence
     assert job.status == "waiting_approval"
@@ -305,14 +312,14 @@ def test_later_tools_run_in_order(monkeypatch):
         rereader=fake_rereader(rereads), hs_recommender=fake_hs(lines),
     )
     assert tools_of(job) == [
-        "classify_document", "classify_document", "read_document", "read_document", "cross_check",
+        "classify_document", "classify_document", "check_missing_docs", "read_document", "read_document", "cross_check",
         "reread_field", "reread_field", "recommend_hs", "recommend_hs",
     ]
     assert rereads == [("commercial_invoice", "total_gross_kg"), ("packing_list", "total_gross_kg")]
-    assert job.steps[5].summary == "상업송장 total_gross_kg: PDF 글자에서 6,250 KGS (첫 판독과 같음)"
-    assert job.steps[7].summary == "1행 → 사람 확인 필요 (후보 0개)"
+    assert job.steps[6].summary == "상업송장 total_gross_kg: PDF 글자에서 6,250 KGS (첫 판독과 같음)"
+    assert job.steps[8].summary == "1행 → 사람 확인 필요 (후보 0개)"
     assert lines == [1, 2] and [h.line for h in job.result.hs] == [1, 2]
-    [issue] = job.result.issues
+    issue, _missing_bl = job.result.issues
     assert issue.checked_by == "pdf_text"
     assert job.status == "waiting_approval"
 
@@ -377,7 +384,11 @@ def test_agent_picks_tools_and_finish_report_ends_loop():
     # HS(C1·C2)는 처리 Lambda가 넘기지 않았으니 도구로 주지 않는다
     assert model.tool_names == {"classify_document", "read_document", "cross_check", "reread_field", "finish_report"}
     assert f"{INV}: 종류 미정" in text(model.seen[0])
-    assert tools_of(job) == ["classify_document"] * 2 + ["read_document"] * 2 + ["cross_check"] + ["reread_field"] * 2 + ["finish_report"]
+    assert tools_of(job) == (
+        ["classify_document"] * 2 + ["read_document"] * 2
+        + ["check_missing_docs", "cross_check"]  # 분류가 끝난 뒤 첫 대조 때 빠진 서류를 정한다 (#168)
+        + ["reread_field"] * 2 + ["finish_report"]
+    )
     assert (job.steps[-1].summary, job.steps[-1].ok) == ("조건을 모두 채움", True)
     assert job.result.issues[0].rule_id == "X-WT-01" and job.status == "waiting_approval"
 
@@ -464,3 +475,67 @@ def test_agent_with_later_tools(monkeypatch):
     assert sorted(rereads) == [("commercial_invoice", "total_gross_kg"), ("packing_list", "total_gross_kg")]
     assert sorted(lines) == [1, 2]
     assert job.result.issues[0].checked_by == "pdf_text"
+
+
+# ---------------------------------------------------------------------------
+# 빠진 서류 (#168, agent-design.md 1번 '있는 서류끼리 먼저 대조하고, 빠진 서류를 요청한다')
+# ---------------------------------------------------------------------------
+def missing_of(job: Job) -> list[tuple]:
+    """빠진 서류 문제의 (등급, 칸, 근거). 칸은 비어 있다 (올라온 파일이 없어 화면이 짚을 칸이 없다)."""
+    return [(i.grade, i.cells, i.evidence) for i in job.result.issues if i.rule_id == "DOC-MISSING"]
+
+
+def test_invoice_only_asks_for_missing_documents():
+    m = Models()
+    job = run_job("job-1", files(INV), fetch, reader=m.reader, classifier=m.classifier)
+    assert missing_of(job) == [
+        ("확인 필요", [], "포장명세서가 없습니다. 함께 올려 주세요."),
+        ("확인 필요", [], "선하증권(B/L)이 없습니다. WMS 등록에 B/L 번호가 필요합니다. 함께 올려 주세요."),
+    ]
+    assert tools_of(job) == ["classify_document", "check_missing_docs", "read_document", "cross_check"]
+    assert (job.steps[1].summary, job.steps[1].ok) == ("빠진 서류: 포장명세서, 선하증권", True)
+    assert m.read == ["invoice.pdf"]  # 있는 서류는 그대로 읽고 대조한다
+    assert job.status == "waiting_approval"
+
+
+def test_all_four_documents_have_no_missing():
+    m = Models(raws=SAME_RAWS)
+    job = run_job("job-1", files(INV, PL, BL, CO), fetch, reader=m.reader, classifier=m.classifier)
+    assert missing_of(job) == [] and "check_missing_docs" not in tools_of(job)
+    assert job.result.issues == [] and job.status == "done"
+
+
+def test_origin_certificate_is_not_required():
+    """원산지증명서는 FTA 특혜를 받을 때만 내므로 빠져도 묻지 않는다."""
+    m = Models(raws=SAME_RAWS)
+    job = run_job("job-1", files(INV, PL, BL), fetch, reader=m.reader, classifier=m.classifier)
+    assert missing_of(job) == [] and job.status == "done"
+
+
+def test_missing_after_issues_found_by_cross_check():
+    """화면 문제 목록은 파일 문제 → 대조 결과 → 빠진 서류 순서다. 불일치가 맨 앞에 온다."""
+    m = Models()
+    job = run_job("job-1", files(INV, PL), fetch, reader=m.reader, classifier=m.classifier)
+    assert [i.rule_id for i in job.result.issues] == ["X-WT-01", "DOC-MISSING"]
+    assert "선하증권(B/L)이 없습니다" in missing_of(job)[0][2]
+
+
+def test_no_missing_noise_when_no_type_is_known():
+    """종류를 아는 서류가 하나도 없으면(모두 unknown) 빠진 서류를 묻지 않는다. 그 파일들의 문제가 먼저다."""
+    m = Models()
+    job = run_job("job-1", files(MEMO), fetch, reader=m.reader, classifier=m.classifier)
+    assert missing_of(job) == [] and "check_missing_docs" not in tools_of(job)
+
+
+def test_agent_hears_missing_documents_in_cross_check():
+    m = Models()
+    model = ScriptedModel([
+        [("classify_document", {"key": INV})],
+        [("read_document", {"key": INV})],
+        [("cross_check", {})],
+        [("finish_report", {})],
+    ])
+    job = run_job("job-1", files(INV), fetch, reader=m.reader, classifier=m.classifier, agent_model=model)
+    assert "빠진 서류: 포장명세서, 선하증권" in text(model.seen[3])  # cross_check 도구 결과로 받았다
+    assert tools_of(job) == ["classify_document", "read_document", "check_missing_docs", "cross_check", "finish_report"]
+    assert len(missing_of(job)) == 2
