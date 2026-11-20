@@ -13,7 +13,7 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
-from tools.models import Cell, ExtractedDocument, Issue
+from tools.models import Cell, ExtractedDocument, ExtractedItem, Issue
 
 EVAL_DIR = Path(__file__).parent
 _FIELD_ALIAS = {"doc_no": "invoice_no"}  # 약속 1의 doc_no = 정답지의 invoice_no
@@ -289,12 +289,150 @@ def oracle_docs(fields_csv: Path = EVAL_DIR / "fields.csv", split_prefix: str = 
     return dict(docs)
 
 
+# ---------------------------------------------------------------------------
+# H2. HS 확정과 자동 처리율 (모델 호출 없음)
+# ---------------------------------------------------------------------------
+HS_MODES = ("none", "oracle", "trap")  # 모델 대신 쓰는 가짜: 없음 · 정답을 1순위로 · 헷갈리는 HS를 1순위로
+
+
+class _MemoryHistory:
+    """확정 이력. 평가는 비어 있는 상태로 시작한다 (agent-design.md 11번)."""
+
+    def __init__(self) -> None:
+        self.rows: dict[tuple[str, str], str] = {}
+
+    def get(self, importer: str, item_key: str) -> str | None:
+        return self.rows.get((importer, item_key))
+
+    def put(self, importer: str, item_key: str, hs: str, job_id: str) -> None:
+        self.rows[(importer, item_key)] = hs
+
+
+def _digits(text: str) -> str:
+    return re.sub(r"\D", "", text or "")
+
+
+def load_hs_inputs(split: str = "dev", eval_dir: Path = EVAL_DIR) -> dict:
+    """HS 채점에 쓸 정답지 값을 모은다.
+    반환: rows(품목 행, 세트 번호 · 줄 순서), co_hs((세트, 줄) → 원산지증명서에 찍힌 HS 숫자),
+    inv_hs((세트, 줄) → 상업송장에 찍힌 HS. 함정 세트만 알 수 있다), normal(오류가 하나도 없는 세트 번호).
+    """
+    with (eval_dir / "sets.csv").open(encoding="utf-8", newline="") as fh:
+        rows = [r for r in csv.DictReader(fh) if r["split"] == split]
+    rows.sort(key=lambda r: (r["set_id"], int(r["line"])))
+    co_hs: dict[tuple[str, int], str] = {}
+    with (eval_dir / "fields.csv").open(encoding="utf-8", newline="") as fh:
+        for r in csv.DictReader(fh):
+            m = re.fullmatch(r"items\[(\d+)\]\.hs_code", r["field"])
+            if m and r["doc"] == "certificate_of_origin":
+                co_hs[(r["set_id"], int(m.group(1)) + 1)] = _digits(r["answer"])
+    inv_hs: dict[tuple[str, int], str] = {}
+    kinds: dict[str, set[str]] = defaultdict(set)
+    for a in load_answers(eval_dir / "answers.csv"):
+        kinds[a["set_id"]].add(a["error_type"])
+        m = re.fullmatch(r"items\[(\d+)\]\.hs_code", a["field"] or "")
+        if a["error_type"] == "trap_all_docs" and a["doc"] == "commercial_invoice" and m:
+            inv_hs[(a["set_id"], int(m.group(1)) + 1)] = _digits(a["planted_value"])
+    normal = {s for s, k in kinds.items() if k == {"none"}}
+    return {"rows": rows, "co_hs": co_hs, "inv_hs": inv_hs, "normal": normal}
+
+
+def _hs_docs(row: dict, co_hs: dict, inv_hs: dict) -> list[ExtractedDocument]:
+    line, sid = int(row["line"]), row["set_id"]
+
+    def cell(text: str) -> Cell:
+        return Cell(raw=text, value=text)
+
+    inv = ExtractedItem(
+        line=line, name=cell(row["item"]), hs_code=cell(inv_hs[(sid, line)]) if (sid, line) in inv_hs else None
+    )
+    docs = [ExtractedDocument(doc_type="commercial_invoice", file=f"oracle/{sid}/commercial_invoice", items=[inv])]
+    if (sid, line) in co_hs:
+        item = ExtractedItem(line=line, hs_code=cell(co_hs[(sid, line)]))
+        docs.append(ExtractedDocument(doc_type="certificate_of_origin", file=f"oracle/{sid}/co", items=[item]))
+    return docs
+
+
+def score_hs(inputs: dict, table, mode: str = "none", clean_sets: set[str] | None = None) -> dict:
+    """품목 행마다 recommend_hs를 돌려 HS 지표와 자동 처리율을 센다. 모델 호출 없음.
+    언제: 규칙·HS 표·확정 조건을 고친 뒤. 받는 것: load_hs_inputs 결과, HS 표(HSTable), mode(HS_MODES),
+    clean_sets(cross_check에 불일치·확인 필요가 없는 세트. None이면 모두 깨끗하다고 본다).
+    mode: none = 모델 없음(자동 확정은 확정 이력만), oracle = 후보 안에 정답이 있으면 1순위로(상한), trap = 헷갈리는 HS를 1순위로(최악).
+    '사람 확인 필요'가 나오면 정답 HS를 사람이 고른 것처럼 넣고 계속한다. 이력은 비운 상태에서 시작해 세트 순서대로 쌓인다.
+    반환: 건수 dict. wrong_auto는 0이어야 한다.
+    """
+    from tools.hs import confirm_by_human, item_key, recommend_hs
+    from tools.models import HSPick
+
+    if mode not in HS_MODES:
+        raise ValueError(f"mode는 {HS_MODES} 중 하나: {mode}")
+    history = _MemoryHistory()
+    out = dict(
+        rows=0, answer_not_in_table=0, auto=0, by_history=0, by_auto_match=0, wrong_auto=0,
+        human=0, human_in_top3=0, human_in_candidates=0, trap_top=0, trap_auto=0,
+    )
+    set_auto: dict[str, bool] = {}
+    for row in inputs["rows"]:
+        sid, line, answer, trap = row["set_id"], int(row["line"]), row["hs_answer"], row["trap_hs"]
+        docs = _hs_docs(row, inputs["co_hs"], inputs["inv_hs"])
+        seen: dict[str, list] = {"cands": []}
+
+        def picker(name, cands, answer=answer, trap=trap, seen=seen):
+            seen["cands"] = cands
+            by_hs = {c.hs: c for c in cands}
+            order = {"none": [], "oracle": [answer], "trap": [trap, answer]}[mode]
+            return HSPick(picks=[by_hs[h] for h in order if h in by_hs])
+
+        with contextlib.redirect_stdout(io.StringIO()):  # [tool] 출력을 숨긴다
+            result = recommend_hs(docs, line, row["consignee"], history=history, table=table, picker=picker)
+        out["rows"] += 1
+        out["answer_not_in_table"] += 0 if table.exists(answer) else 1
+        if result.status == "자동 확정":
+            out["auto"] += 1
+            out["by_history" if result.by == "history" else "by_auto_match"] += 1
+            if result.hs_code != answer:
+                out["wrong_auto"] += 1
+            if result.hs_code == trap:
+                out["trap_auto"] += 1
+            set_auto[sid] = set_auto.get(sid, True)
+            continue
+        set_auto[sid] = False
+        out["human"] += 1
+        shown = [c.hs for c in result.candidates]
+        out["human_in_top3"] += answer in shown
+        out["human_in_candidates"] += answer in [c.hs for c in seen["cands"]]
+        out["trap_top"] += bool(shown) and shown[0] == trap
+        with contextlib.redirect_stdout(io.StringIO()):
+            confirm_by_human(result, answer, row["consignee"], item_key(docs[0], line), sid, history=history)
+    normal = sorted(inputs["normal"] & set(set_auto))
+    clean = set(set_auto) if clean_sets is None else clean_sets
+    out["normal_sets"] = len(normal)
+    out["auto_registered"] = sum(1 for s in normal if set_auto[s] and s in clean)
+    out["mode"] = mode
+    return out
+
+
+def format_hs_report(r: dict) -> str:
+    """score_hs 결과를 건수 문장으로 쓴다."""
+    return "\n".join(
+        [
+            f"HS (모델 대신: {r['mode']}) 품목 {r['rows']}행",
+            f"  자동 확정 {r['auto']}건 (이력 {r['by_history']}, auto_match {r['by_auto_match']}), 그중 틀린 것 {r['wrong_auto']}건",
+            f"  사람 확인 필요 {r['human']}건 중 정답이 후보 3개 안 {r['human_in_top3']}건, 후보 목록(30개) 안 {r['human_in_candidates']}건",
+            f"  헷갈리는 HS를 1순위로 낸 건 {r['trap_top']}건, 자동 확정한 건 {r['trap_auto']}건",
+            f"  자동 처리율: 정상 {r['normal_sets']}세트 중 사람 손 없이 WMS 등록까지 {r['auto_registered']}세트",
+            f"  (정답 HS가 HS부호 표에 없는 행 {r['answer_not_in_table']}건)",
+        ]
+    )
+
+
 def main() -> None:
-    """정답 값으로 규칙만 채점한다 (모델 호출 없음). 예: uv run python -m eval.score --split dev"""
+    """정답 값으로 규칙만 채점한다 (모델 호출 없음). 예: uv run python -m eval.score --split dev [--hs]"""
     from tools.validate import cross_check  # 순환을 피하려고 여기서 부른다
 
     parser = argparse.ArgumentParser(description=main.__doc__)
     parser.add_argument("--split", default="dev", choices=["dev", "test"])
+    parser.add_argument("--hs", action="store_true", help="HS 확정과 자동 처리율도 센다 (모델 없음·정답·함정 세 가지)")
     args = parser.parse_args()
     if args.split == "test":
         raise SystemExit("발표용(test)은 저장소에 없고 마지막에 한 번만 돌린다. 이 명령은 dev만 지원한다.")
@@ -305,6 +443,15 @@ def main() -> None:
     detection = score_detection(load_answers(), issues, args.split, fmt_by_doc=formats)
     fields = score_fields(EVAL_DIR / "fields.csv", docs, fmt_by_doc=formats)
     print(format_report(detection, fields))
+    if args.hs:
+        from tools.hs import load_hs_table
+
+        table = load_hs_table()
+        inputs = load_hs_inputs(args.split)
+        clean = {s for s in inputs["normal"] if not [i for i in issues.get(s, []) if i.grade != "참고"]}
+        for mode in HS_MODES:
+            print()
+            print(format_hs_report(score_hs(inputs, table, mode, clean)))
 
 
 if __name__ == "__main__":
