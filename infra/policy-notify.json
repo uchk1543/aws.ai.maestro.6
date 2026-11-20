@@ -1,0 +1,12 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SendNoticeMail",
+      "Effect": "Allow",
+      "Action": ["ses:SendEmail", "ses:SendRawEmail"],
+      "Resource": "arn:aws:ses:ap-northeast-2:__ACCOUNT_ID__:identity/*",
+      "Condition": { "StringEquals": { "ses:FromAddress": "__NOTIFY_FROM__" } }
+    }
+  ]
+}

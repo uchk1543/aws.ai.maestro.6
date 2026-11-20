@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # 새 구조(#67) 리소스를 처음 한 번 만든다. 이미 있으면 건너뛴다 (지우거나 바꾸지 않는다). 실행: PM만.
 #   MODEL_ID=<global 추론 프로필 ID> bash infra/create.sh
+#   확인 요청 메일(F13 #263)을 켜려면 주소 둘을 함께 넘긴다 (저장소에 주소를 적지 않는다):
+#   MODEL_ID=... NOTIFY_FROM=<보내는 주소> NOTIFY_TO=<담당자 주소> bash infra/create.sh
+#   넘기지 않으면 지금 worker에 있는 값을 그대로 두고, 빈 값을 넘기면(NOTIFY_FROM= NOTIFY_TO=) 메일을 끈다.
 # 만드는 것
 #   IAM 역할 team06-api-role, team06-worker-role (인라인 정책만, 필요한 권한만. worker에만 Textract)
 #   DynamoDB team06-jobs, team06-hs-history, team06-wms, team06-shipments
@@ -59,6 +62,36 @@ ensure_role "${ROLE_WORKER}" logs data bedrock textract cache  # cache: 판독·
 # 채팅 기록·가드레일은 API Lambda만 (F8 #151). 정책에 가드레일 ID가 들어가서 따로 붙인다
 aws iam put-role-policy --role-name "${ROLE_API}" --policy-name "team06-chat" \
   --policy-document "file://$(render policy-chat.json "GUARDRAIL_ID=${GUARDRAIL_ID}")"
+
+# 확인 요청 메일 (F13 #263). worker만 SES로 보낸다. 보내는 주소는 정책 조건(ses:FromAddress)으로 묶는다.
+# 값을 넘겼는지(빈 값 포함)와 안 넘겼는지를 가른다: 안 넘겼으면 지금 worker 환경 변수를 그대로 쓴다.
+current_env() {  # worker 함수의 지금 환경 변수 하나. 함수가 없거나 값이 없으면 빈 글자
+  aws lambda get-function-configuration --function-name "${FN_WORKER}" \
+    --query "Environment.Variables.$1" --output text 2>/dev/null | sed 's/^None$//' || true
+}
+if [ -z "${NOTIFY_FROM+x}" ]; then NOTIFY_FROM=$(current_env NOTIFY_FROM); fi
+if [ -z "${NOTIFY_TO+x}" ]; then NOTIFY_TO=$(current_env NOTIFY_TO); fi
+if [ -n "${NOTIFY_FROM}" ] && [ -n "${NOTIFY_TO}" ]; then
+  # SES 샌드박스: 보내는 주소와 받는 주소 모두 인증해야 보낼 수 있다 (사용자 지정 도메인 없이 이메일 주소만)
+  for addr in "${NOTIFY_FROM}" "${NOTIFY_TO}"; do
+    if ! aws sesv2 get-email-identity --email-identity "${addr}" >/dev/null 2>&1; then
+      aws sesv2 create-email-identity --email-identity "${addr}" >/dev/null
+      echo "[create] SES 이메일 ID ${addr} 만듦 (인증 메일을 보냄)"
+    fi
+    if [ "$(aws sesv2 get-email-identity --email-identity "${addr}" --query VerifiedForSendingStatus --output text)" != "True" ]; then
+      echo "[create] ${addr} 인증 전: 메일함의 인증 링크를 눌러야 보낼 수 있습니다"
+    else
+      echo "[create] ${addr} 인증됨"
+    fi
+  done
+  aws iam put-role-policy --role-name "${ROLE_WORKER}" --policy-name "team06-notify" \
+    --policy-document "file://$(render policy-notify.json "NOTIFY_FROM=${NOTIFY_FROM}")"
+  echo "[create] 확인 요청 메일 켬 (worker 정책 team06-notify)"
+else
+  aws iam delete-role-policy --role-name "${ROLE_WORKER}" --policy-name "team06-notify" 2>/dev/null || true
+  NOTIFY_FROM="" NOTIFY_TO=""
+  echo "[create] 확인 요청 메일 끔 (NOTIFY_FROM·NOTIFY_TO 없음)"
+fi
 
 # ---------------------------------------------------------------------------
 # 2. DynamoDB 테이블 (모두 온디맨드, 문자열 키. 정렬 키는 있을 때만)
@@ -159,6 +192,9 @@ COMMON_ENV="MODEL_ID=${MODEL_ID},JOBS_TABLE=${TABLE},HS_HISTORY_TABLE=${HS_HISTO
 # TEXTRACT_TPS: 계정의 Textract 초당 한도 (서울 기본 1). 한도를 올리면 같이 올린다.
 # AGENT_LOOP=1: 문서 처리 Agent가 도구를 고르는 루프로 돈다 (FB05 #162, PM 결정). 끄려면 AGENT_LOOP=0 bash infra/create.sh
 WORKER_ENV="${COMMON_ENV},READ_CACHE_BUCKET=${BUCKET},NO_CACHE=${NO_CACHE:-0},CLASSIFY_BY_OCR=${CLASSIFY_BY_OCR:-0},TEXTRACT_TPS=${TEXTRACT_TPS:-1},AGENT_LOOP=${AGENT_LOOP:-1}"
+if [ -n "${NOTIFY_FROM}" ]; then  # 확인 요청 메일 (F13 #263). 위에서 둘 다 있을 때만 남겨 두었다
+  WORKER_ENV="${WORKER_ENV},NOTIFY_FROM=${NOTIFY_FROM},NOTIFY_TO=${NOTIFY_TO}"
+fi
 API_ENV="${COMMON_ENV},WORKER_FUNCTION=${FN_WORKER},GUARDRAIL_ID=${GUARDRAIL_ID},GUARDRAIL_VERSION=${GUARDRAIL_VERSION}"
 ensure_function "${FN_WORKER}" "${HANDLER_WORKER}" "${ROLE_WORKER}" 300 1024 "${WORKER_ENV}"
 ensure_function "${FN_API}" "${HANDLER_API}" "${ROLE_API}" 30 512 "${API_ENV}"

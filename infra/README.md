@@ -30,11 +30,13 @@ PM과 4번 사이 이름 약속(진입점, 이벤트, 환경 변수)은 이슈 #
 | 정책 | `policy-invoke-worker.json` | API Lambda가 `team06-worker`만 호출 |
 | DynamoDB | `team06-jobs`, `team06-hs-history`, `team06-wms`, `team06-shipments`, `team06-chat` | 온디맨드. 키와 칸은 아래 "테이블" |
 | 정책 | `policy-textract.json` | worker만: `textract:AnalyzeDocument`, `DetectDocumentText` (서울), OCR 캐시 권한은 `policy-cache.json` |
+| 정책 | `policy-notify.json` (`team06-notify`) | worker만: `ses:SendEmail`, `ses:SendRawEmail` (서울 이메일 ID, `ses:FromAddress` = `NOTIFY_FROM`). 메일을 켤 때만 붙인다 (F13 #263) |
+| SES 이메일 ID | `NOTIFY_FROM`, `NOTIFY_TO` 주소 (서울) | 확인 요청 메일의 보내는·받는 주소. 샌드박스라 둘 다 인증해야 한다. 주소는 저장소에 적지 않고 `create.sh` 실행 때 넘긴다 |
 | S3 | `team06-docs-<계정ID>` | 공개 차단. `uploads/` 서류, `deploy/` 배포 zip. CORS: 화면 주소에서 PUT만 |
 | S3 | `team06-web-<계정ID>` | 공개 차단. 버킷 정책 `policy-web-bucket.json`: CloudFront 배포 하나만 읽기 |
 | 로그 그룹 | `/aws/lambda/team06-api`, `/aws/lambda/team06-worker` | 보존 7일 |
 | Lambda | `team06-api` | Python 3.13, x86_64, 512MB, 30초, 동시 실행 상한 5. 환경 변수: 공통 + `WORKER_FUNCTION` |
-| Lambda | `team06-worker` | Python 3.13, x86_64, 1024MB, 300초, 동시 실행 상한 5. 환경 변수: 공통 |
+| Lambda | `team06-worker` | Python 3.13, x86_64, 1024MB, 300초, 동시 실행 상한 5. 환경 변수: 공통 + `NOTIFY_FROM`·`NOTIFY_TO`(선택, 없으면 확인 요청 메일을 보내지 않음) |
 | 공통 환경 변수 | | `MODEL_ID`, `JOBS_TABLE`, `HS_HISTORY_TABLE`, `WMS_TABLE`, `SHIPMENTS_TABLE`, `DOCS_BUCKET` (`create.sh`가 이미 있는 함수도 이 값으로 맞춘다) |
 | API Gateway | `team06-api` (HTTP API) | 경로 `ANY /api`, `ANY /api/{proxy+}` → team06-api (페이로드 2.0, 30초). `$default` 스테이지 자동 배포 |
 | CloudFront | 설명 `team06-web` | 설정 `cloudfront.json`. 기본 → 화면 버킷(캐시), `/api/*` → API Gateway(캐시 안 함, Host 헤더 안 넘김). 기본 주소 사용 |
@@ -95,6 +97,12 @@ bash infra/deploy.sh
 
 # 화면 빌드가 생기면 (F5)
 WEB_DIST=web/dist bash infra/deploy-web.sh
+
+# 확인 요청 메일 켜기 (F13 #263). 불일치·HS 미확정이 남은 승인 대기 작업마다 담당자에게 문서를 첨부해 보낸다
+MODEL_ID=global.anthropic.claude-sonnet-5-5 NOTIFY_FROM=<보내는 주소> NOTIFY_TO=<담당자 주소> bash infra/create.sh
+aws sesv2 get-email-identity --email-identity <주소> --query VerifiedForSendingStatus   # 두 주소 모두 true (메일함의 인증 링크)
+# 끄기: 빈 값을 넘긴다. 값을 넘기지 않고 create.sh를 다시 돌리면 지금 값을 그대로 둔다
+MODEL_ID=global.anthropic.claude-sonnet-5-5 NOTIFY_FROM= NOTIFY_TO= bash infra/create.sh
 ```
 
 모델 ID를 바꿀 때 (설정만 바뀜): 두 함수 모두 `aws lambda update-function-configuration --environment ...`로 바꾼다. 다른 환경 변수도 함께 넣어야 한다(덮어쓰기).
@@ -141,3 +149,4 @@ curl -s "$URL/api/jobs/<job_id>"                # queued → running → waiting
 - **공개 주소**: 인증 없이 누구나 부를 수 있다. API 요청 제한(초당 10건), Lambda 동시 실행 상한 5, 요청 검사(`uploads/` 키만, 서류 10개까지, 4.5MB까지)로 비용과 피해를 줄인다.
 - **Bedrock 정책 범위**: `global.anthropic.*` 추론 프로필만 허용한다. 다른 프로필을 쓰면 `policy-bedrock.json`을 고친 뒤 `create.sh`를 다시 실행한다(인라인 정책만 덮어씀).
 - **같은 계정의 다른 팀 리소스**: `team06-`으로 시작하지 않는 리소스는 조회도 하지 말고 절대 바꾸지 않는다.
+- **검증 요청 메일 (F13 #263)**: 첨부는 PDF만 쓴다. 받는 쪽 메일 서버가 HTML 첨부가 붙은 메일을 조용히 버린 적이 있다(SES는 전달로 기록, 스팸함에도 없음). SES 샌드박스는 인증한 주소에만, 하루 200통·초당 1통까지 보낸다. 평가·10회 반복을 배포된 worker로 돌리면 세트마다 메일이 가니 그 전에 끈다(`NOTIFY_FROM= NOTIFY_TO=`). 받는 주소의 도메인 SPF에 SES가 없으면 스팸함에 갈 수 있어 첫 발송 때 확인한다. 메일이 실패해도 작업은 끝나고 단계 기록 `send_notice`에 `ok=false`가 남는다.
