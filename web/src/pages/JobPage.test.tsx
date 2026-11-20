@@ -1,5 +1,5 @@
 // G3 진행 화면: 2초 폴링 규칙과 steps 표시
-import { screen, within } from "@testing-library/react";
+import { act, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import jobExample from "../../../docs/examples/job_waiting_approval.json";
 import * as api from "../api";
@@ -8,7 +8,7 @@ import type { Job } from "../types";
 import { fileViewOf } from "../mockDocs";
 import draft from "../fixtures/documents.draft.json";
 import type { DocumentRecord } from "../types";
-import { JobPage, POLL_MS, pollInterval } from "./JobPage";
+import { elapsedText, JobPage, POLL_MS, pollInterval, SLOW_MS } from "./JobPage";
 
 vi.mock("../api", async (importOriginal) => {
   const real = await importOriginal<typeof import("../api")>();
@@ -114,5 +114,40 @@ describe("JobPage", () => {
     renderWithQuery(<JobPage jobId="job-7c1e" />);
     expect(await screen.findByText("오류 목록 (1)")).toBeInTheDocument();
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+  });
+
+  it("처리 중이 3분을 넘으면 경과 시간과 다시 올리라는 안내가 나온다 (FB20)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      vi.mocked(api.getJob).mockResolvedValue(at("running", { steps: [example.steps[0]] }));
+      renderWithQuery(<JobPage jobId="job-0000abcd" />);
+      expect(await screen.findByText(/경과 0초/)).toBeInTheDocument();
+      expect(screen.queryByText(/3분이 넘었습니다/)).not.toBeInTheDocument();
+
+      await act(async () => {
+        vi.advanceTimersByTime(SLOW_MS - 2000);
+      });
+      expect(screen.getByText(/경과 2분 58초/)).toBeInTheDocument();
+      expect(screen.queryByText(/3분이 넘었습니다/)).not.toBeInTheDocument();
+
+      await act(async () => {
+        vi.advanceTimersByTime(3000);
+      });
+      expect(screen.getByRole("status")).toHaveTextContent("3분이 넘었습니다");
+      expect(screen.getByRole("button", { name: "파일 업로드로 가기" })).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("끝난 작업에는 경과 시간과 안내를 보이지 않는다", async () => {
+    vi.mocked(api.getJob).mockResolvedValue({ ...example, status: "done" });
+    renderWithQuery(<JobPage jobId="job-0000abcd" />);
+    expect(await screen.findByText("끝남")).toBeInTheDocument();
+    expect(screen.queryByText(/경과/)).not.toBeInTheDocument();
+  });
+
+  it("elapsedText 는 분·초로 적는다", () => {
+    expect([0, 59_999, 72_000, 180_000].map(elapsedText)).toEqual(["0초", "59초", "1분 12초", "3분 0초"]);
   });
 });

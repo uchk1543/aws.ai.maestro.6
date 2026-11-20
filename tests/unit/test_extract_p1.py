@@ -5,7 +5,9 @@ import pytest
 from tools import extract
 from tools.declaration import draft_declaration
 from tools.extract import parse_date, read_document, system_prompt, to_extracted
-from tools.models import RAW_MODELS, RAW_REQUIRED_NEW, RawBillOfLading, RawDocument, RawItem, RawOrigin
+from tools.models import (
+    RAW_MODELS, RAW_REQUIRED_NEW, SITE_FIELDS, RawBillOfLading, RawDocument, RawItem, RawOrigin,
+)
 
 
 def cell(raw):
@@ -142,3 +144,73 @@ def test_declaration_draft_fills_sources_that_were_missing():
     assert filled["인도조건"] == "FOB HO CHI MINH CITY" and filled["결제금액"] == 9828.0 and filled["결제방법"] == "T/T 30 DAYS"
     assert filled["총포장갯수"] == 176 and filled["단가"] == 28.0 and filled["금액"] == 9828.0
     assert filled["원산지"] == "VIETNAM" and filled["원산지결정기준"] == "RVC 40%"
+
+
+# ---------------------------------------------------------------------------
+# 현장 칸: 화인·컨테이너 줄·품목별 포장 수 (B12 #228)
+# ---------------------------------------------------------------------------
+def _optional_count(node) -> int:
+    """JSON 스키마에서 필수가 아닌 속성 수 (Bedrock 구조화 출력 한도 12개)."""
+    if isinstance(node, list):
+        return sum(_optional_count(v) for v in node)
+    if not isinstance(node, dict):
+        return 0
+    own = len(set(node.get("properties", {})) - set(node.get("required", [])))
+    return own + sum(_optional_count(v) for v in node.values())
+
+
+def test_현장_칸도_선택_속성_한도_안():
+    for model in (RawDocument, RawBillOfLading):
+        assert _optional_count(model.model_json_schema()) <= 12
+    assert "marks" in RawDocument.model_json_schema()["required"]
+    assert {"marks", "containers"} <= set(RawBillOfLading.model_json_schema()["required"])
+
+
+def test_새_칸_없는_옛_응답도_받는다():
+    raw = RawDocument.model_validate({"doc_no": {"raw": "X"}, "items": [{"line": 1, "qty": {"raw": "1 PCS"}}]})
+    assert raw.marks is None and raw.items[0].packages is None
+
+
+def test_현장_칸_목록():
+    assert "containers.seal_no" in SITE_FIELDS["bill_of_lading"]
+    assert "items.packages" in SITE_FIELDS["packing_list"]
+    assert "total_amount" not in SITE_FIELDS["commercial_invoice"]  # 관리자만
+    assert SITE_FIELDS["certificate_of_origin"] == frozenset()
+
+
+BL_SITE = {
+    **BL, "marks": cell("EXAMPLE HOME LIVING\nBUSAN, KOREA C/NO. 1-535"),
+    "containers": [
+        {"line": 1, "container_no": cell("SMCU8393918"), "seal_no": cell("SM1470293"), "size_type": cell("40'HC (45G1)"),
+         "packages": cell("300 CTNS"), "gross_kg": cell("4,400.000 KGS"), "cbm": cell("35.000 CBM")},
+        {"line": 2, "container_no": cell("SMCU2669249"), "seal_no": cell("SM1470294"), "size_type": cell("40'HC (45G1)"),
+         "packages": cell("235 CTNS"), "gross_kg": cell("3,514.600 KGS"), "cbm": cell("28.610 CBM")},
+    ],
+}
+
+
+def test_컨테이너_줄이_여럿이면_줄마다_푼다():
+    doc = to_extracted(RawBillOfLading.model_validate(BL_SITE), "bill_of_lading", "bl.pdf")
+    assert [c.line for c in doc.containers] == [1, 2]
+    c = doc.containers[1]
+    assert (c.seal_no.value, c.packages.value, c.packages.unit, c.gross_kg.value, c.cbm.value) == (
+        "SM1470294", 235, "CTN", 3514.6, 28.61,
+    )
+    assert doc.container_no.raw == "SMCU8393918 SMCU2669249"  # 기존 칸 그대로
+
+
+def test_화인은_대문자_공백_하나로_푼다():
+    doc = to_extracted(RawBillOfLading.model_validate(BL_SITE), "bill_of_lading", "bl.pdf")
+    assert doc.marks.raw == "EXAMPLE HOME LIVING\nBUSAN, KOREA C/NO. 1-535"
+    assert doc.marks.value == "EXAMPLE HOME LIVING BUSAN, KOREA C/NO. 1-535"
+
+
+def test_포장명세서_품목별_포장_수():
+    raw = {**PL, "items": [{**PL["items"][0], "packages": cell("286")}]}
+    doc = to_extracted(RawDocument.model_validate(raw), "packing_list", "pl.pdf")
+    assert doc.items[0].packages.value == 286
+
+
+def test_지시문에_현장_칸_설명이_있다():
+    assert "CONTAINER DETAILS" in system_prompt("bill_of_lading") and "봉인 번호" in system_prompt("bill_of_lading")
+    assert "packages" in system_prompt("packing_list") and "marks" in system_prompt("packing_list")

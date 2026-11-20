@@ -358,8 +358,25 @@ def bl_data(s, P, I):
                     "vessel_voyage": s["vessel_voyage"], "port_loading": s["port_loading"],
                     "port_discharge": s["port_discharge"], "onboard_date": s["sailing_date"],
                     "container_no": " ".join(c[0] for c in conts), "total_packages": pk,
-                    "total_gross_kg": r2(gross), "total_cbm": t["cbm"], "freight_term": freight},
+                    "total_gross_kg": r2(gross), "total_cbm": t["cbm"], "freight_term": freight,
+                    # 현장 칸 (B12 #228): 화인은 줄을 공백 하나로 잇고, 컨테이너 줄은 찍은 값 그대로
+                    "marks": " ".join(marks(con["name"], t["ctns"], s["origin"])),
+                    **{f"containers[{i}].{name}": value for i, c in enumerate(conts) for name, value in (
+                        ("container_no", c[0]), ("seal_no", c[1]), ("size_type", SIZE_TYPE[c[2]]), ("packages", int(c[3])))}},
     }
+
+
+def pl_site_fields(s, k, I):
+    """포장명세서 현장 칸 정답 (B12 #228). 스타일 1은 화인, 스타일 2는 품목별 포장 수(No. of Pkgs)를 찍는다.
+
+    포장명세서에 심은 오류가 있는 세트는 양식이 고친 값으로 박스 수를 다시 계산하므로 쓰지 않는다 (정답을 지어내지 않게).
+    """
+    if any(e["doc"] == "PL" for e in errors_of(s) + errors_of(s, "variants")):
+        return {}
+    lines = set_lines(s, I)
+    if str(s["style"]) == "1":
+        return {"marks": " ".join(marks(k["con_name"], gen.totals(lines)["ctns"], s["origin"]))}
+    return {f"items[{i}].packages": gen.line_calc(it, q)[0] for i, (it, q) in enumerate(lines)}
 
 
 AGREEMENT = {"KCFTA": "Free Trade Agreement between the Republic of Korea and the People's Republic of China",
@@ -476,6 +493,7 @@ def write_eval(calc, sets_rows, P, I):
                       [sid, doc, "consignee_name", k["con_name"]]]
         f_out.append([sid, "commercial_invoice", "total_amount", r2(k["ci_total_amount"])])
         f_out += [[sid, "bill_of_lading", f, v] for f, v in bl_data(s, P, I)["_fields"].items()]
+        f_out += [[sid, "packing_list", f, v] for f, v in pl_site_fields(s, k, I).items()]
         if s.get("co_form"):
             f_out += [[sid, "certificate_of_origin", f, v] for f, v in co_data(s, P, I)["_fields"].items()]
         for e in errs:

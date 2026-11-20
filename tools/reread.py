@@ -20,7 +20,7 @@ from tools.models import DOC_TYPE_KO, CheckedBy, ExtractedDocument, Issue, OcrRe
 # PDF 바이트 → 글자층 글자. 없거나 스캔본이면 ''. 테스트에서는 가짜로 바꾼다.
 PdfText = Callable[[bytes], str]
 
-_PATH = re.compile(r"^(?:items\[(\d+|\*)\]\.)?([a-z_]+)$")
+_PATH = re.compile(r"^(?:(items|containers)\[(\d+|\*)\]\.)?([a-z_]+)$")  # containers: B/L 컨테이너 줄 (B12 #228)
 _STRENGTH: dict[CheckedBy, int] = {"pdf_text": 3, "textract": 2, "model_reread": 1, "none": 0}
 
 
@@ -43,17 +43,17 @@ def _pypdf_text(data: bytes) -> str:
 def field_raw(doc, field: str) -> str | None:
     """칸 경로의 raw. ExtractedDocument·RawDocument 둘 다 받는다.
 
-    예: 'total_gross_kg', 'doc_no', 'items[0].gross_kg', 'items[*].gross_kg'(행 raw를 ' + '로 이음, cross_check와 같은 모양).
-    칸이 없거나 못 읽었으면 None.
+    예: 'total_gross_kg', 'doc_no', 'items[0].gross_kg', 'items[*].gross_kg'(행 raw를 ' + '로 이음, cross_check와 같은 모양),
+    'containers[0].seal_no', 'containers[*].packages'(B/L 컨테이너 줄). 칸이 없거나 못 읽었으면 None.
     """
     match = _PATH.match(field)
     if not match:
         raise ValueError(f"모르는 칸 경로입니다: {field}")
-    index, name = match.groups()
+    rows_name, index, name = match.groups()
     if index is None:
         cell = getattr(doc, name, None)
         return cell.raw if cell is not None else None
-    items = doc.items
+    items = getattr(doc, rows_name, None) or []
     if index == "*":
         raws = [field_raw(item, name) for item in items]
         return None if not raws or any(r is None for r in raws) else " + ".join(raws)
