@@ -101,7 +101,11 @@ class ExtractedDocument(_Strict):
     file: str = Field(description="S3 키 또는 로컬 경로. 예: 'uploads/sample-001/packing_list.pdf'")
     doc_no: Cell | None = Field(
         default=None,
-        description="서류 번호. 상업송장은 'Invoice No.', 포장명세서는 'Packing List No.', B/L은 'B/L No.'. PO No와 다르다",
+        description=(
+            "서류끼리 맞춰 보는 번호. 상업송장은 송장 번호(Invoice No.), "
+            "포장명세서는 그 포장명세서에 적힌 송장 번호(Invoice No., No. & Date of Invoice)로 Packing List No.가 아니다, "
+            "B/L은 'B/L No.'. 같은 칸의 날짜는 뺀다. PO No와 다르다. 예: 'QDT/26/0289'"
+        ),
     )
     items: list[ExtractedItem] = Field(default_factory=list, description="품목 행 목록")
     total_gross_kg: Cell | None = Field(
@@ -110,7 +114,11 @@ class ExtractedDocument(_Strict):
     )
     total_qty: Cell | None = Field(
         default=None,
-        description="서류 하단 합계 칸의 총수량(Total Quantity). 행별 수량과 다르고, 포장 개수(CTNS)인지 낱개(PCS)인지 단위를 함께 옮긴다. 예: 'TOTAL: 2,650 PCS'",
+        description=(
+            "서류 하단에 합계로 찍힌 품목 수량(Quantity, Q'TY)의 합계. 행별 수량과 다르다. "
+            "포장 개수의 합계(Total Packages, No. of Pkgs, SAY TOTAL ... CARTONS)는 이 칸이 아니다. "
+            "합계가 찍혀 있지 않으면 줄 값을 더하지 말고 비워 둔다. 예: 'TOTAL: 2,650 PCS'"
+        ),
     )
 
 
