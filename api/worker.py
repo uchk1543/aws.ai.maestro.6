@@ -13,6 +13,8 @@ API Lambda(api/handler.py의 POST /jobs)가 작업을 queued로 저장한 뒤 �
               2. done이면 가상 WMS에 자동 등록한다 (D2, by=auto). 못 하면 waiting_approval로 바꿔 사람이 승인한다 (D3)
               3. 화물 기록(team06-shipments)에 한 줄을 쓴다 (E3, #31). 2에서 등록됐으면 처음부터 '수입신고'다
             waiting_approval이면 result.wms를 '승인 대기'로 채워 저장한다. 화면이 승인 입력을 그린다 (#159).
+            waiting_approval이고 불일치나 HS 미확정이 남았으면 담당자에게 문서를 첨부한 확인 요청 메일을 SES로 보낸다
+            (F13 #263, api/notify.send_notice). 실패해도 작업은 그대로 끝나고 send_notice 단계 한 줄만 남는다.
             서류마다 Textract OCR을 매번 돌린다 (F10 #188). run_job과 동시에 돌리고, 다시 확인(reread_field)의 두 번째 근거로
             넘긴다. PDF는 쪽 그림(JPEG)을 그려 S3(uploads/…)에 두고 그 그림을 OCR 한다. OCR 결과(ocr 칸)와 쪽 그림 목록(pages 칸)은
             같은 줄에 저장해 서류 보기(GET /jobs/{id}/files)의 쪽 그림·칸 위치에 쓴다.
@@ -21,7 +23,7 @@ API Lambda(api/handler.py의 POST /jobs)가 작업을 queued로 저장한 뒤 �
             OCR은 처리 시작부터 OCR_WAIT_SECONDS까지만 기다린다. 넘으면 그 서류는 OCR 없이 진행한다 (Lambda 300초 안에 끝나게).
             CLASSIFY_BY_OCR=1 이면 서류 종류를 Textract 글자의 제목 줄로 고르고, 못 정하면 Bedrock 으로 분류한다 (비용 줄이기, 기본은 끔).
 제한 시간 300초. 시간 상한: OCR 대기 OCR_WAIT_SECONDS(100초), 에이전트 루프 AGENT_SECONDS(150초, agent/),
-HS 모델 HS_MODEL_SECONDS(240초). 모두 처리 시작부터 잰다. 마지막 60초는 초안·등록·저장에 남긴다. 환경 변수: JOBS_TABLE, DOCS_BUCKET, MODEL_ID, HS_HISTORY_TABLE, SHIPMENTS_TABLE, WMS_TABLE, CLASSIFY_BY_OCR(선택)
+HS 모델 HS_MODEL_SECONDS(240초). 모두 처리 시작부터 잰다. 마지막 60초는 초안·등록·저장에 남긴다. 환경 변수: JOBS_TABLE, DOCS_BUCKET, MODEL_ID, HS_HISTORY_TABLE, SHIPMENTS_TABLE, WMS_TABLE, CLASSIFY_BY_OCR(선택), NOTIFY_FROM·NOTIFY_TO(선택, 없으면 메일을 보내지 않음)
 
 비동기 호출은 함수가 오류·시간 초과로 끝나면 Lambda가 같은 이벤트를 다시 보낸다. 그래서 저장된 상태를 보고 한 번만 처리한다.
     queued   → 처리한다
@@ -38,7 +40,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from functools import cache
 
-from api import handler
+from api import handler, notify
 from tools import declaration, hs, report
 from tools.models import Classification, ExtractedDocument, HSResult, Job, OcrResult, RereadResult, Step, WmsState
 from tools.extract import _strands_classifier, content_blocks
@@ -477,7 +479,10 @@ def lambda_handler(event, context):
         registered = _register(result, read)
         result.steps.append(_record_shipment(job_id, read, registered=registered))
     _mark_waiting(result)
-    columns = {**_docs_columns(read), **_ocr_columns(ocr)}
+    if result.status == "waiting_approval" and read:  # 불일치·HS 미확정이 남았으면 담당자에게 확인 요청 메일 (F13 #263)
+        if (step := notify.send_notice(result, read, importer_of(read))) is not None:
+            result.steps.append(step)
+    columns ={**_docs_columns(read), **_ocr_columns(ocr)}
     print(f"[worker] job={job_id} 서류 기록 docs={len(read)} importer={'있음' if 'importer' in columns else '없음'}")
     _save(result, {**item, **columns})
     return {"job_id": job_id, "status": result.status}

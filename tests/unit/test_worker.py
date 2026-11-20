@@ -12,6 +12,7 @@ import pytest
 
 import agent.document_agent as document_agent
 import api.handler as handler
+import api.notify as notify
 import api.worker as worker
 import tools.declaration as declaration
 import tools.hs as hs
@@ -956,3 +957,60 @@ def test_pdf_pages_are_rendered_one_at_a_time(monkeypatch):
 
     assert peak[0] == 1
     assert all(ocr is not None and len(pages) == 1 for ocr, pages in results)
+
+
+# ---------------------------------------------------------------------------
+# F13 확인 요청 메일 (#263). SES는 가짜 MailSender (tests/unit/test_notify.py)
+# ---------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def no_notify_env(monkeypatch):
+    """개발 PC에 NOTIFY_* 가 있어도 시험이 실제 SES로 보내지 않게 지운다. 메일 시험만 notify_env로 다시 넣는다."""
+    monkeypatch.delenv("NOTIFY_FROM", raising=False)
+    monkeypatch.delenv("NOTIFY_TO", raising=False)
+
+
+@pytest.fixture
+def notify_env(monkeypatch):
+    from tests.unit.test_notify import FakeMail
+
+    mail = FakeMail()
+    monkeypatch.setenv("NOTIFY_FROM", "notice@example.com")
+    monkeypatch.setenv("NOTIFY_TO", "owner@example.com")
+    monkeypatch.setattr(notify, "ses_sender", lambda: mail)
+    return mail
+
+
+def test_worker_sends_notice_for_mismatch(table, monkeypatch, notify_env):
+    """불일치가 남은 승인 대기 → 메일 한 통, 마지막 저장의 단계 기록 끝에 send_notice."""
+    from tests.unit.test_notify import MISMATCH
+
+    assert run_with(table, monkeypatch, read_docs(), result=JobResult(issues=[MISMATCH]))["status"] == "waiting_approval"
+    assert len(notify_env.calls) == 1
+    job = saved(table)
+    assert job.status == "waiting_approval"
+    assert job.steps[-1].tool == "send_notice" and job.steps[-1].ok
+
+
+def test_worker_mail_failure_keeps_waiting_job(table, monkeypatch, notify_env):
+    """SES가 실패해도 작업은 승인 대기로 저장되고 send_notice ok=False 한 줄만 남는다."""
+    from tests.unit.test_notify import MISMATCH
+
+    notify_env.error = RuntimeError("SES 실패")
+    assert run_with(table, monkeypatch, read_docs(), result=JobResult(issues=[MISMATCH]))["status"] == "waiting_approval"
+    job = saved(table)
+    assert job.status == "waiting_approval" and job.result.issues == [MISMATCH]
+    assert job.steps[-1].tool == "send_notice" and job.steps[-1].ok is False
+
+
+def test_worker_done_sends_no_mail(table, monkeypatch, notify_env):
+    """done(서류 없음)으로 끝난 작업은 메일을 보내지 않는다."""
+    assert run_with(table, monkeypatch, [], status="done")["status"] == "done"
+    assert notify_env.calls == []
+    assert all(s.tool != "send_notice" for s in saved(table).steps)
+
+
+def test_worker_retry_sends_no_mail(table, monkeypatch, notify_env):
+    """Lambda가 같은 이벤트를 다시 보내면(running) failed로 끝내고 메일은 다시 가지 않는다."""
+    put_job(table, status="running")
+    assert worker.lambda_handler({"job_id": JOB, "files": FILES}, None)["status"] == "failed"
+    assert notify_env.calls == []
