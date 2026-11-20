@@ -279,27 +279,33 @@ class _Run:
         return apply_rereads(issues, self.state.rereads) if self.state.rereads else issues
 
     # -- reread_field (B8) ---------------------------------------------------
-    def reread(self, key: str, field: str) -> str:
-        if self.rereader is None:
-            return "reread_field는 아직 없는 도구다 (B8, P1)"
-        doc = self.state.docs.get(key)
-        if doc is None:
-            return f"{key}: 읽은 결과가 없어 다시 확인할 수 없다"
-        ko = DOC_TYPE_KO[doc.doc_type]
+    def _reread_work(self, key: str, field: str) -> RereadResult | Exception:
         try:
-            result = self.rereader(doc, field, self.data(key))
-        except Exception as exc:
-            error = _error_text(exc)
+            return self.rereader(self.state.docs[key], field, self.data(key))
+        except Exception as exc:  # 모델 호출 실패 등. 불일치는 그대로 남는다
+            return exc
+
+    def _reread_record(self, key: str, field: str, outcome: RereadResult | Exception) -> str:
+        ko = DOC_TYPE_KO[self.state.docs[key].doc_type]
+        if isinstance(outcome, Exception):
+            error = _error_text(outcome)
             self.step("reread_field", f"{ko} {field} 다시 확인 실패: {error}", ok=False)
             return f"{key} {field}: 다시 확인 실패 ({error})"
         with self.lock:
-            self.state.rereads = [r for r in self.state.rereads if (r.doc, r.field) != (result.doc, result.field)]
-            self.state.rereads.append(result)
+            self.state.rereads = [r for r in self.state.rereads if (r.doc, r.field) != (outcome.doc, outcome.field)]
+            self.state.rereads.append(outcome)
             self.state.issues = self._applied(self.checked)
-        found = result.second_raw if result.second_raw is not None else "못 찾음"
-        same = "첫 판독과 같음" if result.same else "첫 판독과 다름"
-        self.step("reread_field", f"{ko} {field}: {_CHECKED_BY_KO[result.checked_by]}에서 {found} ({same})")
-        return f"{key} {field}: {result.checked_by} {found} ({same})"
+        found = outcome.second_raw if outcome.second_raw is not None else "못 찾음"
+        same = "첫 판독과 같음" if outcome.same else "첫 판독과 다름"
+        self.step("reread_field", f"{ko} {field}: {_CHECKED_BY_KO[outcome.checked_by]}에서 {found} ({same})")
+        return f"{key} {field}: {outcome.checked_by} {found} ({same})"
+
+    def reread(self, key: str, field: str) -> str:
+        if self.rereader is None:
+            return "reread_field는 아직 없는 도구다 (B8, P1)"
+        if key not in self.state.docs:
+            return f"{key}: 읽은 결과가 없어 다시 확인할 수 없다"
+        return self._reread_record(key, field, self._reread_work(key, field))
 
     # -- recommend_hs (C1·C2) -------------------------------------------------
     def recommend(self, line: int) -> str:
@@ -387,12 +393,14 @@ def _run_fixed(run: _Run) -> None:
     # 4. 다시 확인: 불일치 칸마다 (B8이 들어오면)
     if run.rereader is not None:
         done = {(r.doc, r.field) for r in state.rereads}
+        todo: list[tuple[str, str]] = []
         for issue in [i for i in state.issues if i.grade == "불일치"]:
             for cell in issue.cells:
-                for key in [k for k in state.files if k in state.docs and state.docs[k].doc_type == cell.doc]:
-                    if (cell.doc, cell.field) not in done:
-                        run.reread(key, cell.field)
-                        done.add((cell.doc, cell.field))
+                key = next((k for k in state.files if k in state.docs and state.docs[k].doc_type == cell.doc), None)
+                if key is not None and (cell.doc, cell.field) not in done:
+                    todo.append((key, cell.field))
+                    done.add((cell.doc, cell.field))
+        _in_order(run._reread_work, run._reread_record, todo)  # 칸끼리 동시에, 기록은 차례대로
     # 5. HS: 품목 행마다 (C1·C2가 들어오면)
     if run.hs_recommender is not None:
         have = {h.line for h in state.hs}
