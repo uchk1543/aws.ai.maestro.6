@@ -76,6 +76,10 @@ export interface HSResult {
   by: HSBy | null;
   hs_code: string | null;
   candidates: HSCandidate[];
+  /** 그 행의 품명 (서류에 적힌 글자, FB07 #164). 없으면 화면은 "N행"만 */
+  item_name?: string | null;
+  /** 서류에 적힌 HS (적힌 그대로. 예: "9401.61") */
+  doc_hs_code?: string | null;
 }
 export interface DeclarationField {
   name: string;

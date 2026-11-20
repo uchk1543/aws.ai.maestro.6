@@ -1,7 +1,7 @@
 // G16 서류 보기: 박스 여백, 돋보기 범위·배율, 박스를 누르면 확대가 열리고 닫힌다
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import draft from "../fixtures/documents.draft.json";
 import { fileViewOf } from "../mockDocs";
 import type { DocumentRecord, JobFileView } from "../types";
@@ -130,5 +130,28 @@ describe("DocViewer 돋보기", () => {
     expect(screen.getByTitle(`${file.file_name} 원본`)).toBeInTheDocument();
     expect(screen.queryByTestId("lens")).not.toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("모바일은 처음 강조한 박스의 돋보기를 닫힌 채로 시작하고, 박스를 누르면 연다", async () => {
+    const user = userEvent.setup();
+    const original = window.matchMedia;
+    window.matchMedia = vi.fn().mockReturnValue({ matches: true }) as unknown as typeof window.matchMedia;
+    try {
+      let active: string | null = boxes[0].id;
+      const view = () => <DocViewer file={file} boxes={boxes} activeId={active} onSelect={(id) => (active = id)} />;
+      const { rerender } = render(view());
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: `${boxes[0].label}: ${boxes[0].mark.text}` }));
+      rerender(view());
+      expect(screen.getByRole("dialog", { name: boxes[0].label })).toBeInTheDocument();
+    } finally {
+      window.matchMedia = original;
+    }
+  });
+
+  it("태블릿·PC 는 처음 강조한 박스의 돋보기를 바로 연다", () => {
+    render(<DocViewer file={file} boxes={boxes} activeId={boxes[0].id} />);
+    expect(screen.getByRole("dialog", { name: boxes[0].label })).toBeInTheDocument();
   });
 });

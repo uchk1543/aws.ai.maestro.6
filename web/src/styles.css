@@ -2936,3 +2936,27 @@ video.port-media.on {
 .slow-note p {
   margin: 0;
 }
+
+/* FB07-c HS 직접 입력: 라디오 옆 글자 칸 (.hs-candidate input 의 20px 크기를 덮는다) */
+.hs-candidate .hs-manual-input {
+  display: block;
+  width: min(100%, 240px);
+  height: 44px;
+  margin-top: 8px;
+  padding: 0 12px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 16px;
+  color: var(--ink);
+  background: #fff;
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+}
+
+.hs-candidate .hs-manual-input:focus {
+  border-color: var(--ink);
+  outline: none;
+}
+
+.hs-candidate:has(input:checked) .hs-reason.warn {
+  color: #ffb4a8;
+}

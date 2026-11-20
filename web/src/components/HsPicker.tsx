@@ -1,5 +1,7 @@
 // G5 결과 화면: HS 선택 (result.hs). '사람 확인 필요' 품목은 후보 3개 중 하나를 골라 보낸다.
 // 확정 조건과 후보는 서버 코드가 정한다. 화면은 사람이 고른 값을 보내기만 한다 (agent-design.md 6번).
+// FB07-c: 행 제목에 품명·서류 HS(서버 값 그대로)를 보이고, 후보가 모두 틀리면 10자리를 직접 넣는다.
+//         HS부호 표에 있는 코드인지는 서버가 검사한다 (#209). 화면은 숫자 10자리인지만 본다.
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { chooseHs } from "../api";
@@ -11,6 +13,21 @@ const BY_KO: Record<HSBy, string> = {
   human: "사람이 고름",
 };
 
+/** 직접 입력: 점·줄표·빈칸을 빼고 숫자만. 10자리가 아니면 null (보내기를 막는다) */
+export function manualHs(text: string): string | null {
+  const digits = text.replace(/[\s.-]/g, "");
+  return /^[0-9]{10}$/.test(digits) ? digits : null;
+}
+
+/** 행 제목: "1행 · 품명 (서류 HS 9401.61)". 서버가 품명·서류 HS를 주지 않으면 "1행" */
+export function lineTitle(r: HSResult): string {
+  const name = r.item_name ? ` · ${r.item_name}` : "";
+  const doc = r.doc_hs_code ? ` (서류 HS ${r.doc_hs_code})` : "";
+  return `${r.line}행${name}${doc}`;
+}
+
+const MANUAL = "manual";
+
 /** 1234567890 → 1234.56-7890 (읽기 쉽게만 바꾼다. 보내는 값은 숫자 10자리 그대로) */
 export function formatHs(code: string): string {
   return /^[0-9]{10}$/.test(code) ? `${code.slice(0, 4)}.${code.slice(4, 6)}-${code.slice(6)}` : code;
@@ -18,15 +35,19 @@ export function formatHs(code: string): string {
 
 export function HsPicker({ jobId, jobStatus, results }: { jobId: string; jobStatus: JobStatus; results: HSResult[] }) {
   const queryClient = useQueryClient();
+  // 행마다 고른 후보 HS, 또는 MANUAL(직접 입력)
   const [picked, setPicked] = useState<Record<number, string>>({});
+  const [typed, setTyped] = useState<Record<number, string>>({});
+  const choices = Object.entries(picked).map(([line, v]) => ({
+    line: Number(line),
+    hs: v === MANUAL ? manualHs(typed[Number(line)] ?? "") : v,
+  }));
+  const invalidManual = choices.some((c) => c.hs === null);
   const mutation = useMutation({
-    mutationFn: () =>
-      chooseHs(
-        jobId,
-        Object.entries(picked).map(([line, hs]) => ({ line: Number(line), hs })),
-      ),
+    mutationFn: () => chooseHs(jobId, choices.map((c) => ({ line: c.line, hs: c.hs as string }))),
     onSuccess: async () => {
       setPicked({});
+      setTyped({});
       // 서버가 HS 결과·단계 기록·신고서 초안을 바꿨으므로 작업을 다시 불러온다
       await queryClient.invalidateQueries({ queryKey: ["job", jobId] });
     },
@@ -46,18 +67,16 @@ export function HsPicker({ jobId, jobStatus, results }: { jobId: string; jobStat
           {results.map((r) => (
             <li key={r.line} className="hs-item">
               <div className="hs-head">
-                <strong>{r.line}행</strong>
+                <strong>{lineTitle(r)}</strong>
                 <span className={r.status === "사람 확인 필요" ? "grade grade-check" : "grade grade-ok"}>{r.status}</span>
                 {r.hs_code && <code className="hs-code">{formatHs(r.hs_code)}</code>}
                 {r.by && <span className="hint">{BY_KO[r.by]}</span>}
               </div>
 
-              {r.status === "사람 확인 필요" &&
-                (r.candidates.length === 0 ? (
-                  <p className="empty">후보가 없습니다. 서류의 품명 칸을 확인해 주세요.</p>
-                ) : (
+              {r.status === "사람 확인 필요" && (
                   <fieldset className="hs-candidates" disabled={!canChoose || mutation.isPending}>
                     <legend>{r.line}행 후보</legend>
+                    {r.candidates.length === 0 && <p className="empty">후보가 없습니다. 서류의 품명 칸을 확인하고 직접 입력해 주세요.</p>}
                     {r.candidates.map((c) => (
                       <label key={c.hs} className="hs-candidate">
                         <input
@@ -73,8 +92,38 @@ export function HsPicker({ jobId, jobStatus, results }: { jobId: string; jobStat
                         </span>
                       </label>
                     ))}
+                    <label className="hs-candidate hs-manual">
+                      <input
+                        type="radio"
+                        name={`hs-${r.line}`}
+                        value={MANUAL}
+                        checked={picked[r.line] === MANUAL}
+                        onChange={() => setPicked((p) => ({ ...p, [r.line]: MANUAL }))}
+                      />
+                      <span>
+                        직접 입력 (10자리)
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          className="hs-manual-input"
+                          aria-label={`${r.line}행 HS 직접 입력`}
+                          placeholder="예: 8507609000"
+                          maxLength={14}
+                          value={typed[r.line] ?? ""}
+                          onFocus={() => setPicked((p) => ({ ...p, [r.line]: MANUAL }))}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setTyped((t) => ({ ...t, [r.line]: v }));
+                            setPicked((p) => ({ ...p, [r.line]: MANUAL }));
+                          }}
+                        />
+                        {picked[r.line] === MANUAL && (typed[r.line] ?? "") !== "" && !manualHs(typed[r.line] ?? "") && (
+                          <span className="hs-reason warn">숫자 10자리로 적어 주세요</span>
+                        )}
+                      </span>
+                    </label>
                   </fieldset>
-                ))}
+                )}
             </li>
           ))}
         </ul>
@@ -91,7 +140,7 @@ export function HsPicker({ jobId, jobStatus, results }: { jobId: string; jobStat
           <button
             type="button"
             className="primary"
-            disabled={!canChoose || pickedCount === 0 || mutation.isPending}
+            disabled={!canChoose || pickedCount === 0 || invalidManual || mutation.isPending}
             onClick={() => mutation.mutate()}
           >
             {mutation.isPending ? "보내는 중…" : `고른 HS 확정 (${pickedCount}/${pending.length})`}
