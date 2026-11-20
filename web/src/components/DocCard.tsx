@@ -3,7 +3,7 @@
 // 종류·근거 문장·표시 위치·서류 번호는 서버 값 그대로다. 화면은 다시 분류하지 않는다.
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { getJobFiles } from "../api";
+import { ApiError, getJobFiles } from "../api";
 import { navigate } from "../route";
 import type { ClassifiedBy, DocMark, DocumentRecord } from "../types";
 import { DocViewer, type Box } from "./DocViewer";
@@ -34,12 +34,15 @@ export function DocCard({
   const fieldMarks = marks.filter((m) => m.kind === "field");
   const idOf = (m: DocMark) => `${marks.indexOf(m)}`;
   const [activeId, setActiveId] = useState<string | null>(null);
+  // 서버에 서류 보기 경로가 아직 없으면(404·501) 오류 대신 준비 중으로 두고 인식 결과만 보여 준다 (#140 리뷰)
+  const notReady = query.error instanceof ApiError && (query.error.status === 404 || query.error.status === 501);
 
   const boxes: Box[] = marks.map((m) => ({
     id: idOf(m),
     mark: m,
     tone: m.kind === "field" ? "soft" : "ink",
-    label: m.kind === "field" ? m.label : `분류 근거 · ${m.label}`,
+    label: m.kind === "field" ? `읽은 값 · ${m.label}` : `분류 근거 · ${m.label}`,
+    detail: m.kind === "field" ? (m.field ? [`칸 ${m.field}`] : []) : [record.reason],
   }));
 
   const markButton = (m: DocMark) => (
@@ -71,11 +74,13 @@ export function DocCard({
               서류를 불러오는 중…
             </p>
           )}
-          {query.error && (
+          {notReady && <p className="hint doc-card-missing">원본 보기는 준비 중입니다.</p>}
+          {query.error && !notReady && (
             <p className="hint doc-card-missing" role="alert">
               서류 원본을 불러오지 못했습니다: {query.error.message}
             </p>
           )}
+          {file && marks.length > 0 && <p className="hint doc-card-tip">서류의 박스를 누르면 무엇을 읽었는지 보입니다.</p>}
           {query.isSuccess && !file && <p className="hint doc-card-missing">이 서류의 원본 그림이 없습니다.</p>}
           {file && <DocViewer file={file} boxes={boxes} activeId={activeId} onSelect={setActiveId} />}
         </div>
@@ -100,7 +105,7 @@ export function DocCard({
           </section>
 
           {reasonMarks.length > 0 && (
-            <section>
+            <section className="doc-card-marks">
               <h4>근거가 된 곳</h4>
               <ul className="mark-list" aria-label="근거가 된 곳">
                 {reasonMarks.map(markButton)}
@@ -109,7 +114,7 @@ export function DocCard({
           )}
 
           {fieldMarks.length > 0 && (
-            <section>
+            <section className="doc-card-marks">
               <h4>읽은 값</h4>
               <ul className="mark-list" aria-label="읽은 값">
                 {fieldMarks.map(markButton)}

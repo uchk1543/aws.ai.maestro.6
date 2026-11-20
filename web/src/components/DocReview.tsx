@@ -32,7 +32,9 @@ export function DocReview({ issues, files }: { issues: Issue[]; files: JobFileVi
       if (cell.doc !== viewDoc) return;
       const { mark } = locate(files, cell);
       if (!mark) return;
-      boxes.push({ id: cellId(i, c), mark, tone: issue.grade === "불일치" ? "mismatch" : "ink", label: `${issue.grade} · ${mark.label}` });
+      // 팝업: 근거 문장과 서류별 값(서버 값 그대로)
+      const detail = [issue.evidence, ...issue.cells.map((x) => `${DOC_TYPE_KO[x.doc]} ${x.raw ?? "못 읽음"}`)];
+      boxes.push({ id: cellId(i, c), mark, tone: issue.grade === "불일치" ? "mismatch" : "ink", label: `${issue.grade} · ${mark.label}`, detail });
     }),
   );
 

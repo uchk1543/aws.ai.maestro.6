@@ -73,4 +73,13 @@ describe("DocReview", () => {
     expect(boxStyle([0.1, 0.2, 0.3, 0.05])).toEqual({ left: "10.000%", top: "20.000%", width: "30.000%", height: "5.000%" });
     expect(boxStyle([0.9, -0.1, 0.5, 0.2])).toEqual({ left: "90.000%", top: "0.000%", width: "10.000%", height: "20.000%" });
   });
+
+  it("강조한 박스에는 근거 문장과 서류별 값을 담은 작은 팝업이 뜬다", () => {
+    render(<DocReview issues={issues} files={files} />);
+
+    const pop = screen.getByRole("dialog", { name: "불일치 · 1행 총중량" });
+    expect(pop).toHaveTextContent("6,250.00 KGS");
+    expect(pop).toHaveTextContent("상업송장 1행 총중량 6,250kg과 포장명세서 6,520kg이 다릅니다.");
+    expect(pop).toHaveTextContent("포장명세서 6,520.00 KGS");
+  });
 });

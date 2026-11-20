@@ -77,6 +77,7 @@ describe("DocHistoryPage", () => {
     expect(reasons.map((b) => b.textContent)).toEqual(["제목COMMERCIAL INVOICE", "특징 칸Unit Price", "특징 칸Amount"]);
     await user.click(reasons[1]);
     expect(within(card).getByRole("button", { name: "분류 근거 · 특징 칸: Unit Price" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(card).getByRole("dialog", { name: "분류 근거 · 특징 칸" })).toHaveTextContent("Unit Price");
 
     const values = within(within(card).getByRole("list", { name: "읽은 값" })).getAllByRole("button");
     expect(values[0]).toHaveTextContent("송장 번호INV-2026-0214");
@@ -146,14 +147,43 @@ describe("DocHistoryPage", () => {
     expect(window.location.hash).toBe("#/jobs/job-51bd");
   });
 
-  it("서버가 원본 그림을 주지 않아도 분류 결과는 보인다", async () => {
+  it("서버에 서류 보기 경로가 없으면(404) 오류 대신 '준비 중'으로 두고 분류 결과만 보여 준다", async () => {
     vi.mocked(api.getDocuments).mockResolvedValue(page("unknown"));
     vi.mocked(api.getJobFiles).mockRejectedValue(new api.ApiError(404, "없는 경로입니다"));
     renderWithQuery(<DocHistoryPage />);
 
     const card = await screen.findByRole("article", { name: "scan_0001.jpg" });
-    expect(await within(card).findByText(/서류 원본을 불러오지 못했습니다/)).toBeInTheDocument();
+    expect(await within(card).findByText("원본 보기는 준비 중입니다.")).toBeInTheDocument();
+    expect(within(card).queryByRole("alert")).not.toBeInTheDocument();
+    expect(card).not.toHaveTextContent("없는 경로입니다");
     expect(card).toHaveTextContent("제목이 가려져 있고 칸만으로 종류를 정할 수 없음");
+  });
+
+  it("그 밖의 오류는 서버 문장을 보여 준다", async () => {
+    vi.mocked(api.getDocuments).mockResolvedValue(page("unknown"));
+    vi.mocked(api.getJobFiles).mockRejectedValue(new api.ApiError(500, "S3 주소를 만들지 못했습니다"));
+    renderWithQuery(<DocHistoryPage />);
+
+    const card = await screen.findByRole("article", { name: "scan_0001.jpg" });
+    expect(await within(card).findByRole("alert")).toHaveTextContent("서류 원본을 불러오지 못했습니다: S3 주소를 만들지 못했습니다");
+  });
+
+  it("서류의 박스를 누르면 그 자리에 무엇을 읽었는지 작은 팝업이 뜨고, 닫기로 닫힌다", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.getDocuments).mockResolvedValue(page("commercial_invoice"));
+    renderWithQuery(<DocHistoryPage />);
+    const card = await screen.findByRole("article", { name: "invoice.pdf" });
+
+    await user.click(await within(card).findByRole("button", { name: "분류 근거 · 제목: COMMERCIAL INVOICE" }));
+    const pop = within(card).getByRole("dialog", { name: "분류 근거 · 제목" });
+    expect(pop).toHaveTextContent("COMMERCIAL INVOICE");
+    expect(pop).toHaveTextContent("제목 COMMERCIAL INVOICE, Unit Price·Amount 칸");
+
+    await user.click(within(card).getByRole("button", { name: "읽은 값 · 송장 번호: INV-2026-0214" }));
+    expect(within(card).getByRole("dialog", { name: "읽은 값 · 송장 번호" })).toHaveTextContent("INV-2026-0214");
+
+    await user.click(within(card).getByRole("button", { name: "팝업 닫기" }));
+    expect(within(card).queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("빈 목록이면 없다고 알린다", async () => {

@@ -1394,24 +1394,6 @@ table.cells tr.suspect td {
   box-shadow: 0 0 0 4px rgba(214, 64, 42, 0.18);
 }
 
-.mark-tag {
-  position: absolute;
-  bottom: calc(100% + 4px);
-  left: -3px;
-  padding: 2px 8px;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.5;
-  color: #fff;
-  white-space: nowrap;
-  background: var(--ink);
-  border-radius: 6px;
-}
-
-.mark-mismatch .mark-tag {
-  background: var(--red);
-}
-
 /* 작업 화면: 서류 | 오류 */
 .review-grid {
   display: grid;
@@ -1753,5 +1735,92 @@ table.cells tr.suspect td {
 
   .doc-card .viewer {
     max-height: calc(100vh - 220px);
+  }
+}
+
+/* 박스 팝업 (G11): 박스를 누르면 그 자리에 무엇을 읽었는지 작게 보여 준다 */
+.mark-pop {
+  position: absolute;
+  z-index: 5;
+  width: max-content;
+  max-width: min(280px, 86%);
+  padding: 10px 12px 12px;
+  color: #fff;
+  background: var(--ink);
+  border-radius: 12px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+  animation: pop-in 0.16s ease-out;
+}
+
+.mark-pop-mismatch {
+  background: #b5321f;
+}
+
+.mark-pop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mark-pop-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.mark-pop-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: -6px -6px -6px 0;
+  color: inherit;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+}
+
+.mark-pop-text {
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.mark-pop-detail {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.86);
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mark-pop {
+    animation: none;
+  }
+}
+
+.doc-card-tip {
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+/* 모바일: 긴 근거·읽은 값 목록 대신 서류 위 박스 팝업으로 본다 */
+@media (max-width: 767px) {
+  .doc-card-marks {
+    display: none;
   }
 }
