@@ -522,7 +522,11 @@ def _run_agent(run: _Run, model) -> None:
     agent.hooks.add_callback(BeforeModelCallEvent, stop_when_late)
     print(f"[agent] job={run.state.job_id} files={len(run.state.files)}")
     result = agent(_agent_task(run), limits={"turns": MAX_TURNS})
-    print(f"[agent] job={run.state.job_id} stop={result.stop_reason}")
+    usage = result.metrics.accumulated_usage
+    print(
+        f"[agent] job={run.state.job_id} stop={result.stop_reason} turns={result.metrics.cycle_count} "
+        f"tokens_in={usage.get('inputTokens', 0)} tokens_out={usage.get('outputTokens', 0)}"
+    )
 
 
 def run_job(
