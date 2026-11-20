@@ -3430,10 +3430,10 @@ a.review-admin:hover {
   max-width: 100%;
 }
 
-/* 단계 표시줄이 가로로 밀릴 때 페이지 폭을 늘리지 않게 한다 */
+/* 단계 표시줄이 가로로 밀릴 때 페이지 폭을 늘리지 않게 한다.
+   max-width 는 여기서 정하지 않는다 (태블릿 760px·PC 1240px 규칙을 덮어쓰지 않게, web/DESIGN.md 4절) */
 .job {
   min-width: 0;
-  max-width: 100%;
 }
 
 .stage {
