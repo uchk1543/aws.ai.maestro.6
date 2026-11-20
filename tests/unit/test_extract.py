@@ -118,6 +118,32 @@ def test_system_prompt_has_kst_date():
     assert today_kst() in system_prompt("packing_list")
 
 
+
+def test_packing_list_prompt_asks_invoice_number_for_doc_no():
+    """P0 송장 번호 대조: 포장명세서에 Packing List No.가 없어도 doc_no에 적힌 송장 번호를 옮기게 한다 (B2)."""
+    prompt = system_prompt("packing_list")
+    assert "송장 번호" in prompt and "Packing List No.가 따로 있어도" in prompt
+    assert "Packing List No.가 따로 있어도" not in system_prompt("commercial_invoice")
+
+
+def test_prompt_says_package_count_is_not_total_qty_and_no_summing():
+    """스타일 2 상업송장의 'Total Packages: 337 CTNS'를 총수량으로 읽던 문제 (B2 기준선 14건)."""
+    prompt = system_prompt("commercial_invoice")
+    assert "Total Packages" in prompt and "total_qty가 아니다" in prompt
+    assert "줄 값을 더하지 말고" in prompt
+
+
+def test_missing_printed_total_stays_empty_for_cross_check_to_sum():
+    """합계가 찍히지 않은 서류는 읽기 코드도 채우지 않는다. 줄 값을 더하는 것은 대조 코드다 (약속 3)."""
+    raw = {
+        "doc_no": {"raw": "NBH2026-207"},
+        "items": [{"line": 1, "qty": {"raw": "3,552"}}, {"line": 2, "qty": {"raw": "2,630"}}],
+        "total_qty": {"raw": None, "unreadable": "칸 없음"},
+    }
+    doc = read_document("ci.png", b"x", "commercial_invoice", reader=fake_reader(raw))
+    assert doc.total_qty.raw is None and doc.total_qty.value is None and doc.total_qty.unreadable == "칸 없음"
+    assert [item.qty.value for item in doc.items] == [3552, 2630]
+
 # ---------------------------------------------------------------------------
 # classify_document (B1)
 # ---------------------------------------------------------------------------

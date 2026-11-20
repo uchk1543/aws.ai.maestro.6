@@ -48,7 +48,7 @@ def load_docs(only: set[str] | None) -> list[dict]:
                 if len(files) != 1:
                     raise SystemExit(f"{sid} doc_{slot}: 파일이 {len(files)}개입니다")
                 rows.append({"set_id": sid, "slot": f"doc_{slot}", "fmt": kv[f"fmt_{slot}"],
-                             "expected": expected, "path": files[0]})
+                             "expected": expected, "style": kv.get("style", ""), "path": files[0]})
     return rows
 
 
