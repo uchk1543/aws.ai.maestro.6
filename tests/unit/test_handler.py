@@ -4,13 +4,15 @@ import json
 from pathlib import Path
 
 import pytest
+from botocore.exceptions import ClientError
 
 import api.handler as handler
 import tools.declaration as declaration
 import tools.extract as extract
 import tools.hs as hs
-from tests.unit.fakes import MemoryHSHistory
-from tools.models import DeclarationDraft, DeclarationField, ExtractedDocument, Job, RawDocument
+import tools.wms as wms
+from tests.unit.fakes import MemoryHSHistory, MemoryWms
+from tools.models import Cell, DeclarationDraft, DeclarationField, ExtractedDocument, Job, RawDocument, WmsState
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "docs" / "examples"
 
@@ -118,7 +120,7 @@ def test_unknown_job_and_path_are_404(fakes):
     assert call("GET", "/nothing")[0] == 404
 
 
-@pytest.mark.parametrize("path", ["/uploads", "/jobs/job-00000000/approve", "/chat"])
+@pytest.mark.parametrize("path", ["/uploads", "/chat"])
 def test_planned_routes_are_501(fakes, path):
     """약속 2의 경로가 모두 자리를 갖고 있다. 만들면 이 목록에서 뺀다."""
     assert call("POST", path, {})[0] == 501
@@ -257,3 +259,139 @@ def test_dynamo_hs_history_round_trip():
     assert store.get(IMPORTER, "BP-200") is None
     store.put(IMPORTER, "BP-200", "8507600000", HS_JOB)
     assert store.get(IMPORTER, "BP-200") == "8507600000"
+
+
+# ---------------------------------------------------------------------------
+# POST /jobs/{id}/approve (D3). 가상 WMS(team06-wms)는 메모리판으로 바꾼다.
+# ---------------------------------------------------------------------------
+APPROVE_JOB = "job-00000d03"
+BL = "BL-2026-0001"
+
+
+def put_approve_job(table, *, grade="불일치", status="waiting_approval", with_docs=True, with_bl=True, wms_state=None):
+    """예시 작업(문제 1건, 1행 HS 사람 확인 필요)을 넣는다. grade로 그 문제의 등급을 바꾼다."""
+    job = Job.model_validate({**example("job_waiting_approval.json"), "job_id": APPROVE_JOB, "status": status})
+    job.result.issues[0].grade = grade
+    if wms_state is not None:
+        job.result.wms = WmsState.model_validate(wms_state)
+    item = {"job_id": APPROVE_JOB, "data": job.model_dump_json(by_alias=True), "updated_at": 0}
+    if with_docs:
+        docs = example_docs()
+        if with_bl:
+            docs.append(ExtractedDocument(doc_type="bill_of_lading", file="uploads/sample-001/bl.pdf", doc_no=Cell(raw=BL, value=BL)))
+        item |= {"docs": json.dumps([d.model_dump(mode="json") for d in docs], ensure_ascii=False), "importer": IMPORTER}
+    table.put_item(Item=item)
+
+
+@pytest.fixture
+def wms_fakes(fakes, monkeypatch):
+    memory = MemoryWms()
+    monkeypatch.setattr(wms, "dynamo_wms", lambda: memory)
+    return fakes, memory
+
+
+def post_approve(body=None):
+    return call("POST", f"/jobs/{APPROVE_JOB}/approve", {"approver": "김담당"} if body is None else body)
+
+
+def test_approve_registers_by_human_and_saves_wms(wms_fakes):
+    """확인 필요만 남은 건은 사람이 승인하면 등록한다. 화면이 다시 부르는 GET에는 by까지 남는다 (G7)."""
+    table, memory = wms_fakes
+    put_approve_job(table, grade="확인 필요")
+
+    status, body = post_approve({"approver": "  김   담당 "})
+
+    assert (status, body) == (200, {"wms": {"status": "등록됨", "wms_id": "wms-0001"}})
+    [(key, (wms_id, record))] = memory.records.items()
+    assert (key, wms_id) == (f"{BL}#{APPROVE_JOB}", "wms-0001")
+    assert (record.by, record.bl_no, record.job_id, record.consignee) == ("human", BL, APPROVE_JOB, IMPORTER)
+
+    _, job = call("GET", f"/jobs/{APPROVE_JOB}")
+    Job.model_validate(job)
+    assert job["status"] == "done"
+    assert job["result"]["wms"] == {"status": "등록됨", "by": "human", "wms_id": "wms-0001"}
+    assert job["steps"][-1] == {"tool": "push_to_wms", "summary": "사람 승인(김 담당)으로 WMS 등록: wms-0001", "ok": True}
+    assert table.items[APPROVE_JOB]["importer"] == IMPORTER and table.items[APPROVE_JOB]["docs"]
+
+
+def test_approve_with_mismatch_is_409_and_changes_nothing(wms_fakes):
+    """끝난 기준: 불일치가 남았으면 409와 {"error"} 문장 (화면이 그대로 보여 준다). 등록도 저장도 하지 않는다."""
+    table, memory = wms_fakes
+    put_approve_job(table)  # 예시 그대로: X-WT-01 불일치
+    before = dict(table.items[APPROVE_JOB])
+
+    status, body = post_approve()
+
+    assert status == 409
+    assert body == {"error": "불일치 1건(X-WT-01)이 남아 있어 WMS에 등록할 수 없습니다. 서류를 고쳐 다시 올려 주세요"}
+    assert memory.records == {} and table.items[APPROVE_JOB] == before
+
+
+def test_approve_twice_registers_once(wms_fakes):
+    """두 번 누르거나 재시도해도 WMS에는 한 번, 단계 기록도 한 줄."""
+    table, memory = wms_fakes
+    put_approve_job(table, grade="확인 필요")
+
+    first, again = post_approve(), post_approve()
+
+    assert first == again == (200, {"wms": {"status": "등록됨", "wms_id": "wms-0001"}})
+    assert len(memory.records) == 1
+    _, job = call("GET", f"/jobs/{APPROVE_JOB}")
+    assert [s["tool"] for s in job["steps"]].count("push_to_wms") == 1
+
+
+def test_approve_after_auto_register_returns_that_state(wms_fakes):
+    """이미 자동 등록(D2)된 건은 다시 등록하지 않고 그 상태를 돌려준다."""
+    table, memory = wms_fakes
+    put_approve_job(table, grade="참고", status="done", wms_state={"status": "등록됨", "by": "auto", "wms_id": "wms-auto"})
+    assert post_approve() == (200, {"wms": {"status": "등록됨", "wms_id": "wms-auto"}})
+    assert memory.records == {}
+
+
+@pytest.mark.parametrize(
+    "body",
+    [{}, {"approver": ""}, {"approver": "   "}, {"approver": None}, {"approver": 7}, {"approver": "가" * 51}, ["김담당"]],
+)
+def test_approve_bad_requests_are_400(wms_fakes, body):
+    table, memory = wms_fakes
+    put_approve_job(table, grade="확인 필요")
+    assert post_approve(body)[0] == 400
+    assert memory.records == {}
+
+
+def test_approve_unknown_job_is_404(wms_fakes):
+    assert call("POST", "/jobs/job-00000000/approve", {"approver": "김담당"})[0] == 404
+    assert call("POST", "/jobs/nope/approve", {"approver": "김담당"})[0] == 404
+
+
+@pytest.mark.parametrize(
+    "kwargs, message",
+    [
+        ({"status": "running"}, "승인 대기 중인 작업에서만"),
+        ({"with_docs": False}, "저장된 서류 기록이 없어"),
+        ({"with_bl": False}, "B/L 번호가 없어"),
+    ],
+    ids=["running", "no-docs", "no-bl"],
+)
+def test_approve_job_not_ready_is_409(wms_fakes, kwargs, message):
+    table, memory = wms_fakes
+    put_approve_job(table, grade="확인 필요", **kwargs)
+    status, body = post_approve()
+    assert status == 409 and message in body["error"]
+    assert memory.records == {}
+
+
+def test_approve_wms_failure_is_502_and_job_unchanged(wms_fakes, monkeypatch):
+    """저장소 오류면 작업을 그대로 두어 다시 승인할 수 있게 한다."""
+    table, _ = wms_fakes
+    put_approve_job(table, grade="확인 필요")
+    before = dict(table.items[APPROVE_JOB])
+
+    class BrokenWms:
+        def register(self, record):
+            raise ClientError({"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "가짜"}}, "PutItem")
+
+    monkeypatch.setattr(wms, "dynamo_wms", lambda: BrokenWms())
+    status, body = post_approve()
+    assert status == 502 and "다시 승인" in body["error"]
+    assert table.items[APPROVE_JOB] == before

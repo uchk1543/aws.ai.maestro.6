@@ -5,9 +5,11 @@
     POST /jobs           → {"job_id"}              (S5, 안에서 끝까지 처리)
     GET  /jobs/{id}      → Job                     (S5)
     POST /jobs/{id}/hs   → {"declaration_draft"}   (C3, 사람이 고른 HS 반영)
-나머지 경로(/uploads, /jobs/{id}/approve, /chat)는 501을 돌려준다. Spec 2·3에서 채운다.
+    POST /jobs/{id}/approve → {"wms"}              (D3, 사람 승인으로 WMS 등록. 불일치가 남았으면 409)
+나머지 경로(/uploads, /chat)는 501을 돌려준다. Spec 2·3에서 채운다.
 
-환경 변수: JOBS_TABLE(team06-jobs), DOCS_BUCKET(team06-docs-...), MODEL_ID, HS_HISTORY_TABLE(team06-hs-history)
+환경 변수: JOBS_TABLE(team06-jobs), DOCS_BUCKET(team06-docs-...), MODEL_ID, HS_HISTORY_TABLE(team06-hs-history),
+WMS_TABLE(team06-wms)
 """
 
 import base64
@@ -18,14 +20,16 @@ import time
 import uuid
 from functools import cache
 
+from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import TypeAdapter
 
-from tools import declaration, hs
-from tools.models import ExtractedDocument, Job, Step
+from tools import declaration, hs, wms
+from tools.models import ExtractedDocument, Job, Step, WmsState
 
 ALLOWED_DOC_TYPES = {"commercial_invoice", "packing_list"}  # 뼈대 범위 (S2)
 JOB_ID = re.compile(r"^job-[0-9a-f]{8}$")
 HS_CODE = re.compile(r"^[0-9]{10}$")  # 10자리 HSK
+APPROVER_MAX = 50  # 승인자 이름 길이. 화면 입력칸(WmsPanel maxLength)과 같다
 KEY_PREFIX = "uploads/"
 _DOCS = TypeAdapter(list[ExtractedDocument])
 
@@ -181,6 +185,17 @@ def _validate_choices(body, lines: set[int]) -> tuple[dict[int, str] | None, str
     return picked, None
 
 
+def _validate_approver(body) -> tuple[str | None, str | None]:
+    """POST /jobs/{id}/approve 요청 검사. 공백을 한 칸으로 줄인 승인자 이름. (승인자, 오류 메시지)"""
+    approver = body.get("approver") if isinstance(body, dict) else None
+    if not isinstance(approver, str) or not approver.strip():
+        return None, "approver(승인자 이름)가 필요합니다"
+    approver = " ".join(approver.split())
+    if len(approver) > APPROVER_MAX:
+        return None, f"approver는 {APPROVER_MAX}자까지입니다"
+    return approver, None
+
+
 def _line_doc(docs: list[ExtractedDocument], line: int) -> ExtractedDocument | None:
     """확정 이력 키를 만들 서류. 그 행이 있는 상업송장을 먼저, 없으면 그 행이 있는 첫 서류."""
     having = [d for d in docs if any(i.line == line for i in d.items)]
@@ -264,10 +279,65 @@ def choose_hs(job_id: str, body) -> dict:
     return _response(200, {"declaration_draft": draft.model_dump(mode="json")})
 
 
+def _wms_body(state: WmsState) -> dict:
+    """승인 응답 (약속 2). by는 넣지 않는다. 화면은 GET /jobs/{id}의 result.wms에서 by를 읽는다."""
+    return {"wms": {"status": state.status, "wms_id": state.wms_id}}
+
+
+def approve_job(job_id: str, body) -> dict:
+    """POST /jobs/{id}/approve. 사람이 승인하면 가상 WMS에 등록하고(by=human) 작업을 끝낸다.
+
+    언제: '확인 필요'가 남은 건을 사람이 화면에서 보고 승인할 때 (agent-design.md 8번 예외). 모델 호출 없음.
+    받는 것: {"approver"}: 승인자 이름. 공백만이면 안 되고 50자까지. 단계 기록에 남긴다.
+    반환: 200 {"wms": {"status", "wms_id"}} / 400 요청 형식 / 404 없는 작업
+      / 409 {"error"}: 불일치가 남음, 승인 대기 중이 아님, 서류 기록이 없음, B/L 번호·수하인이 없어 기록을 못 만듦
+      / 502 가상 WMS 저장 실패 (작업은 그대로라 다시 승인하면 된다).
+    이미 등록된 작업이면 다시 등록하지 않고 그 상태를 돌려준다. WMS 쪽도 멱등 키라 재시도해도 한 번만 들어간다.
+    저장: result.wms = {등록됨, human, wms_id}, status = done, steps에 push_to_wms 한 줄.
+      화면은 승인 뒤 GET /jobs/{id}를 다시 불러 result.wms(by 포함)를 쓴다.
+    """
+    if not JOB_ID.match(job_id):
+        return _error(404, "작업을 찾을 수 없습니다")
+    item = _load_item(job_id)
+    if item is None:
+        return _error(404, "작업을 찾을 수 없습니다")
+    approver, problem = _validate_approver(body)
+    if problem:
+        return _error(400, problem)
+    job = Job.model_validate_json(item["data"])
+    if job.result is not None and job.result.wms is not None and job.result.wms.status == "등록됨":
+        return _response(200, _wms_body(job.result.wms))
+    if job.status != "waiting_approval" or job.result is None:
+        return _error(409, f"승인은 승인 대기 중인 작업에서만 할 수 있습니다 (지금: {job.status})")
+    try:
+        wms.approve(job.result, "human")
+    except wms.ApprovalRefused as exc:
+        return _error(409, str(exc))
+    context = load_job_docs(item)
+    if context is None:
+        return _error(409, "이 작업에는 저장된 서류 기록이 없어 WMS에 올릴 기록을 만들 수 없습니다")
+    docs, importer = context
+    try:
+        record = wms.make_record(job_id, docs, job.result.hs, importer, "human")
+    except wms.RecordNotReady as exc:
+        return _error(409, str(exc))
+
+    print(f"[api] approve job={job_id}")
+    try:
+        state = wms.push_to_wms(record, adapter=wms.dynamo_wms())
+    except (BotoCoreError, ClientError) as exc:
+        print(f"[error] WMS 등록 실패 job={job_id} {type(exc).__name__}: {exc}")
+        return _error(502, "가상 WMS에 등록하지 못했습니다. 잠시 뒤 다시 승인해 주세요 (같은 건은 한 번만 들어갑니다)")
+    job.result.wms = state
+    job.status = "done"
+    job.steps.append(Step(tool="push_to_wms", summary=f"사람 승인({approver})으로 WMS 등록: {state.wms_id}", ok=True))
+    save_job(job, keep=item)
+    return _response(200, _wms_body(state))
+
+
 # 약속 2에 있지만 아직 없는 경로 → 작업 ID (e2e-plan.md). 만들면 여기서 지운다.
 _PLANNED = {
     ("POST", "/uploads"): "F2",
-    ("POST", "/jobs/{id}/approve"): "D3",
     ("POST", "/chat"): "E5",
 }
 
@@ -294,6 +364,8 @@ def lambda_handler(event, context):
         parts = path.split("/")
         if method == "POST" and len(parts) == 4 and parts[1] == "jobs" and parts[3] == "hs":
             return choose_hs(parts[2], _body(event))
+        if method == "POST" and len(parts) == 4 and parts[1] == "jobs" and parts[3] == "approve":
+            return approve_job(parts[2], _body(event))
         planned = _planned_route(method, path)
         if planned:
             return _error(501, f"아직 만들지 않은 경로입니다 ({planned}). 형식은 docs/schema.md 약속 2")

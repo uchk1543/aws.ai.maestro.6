@@ -226,5 +226,16 @@ def push_to_wms(record: WmsRecord, *, adapter: WmsAdapter) -> WmsState:
 
 
 def approve(result: JobResult, by: WmsBy = "human") -> None:
-    """사람 승인 전 검사. 불일치가 남았으면 ApprovalRefused."""
-    raise NotImplementedError("D3: 승인 검사 (서버 담당)")
+    """사람 승인 전 검사 (agent-design.md 8번 예외).
+
+    언제: POST /jobs/{id}/approve에서 make_record·push_to_wms를 부르기 전.
+    받는 것: result(문제 목록), by(승인 경로. 지금은 human만 부른다).
+    반환: 없음. 확인 필요·참고만 남았으면 통과한다 (사람이 보고 승인했으므로).
+    실패: 불일치가 하나라도 남았으면 ApprovalRefused. 승인해도 등록하지 않고, 서류를 고쳐 다시 올려야 한다.
+    """
+    left = [i for i in result.issues if i.grade == "불일치"]
+    if left:
+        rules = ", ".join(dict.fromkeys(i.rule_id for i in left))
+        raise ApprovalRefused(
+            f"불일치 {len(left)}건({rules})이 남아 있어 WMS에 등록할 수 없습니다. 서류를 고쳐 다시 올려 주세요"
+        )
