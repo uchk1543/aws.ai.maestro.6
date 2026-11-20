@@ -9,7 +9,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import NamedTuple, Protocol
 
-from tools.models import ExtractedDocument, HSCandidate, HSPick, HSResult, HSSearchTerms
+from tools.models import Cell, ExtractedDocument, ExtractedItem, HSCandidate, HSPick, HSResult, HSSearchTerms
+from tools.validate import normalize_text
 
 
 class HSHistory(Protocol):
@@ -144,10 +145,68 @@ def keep_in_candidates(picks: list[HSCandidate], candidates: list[HSCandidate]) 
 TermsReader = Callable[[str], HSSearchTerms]  # 품명·재질·용도 글자 → 검색어
 Picker = Callable[[str, list[HSCandidate]], HSPick]  # 품명 글자, 후보 → 고른 것
 
+_DOC_ORDER = ("commercial_invoice", "packing_list", "bill_of_lading", "certificate_of_origin")  # 품목 정보를 읽을 서류 우선순위
+
+
+def _items_at(docs: list[ExtractedDocument], line: int) -> list[tuple[ExtractedDocument, ExtractedItem]]:
+    """서류마다 그 행 번호의 품목을 모은다. 상업송장부터 순서대로."""
+    rank = {t: i for i, t in enumerate(_DOC_ORDER)}
+    found = []
+    for doc in sorted(docs, key=lambda d: rank.get(d.doc_type, len(rank))):
+        for item in doc.items:
+            if item.line == line:
+                found.append((doc, item))
+                break
+    return found
+
+
+def _cell_text(cell: Cell | None) -> str | None:
+    """칸에서 글자를 꺼낸다. value가 글자면 그것, 아니면 raw. 비었으면 None."""
+    if cell is None:
+        return None
+    for v in (cell.value, cell.raw):
+        if v is not None and str(v).strip():
+            return str(v).strip()
+    return None
+
+
+def _item_key_of(item: ExtractedItem) -> str | None:
+    code = _cell_text(item.item_code)
+    if code:
+        return "code:" + re.sub(r"\s+", "", code).upper()
+    name = _cell_text(item.name)
+    if name:
+        return "name:" + normalize_text("name", name)
+    return None
+
 
 def item_key(doc: ExtractedDocument, line: int) -> str:
-    """확정 이력 키의 품목 부분. 품목 코드가 있으면 그것, 없으면 정규화한 품명."""
-    raise NotImplementedError("C2: 품목 키 (검증 담당)")
+    """확정 이력 키의 품목 부분. 품목 코드가 있으면 그것, 없으면 정규화한 품명.
+    언제: 이력을 찾거나 저장하기 전. 받는 것: doc(읽은 서류), line(품목 행 번호).
+    반환: 'code:BP-200' 또는 'name:lithium ion battery pack'. 코드와 품명이 서로 섞이지 않게 앞에 종류를 붙인다.
+    그 행이 없거나 코드도 품명도 못 읽었으면 ValueError.
+    """
+    for item in doc.items:
+        if item.line == line:
+            key = _item_key_of(item)
+            if key:
+                return key
+            raise ValueError(f"{line}행에 품목 코드와 품명이 모두 없음")
+    raise ValueError(f"{line}행이 서류에 없음")
+
+
+def _hs_digits(cell: Cell | None) -> str | None:
+    """서류에 적힌 HS를 숫자만 남겨 꺼낸다. 없으면 None."""
+    text = _cell_text(cell)
+    digits = re.sub(r"\D", "", text) if text else ""
+    return digits or None
+
+
+def _dedupe(cands: list[HSCandidate]) -> list[HSCandidate]:
+    seen: dict[str, HSCandidate] = {}
+    for c in cands:
+        seen.setdefault(c.hs, c)
+    return list(seen.values())
 
 
 def recommend_hs(
@@ -161,18 +220,68 @@ def recommend_hs(
     picker: Picker | None = None,
 ) -> HSResult:
     """품목 한 행의 HS를 확정하거나 후보 3개를 낸다.
-
     언제: 대조와 다시 확인이 끝난 뒤, 품목마다.
     받는 것: docs(읽은 서류 전체), line(품목 행), importer(수입자), history·table(의존성), terms_reader·picker(테스트용 가짜 모델).
     반환: HSResult. 이력이 있으면 자동 확정(history), 6번 조건을 모두 채우면 자동 확정(auto_match), 아니면 사람 확인 필요.
+    모델(terms_reader, picker)이 없거나 실패하면 자동 확정 없이 사람 확인 필요로 간다. 품명을 그대로 검색어로 쓴다.
     """
     print(f"[tool] recommend_hs line={line} importer={importer}")
-    raise NotImplementedError("C1·C2: HS 추천과 확정 (검증 담당)")
+    items = _items_at(docs, line)
+    key = next((k for _, it in items if (k := _item_key_of(it))), None)
+
+    # 1. 확정 이력. 이력의 코드가 HS부호 표에 없으면 믿지 않고 다음 단계로 간다.
+    if key is not None:
+        saved = history.get(importer, key)
+        if saved and table.exists(saved):
+            print(f"[hs] 확정 이력 사용 key={key} hs={saved}")
+            return HSResult(line=line, status="자동 확정", by="history", hs_code=saved, candidates=[])
+
+    name = next((t for _, it in items if (t := _cell_text(it.name))), "")
+
+    # 2. 모델이 검색어를 뽑는다. 못 하면 품명을 그대로 쓴다.
+    terms = [name] if name else []
+    if terms_reader is not None and name:
+        try:
+            got = terms_reader(name).terms
+            if got:
+                terms = got
+        except Exception as e:  # 모델 호출 실패는 판정에 영향 없이 품명 검색으로 대신한다
+            print(f"[hs] 검색어 뽑기 실패, 품명으로 검색: {type(e).__name__}")
+
+    # 3. 후보: 서류 HS 앞 6자리 아래 10자리 + 표 검색(최대 30개)
+    doc_hs = [d for _, it in items if (d := _hs_digits(it.hs_code))]
+    cands: list[HSCandidate] = []
+    for d in dict.fromkeys(doc_hs):
+        if len(d) >= 6:
+            cands += table.under(d[:6])
+    cands += table.search(terms, limit=MAX_CANDIDATES)
+    cands = _dedupe(cands)
+
+    # 4. 모델이 후보 안에서 고른다. 후보 밖 코드는 버린다.
+    picks: list[HSCandidate] = []
+    if picker is not None and cands:
+        try:
+            picks = keep_in_candidates(picker(name, cands).picks, cands)
+        except Exception as e:
+            print(f"[hs] 후보 고르기 실패: {type(e).__name__}")
+    shown = picks or cands[:MAX_PICKS]
+
+    # 5. 자동 확정: 서류에 적힌 10자리가 모두 같고, 표에 있고, 모델 1순위와 같을 때만
+    same = len(set(doc_hs)) == 1 and len(doc_hs[0]) == 10
+    if same and table.exists(doc_hs[0]) and picks and picks[0].hs == doc_hs[0]:
+        return HSResult(line=line, status="자동 확정", by="auto_match", hs_code=doc_hs[0], candidates=picks)
+    return HSResult(line=line, status="사람 확인 필요", by=None, hs_code=None, candidates=shown)
 
 
 def confirm_by_human(result: HSResult, hs: str, importer: str, key: str, job_id: str, *, history: HSHistory) -> HSResult:
     """사람이 고른 HS로 확정하고 이력에 저장한다. 모델 호출 없음.
-
     API 경로 POST /jobs/{id}/hs(C3, 서버 담당)가 이 함수를 부른다. 이 함수 자체는 C2(검증 담당) 몫이다.
+    언제: 사람이 화면에서 후보 중 하나를 골랐을 때.
+    받는 것: result(그 행의 HSResult), hs(고른 10자리), importer(수입자), key(item_key 값), job_id(작업 ID), history(이력 저장소).
+    반환: 사람 확정 HSResult. 10자리 숫자가 아니면 ValueError이고 이력에 아무것도 쓰지 않는다.
     """
-    raise NotImplementedError("C2: 사람 확정과 이력 저장 (검증 담당)")
+    print(f"[tool] confirm_by_human line={result.line} hs={hs} importer={importer}")
+    if not re.fullmatch(r"\d{10}", hs):
+        raise ValueError(f"HS는 10자리 숫자여야 함: {hs!r}")
+    history.put(importer, key, hs, job_id)
+    return HSResult(line=result.line, status="사람 확정", by="human", hs_code=hs, candidates=result.candidates)
