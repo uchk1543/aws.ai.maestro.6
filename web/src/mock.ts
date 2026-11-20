@@ -6,6 +6,7 @@ import jobExample from "../../docs/examples/job_waiting_approval.json";
 // 임시(제안 중): 서버 약속이 합쳐지면 docs/examples/documents.json 으로 바꾼다
 import documentsDraft from "./fixtures/documents.draft.json";
 import { ApiError } from "./api";
+import { fileViewOf } from "./mockDocs";
 import type {
   ApproveResponse,
   ChatRequest,
@@ -17,6 +18,7 @@ import type {
   DocumentsResponse,
   HSChoice,
   Job,
+  JobFilesResponse,
   UploadRequestFile,
   UploadsResponse,
 } from "./types";
@@ -110,6 +112,13 @@ function documents(query: URLSearchParams): DocumentsResponse {
   return { counts: copy(draft.counts), items: copy(all.slice(start, end)), next_cursor: end < all.length ? String(end) : null };
 }
 
+/** GET /api/jobs/{id}/files: 임시 가짜 데이터에서 그 작업의 서류마다 가짜 쪽 그림과 표시를 만든다 (G11). */
+function jobFiles(jobId: string): JobFilesResponse {
+  const records = (documentsDraft as { items: DocumentRecord[] }).items.filter((d) => d.job_id === jobId);
+  if (records.length === 0) throw new ApiError(404, "작업을 찾을 수 없습니다");
+  return { files: records.map(fileViewOf) };
+}
+
 /** api.ts 의 request 대신 불린다. 서버와 같은 경로·모양으로 답한다. */
 export async function mockRequest(method: string, path: string, body: unknown): Promise<unknown> {
   await wait(DELAY_MS);
@@ -137,6 +146,7 @@ export async function mockRequest(method: string, path: string, body: unknown): 
   const route = path.match(/^\/api\/jobs\/([^/]+)(?:\/([a-z]+))?$/);
   if (route) {
     const jobId = decodeURIComponent(route[1]);
+    if (method === "GET" && route[2] === "files") return jobFiles(jobId);
     if (jobId !== example.job_id) throw new ApiError(404, "작업을 찾을 수 없습니다");
     if (method === "GET" && !route[2]) {
       const n = polls.get(jobId) ?? 0;
