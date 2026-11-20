@@ -374,6 +374,8 @@ class HSResult(_Strict):
     by: HSBy | None = Field(default=None, description="확정한 경로. 확정 전이면 null")
     hs_code: str | None = Field(default=None, description="확정된 10자리 HSK. 확정 전이면 null")
     candidates: list[HSCandidate] = Field(default_factory=list, description="후보 최대 3개")
+    item_name: str | None = Field(default=None, description="그 행의 품명(서류에 적힌 글자). 못 읽었으면 null. 화면이 '1행 · 품명'으로 보여 준다")
+    doc_hs_code: str | None = Field(default=None, description="서류에 적힌 HS(적힌 그대로. 예: '9401.61'). 서류에 없으면 null")
 
 
 class DeclarationField(_Strict):
@@ -464,6 +466,11 @@ class ChatResponse(_Strict):
     filters: ChatFilters = Field(description="쓴 조회 조건")
     period_resolved: PeriodResolved | None = Field(default=None, description="계산한 기간")
     rows: list[Shipment] = Field(default_factory=list, description="조회 결과")
+    blocked: str | None = Field(
+        default=None,
+        description="막았으면 그 이유, 막지 않았으면 null. 가드레일 필터 이름(예: '프롬프트 공격') 또는 '무관한 질문'. "
+        "막으면 모델·조회를 하지 않고 정해 둔 답을 준다 (E7 #152). 채팅 기록(E6 #157)이 이 값을 남긴다",
+    )
 
 
 ClassifiedBy = Literal["model", "user"]

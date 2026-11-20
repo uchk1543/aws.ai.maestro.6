@@ -5,5 +5,6 @@
   "rows": [
     {"bl_no": "BL-2026-0001", "consignee": "샘플무역", "item": "리튬이온 배터리팩",
      "arrived_at": "2026-11-17", "customs_status": "심사 중", "last_event_at": "2026-11-18", "job_id": "job-7c1e"}
-  ]
+  ],
+  "blocked": null
 }
