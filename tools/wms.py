@@ -15,7 +15,7 @@ from typing import Protocol
 
 from botocore.exceptions import ClientError
 
-from tools.models import Cell, ExtractedDocument, HSResult, JobResult, WmsBy, WmsRecord, WmsState
+from tools.models import Cell, ExtractedDocument, HSResult, Job, JobResult, NextAction, WmsBy, WmsRecord, WmsState
 
 
 class WmsAdapter(Protocol):
@@ -346,3 +346,41 @@ def approve(result: JobResult, by: WmsBy = "human") -> None:
         raise ApprovalRefused(
             f"불일치 {len(left)}건({rules})이 남아 있어 WMS에 등록할 수 없습니다. 서류를 고쳐 다시 올려 주세요"
         )
+
+
+def next_action(job: Job) -> NextAction:
+    """작업 화면 맨 위 '지금 상태와 다음 할 일' 한 줄을 정한다 (FB22 #178). 모델 호출 없음.
+
+    언제: GET /jobs/{id}가 응답하기 직전. 저장하지 않는다 (결과가 바뀌면 다음 조회 때 다시 정한다).
+    받는 것: job(상태, 결과의 문제 목록·HS·WMS).
+    반환: NextAction. 승인 대기는 등록 규칙(approve·can_auto_register)과 같은 순서로 가른다.
+      1. 불일치가 남음 → fix_docs (승인해도 409. 서류를 고쳐 다시 올려야 한다)
+      2. HS를 사람이 골라야 하는 품목이 있음 → choose_hs
+      3. 그 밖(확인 필요가 남음, 또는 사람 승인만 남음) → approve
+      끝남이면 WMS 등록 여부로 none, 실패면 reupload, 대기·처리 중이면 wait.
+    """
+    if job.status in ("queued", "running"):
+        return NextAction(kind="wait", message="처리 중입니다. 끝나면 할 일을 알려 드립니다")
+    if job.status == "failed":
+        return NextAction(kind="reupload", message="처리하지 못했습니다. 서류를 다시 올려 주세요")
+    result = job.result or JobResult()
+    if job.status == "done":
+        if result.wms and result.wms.status == "등록됨":
+            return NextAction(kind="none", message="WMS에 등록됐습니다. 더 할 일이 없습니다")
+        return NextAction(kind="none", message="처리가 끝났습니다. 더 할 일이 없습니다")
+    mismatch = [i for i in result.issues if i.grade == "불일치"]
+    if mismatch:
+        return NextAction(
+            kind="fix_docs",
+            message=f"불일치 {len(mismatch)}건: 서류를 고쳐 다시 올려야 등록할 수 있습니다",
+            count=len(mismatch),
+        )
+    pending = [r for r in result.hs if r.status == "사람 확인 필요"]
+    if pending:
+        return NextAction(kind="choose_hs", message=f"HS {len(pending)}개를 고르세요", count=len(pending))
+    check = [i for i in result.issues if i.grade == "확인 필요"]
+    if check:
+        return NextAction(
+            kind="approve", message=f"확인 필요 {len(check)}건을 확인한 뒤 승인하세요", count=len(check)
+        )
+    return NextAction(kind="approve", message="확인한 뒤 승인하세요")
