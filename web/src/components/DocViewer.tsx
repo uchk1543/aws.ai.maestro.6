@@ -135,6 +135,11 @@ function Lens({ src, bbox, ar, label }: { src: string; bbox: Bbox; ar: number; l
   );
 }
 
+/** 모바일(767px 이하)은 돋보기가 화면 아래 시트라, 처음 강조한 박스의 돋보기를 누르기 전까지 열지 않는다. */
+export function startsClosed(): boolean {
+  return typeof window.matchMedia === "function" && window.matchMedia("(max-width: 767px)").matches;
+}
+
 export function DocViewer({
   file,
   boxes,
@@ -149,8 +154,9 @@ export function DocViewer({
   note?: string | null;
 }) {
   const activeRef = useRef<HTMLButtonElement>(null);
-  // 닫기를 누른 박스. 같은 박스를 다시 누르거나 다른 박스를 고르면 팝업이 다시 뜬다
-  const [closedId, setClosedId] = useState<string | null>(null);
+  // 닫기를 누른 박스. 같은 박스를 다시 누르거나 다른 박스를 고르면 팝업이 다시 뜬다.
+  // 모바일은 처음 강조한 박스를 닫힌 채로 시작한다 (아래 시트가 화면을 가리지 않게. 누르면 열린다)
+  const [closedId, setClosedId] = useState<string | null>(() => (startsClosed() ? activeId : null));
 
   useEffect(() => {
     activeRef.current?.scrollIntoView?.({ block: "nearest", inline: "nearest", behavior: "smooth" });
