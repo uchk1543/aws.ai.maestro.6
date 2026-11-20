@@ -645,7 +645,7 @@ button.link {
 .chat-log {
   display: flex;
   flex-direction: column;
-  padding-bottom: 88px; /* 아래 고정 입력칸 자리 */
+  padding-bottom: 108px; /* 아래 고정 입력칸과 안내 한 줄 자리 */
 }
 
 .chat-user {
@@ -721,6 +721,18 @@ button.link {
   min-width: 0;
 }
 
+.chat-form {
+  flex-wrap: wrap;
+}
+
+/* 입력칸 아래 안내 (FB09): 질문마다 따로 답한다 */
+.chat-note {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .send {
   flex: none;
   display: flex;
@@ -771,7 +783,7 @@ button.link {
 
   .chat-log {
     padding-top: 16px;
-    padding-bottom: 120px;
+    padding-bottom: 140px;
   }
 
   .chat-form {

@@ -80,7 +80,7 @@ export function approveJob(jobId: string, approver: string): Promise<ApproveResp
   return request("POST", `/api/jobs/${encodeURIComponent(jobId)}/approve`, { approver });
 }
 
-/** 현황 채팅에 질문을 보낸다. session_id 로 서버가 대화를 이어 간다. */
+/** 현황 채팅에 질문을 보낸다. 서버는 앞 질문을 기억하지 않고 질문마다 따로 답한다 (session_id 는 기록용, FB09 #166). */
 export function sendChat(req: ChatRequest): Promise<ChatResponse> {
   return request("POST", "/api/chat", req);
 }

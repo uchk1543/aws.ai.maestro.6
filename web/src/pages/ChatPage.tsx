@@ -1,6 +1,7 @@
 // G8·G9 현황 채팅: POST /api/chat. 답마다 답 문장·조회 조건·결과 표를 보여 준다.
 // 조회·집계·기간 계산은 서버 코드가 한다. 화면은 받은 값을 그대로 보여 준다 (agent-design.md 9번).
 // 처음에는 예시 질문 칸을 보여 주고, 누르면 그 질문을 바로 보낸다. PC 는 예시를 왼쪽에 늘 둔다.
+// 서버는 앞 질문을 기억하지 않으므로 입력칸 아래에 "질문마다 따로 답합니다"를 적는다 (FB09 #166).
 // G14: 열 때 서버 기록(GET /api/chat/{session_id}, E6 #157)을 불러와 새로 고쳐도 대화가 남는다.
 //      서버 경로가 없으면(404·501) 이 탭의 메모리(sessionStorage)만 쓴다. "새 대화"는 새 session_id.
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -288,6 +289,7 @@ export function ChatPage({ ask: askOnOpen }: { ask?: string } = {}) {
           <input
             type="text"
             aria-label="질문"
+            aria-describedby="chat-note"
             placeholder="질문을 입력하세요"
             value={input}
             maxLength={MAX_MESSAGE}
@@ -296,6 +298,10 @@ export function ChatPage({ ask: askOnOpen }: { ask?: string } = {}) {
           <button type="submit" className="send" aria-label="보내기" disabled={!input.trim() || mutation.isPending}>
             <Icon name="arrow-up" />
           </button>
+          {/* 서버는 앞 질문을 기억하지 않는다 (FB09 #166). 아래 고정 입력칸과 함께 움직이게 form 안에 둔다 */}
+          <p className="chat-note" id="chat-note">
+            질문마다 따로 답합니다. 조건을 한 문장에 모두 적어 주세요
+          </p>
         </form>
       </div>
     </section>
