@@ -16,7 +16,9 @@ from tools.query import DELAY_RULE, is_delayed, query_shipments, resolve_period
 
 ROOT = Path(__file__).resolve().parents[2]
 SHIPMENTS = [Shipment.model_validate(r) for r in json.loads((ROOT / "samples/data/shipments.json").read_text(encoding="utf-8"))]
-QUERIES = list(csv.DictReader((ROOT / "eval/queries.csv").open(encoding="utf-8", newline="")))
+ALL_QUERIES = list(csv.DictReader((ROOT / "eval/queries.csv").open(encoding="utf-8", newline="")))
+# 조회하는 질문만. expect가 있는 줄(안내·되묻기, #165)은 조회하지 않아야 하는 질문이라 test_query_agent.py가 본다
+QUERIES = [q for q in ALL_QUERIES if "expect" not in json.loads(q["expected_conditions"])]
 
 
 @pytest.mark.parametrize("q", QUERIES, ids=[q["query_id"] for q in QUERIES])
@@ -28,6 +30,10 @@ def test_answer_key_counts(q):
     got = result.period_resolved.model_dump(mode="json", by_alias=True) if result.period_resolved else None
     assert got == cond["period_resolved"]
     assert result.rule == cond["rule"]
+
+
+def test_answer_key_has_twenty_queries_and_four_not_queried():
+    assert len(QUERIES) == 20 and len(ALL_QUERIES) == 24
 
 
 def test_week_is_monday_to_sunday_in_given_today():

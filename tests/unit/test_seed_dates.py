@@ -60,6 +60,9 @@ def test_day_answers_match_query_code(day):
     store = MemoryShipments([Shipment.model_validate(r) for r in rows])
     for got in expected_for(day, rows):
         cond = got["conditions"]
+        if cond.get("expect"):  # 조회하지 않아야 하는 질문 (#165)
+            assert got["count"] == 0 and cond["today"] == day.isoformat()
+            continue
         filters = ChatFilters.model_validate({k: cond[k] for k in ("status", "period", "date_from", "date_to")})
         result = query.query_shipments(filters, store=store, today=day)
         assert result.count == got["count"], got["query_id"]
