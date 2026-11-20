@@ -9,7 +9,7 @@ import type { Job, JobStatus } from "../types";
 
 export const POLL_MS = 2000;
 
-const STATUS_KO: Record<JobStatus, string> = {
+export const STATUS_KO: Record<JobStatus, string> = {
   queued: "대기 중",
   running: "처리 중",
   waiting_approval: "승인 대기",

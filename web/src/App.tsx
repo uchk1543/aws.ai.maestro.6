@@ -3,16 +3,18 @@
 import type { ReactNode } from "react";
 import { Icon, type IconName } from "./components/Icon";
 import { ChatPage } from "./pages/ChatPage";
+import { DocHistoryPage } from "./pages/DocHistoryPage";
 import { JobPage } from "./pages/JobPage";
 import { UploadPage } from "./pages/UploadPage";
 import { navigate, useHashPath } from "./route";
 
 export const APP_NAME = "통관 서류 검토";
 
-type MenuKey = "upload" | "chat";
+type MenuKey = "upload" | "documents" | "chat";
 
 const MENU: { key: MenuKey; path: string; label: string; icon: IconName }[] = [
   { key: "upload", path: "/upload", label: "파일 업로드", icon: "upload" },
+  { key: "documents", path: "/documents", label: "문서 분류 내역", icon: "list" },
   { key: "chat", path: "/chat", label: "AI chat", icon: "chat" },
 ];
 
@@ -23,6 +25,7 @@ function resolve(path: string): { page: ReactNode; active: MenuKey | null } {
     const jobId = decodeURIComponent(job[1]);
     return { page: <JobPage key={jobId} jobId={jobId} />, active: null };
   }
+  if (path === "/documents") return { page: <DocHistoryPage />, active: "documents" };
   if (path === "/chat") return { page: <ChatPage />, active: "chat" };
   return { page: <UploadPage />, active: "upload" };
 }

@@ -198,7 +198,7 @@ button.link {
   z-index: 20;
   display: flex;
   height: calc(var(--tabbar-h) + var(--safe-bottom));
-  padding: 0 30px var(--safe-bottom);
+  padding: 0 12px var(--safe-bottom);
   background: #fff;
   border-top: 1px solid var(--line);
 }
@@ -1189,4 +1189,212 @@ table.cells tr.suspect td {
 
 .wms-conflict p {
   margin-top: 4px;
+}
+
+/* ───── 문서 분류 내역 (G10) ─────
+   모바일·태블릿: 위 종류 칩(가로로 넘김) + 서류 카드. PC: 왼쪽 종류 목록(고른 것은 검은 칸) | 오른쪽 표. */
+.dochist h1 {
+  margin: 8px 0 6px;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.dochist .lead {
+  margin-bottom: 16px;
+}
+
+.kind-list {
+  display: flex;
+  gap: 8px;
+  margin: 0 calc(var(--gutter) * -1);
+  padding: 0 var(--gutter) 4px;
+  overflow-x: auto;
+  list-style: none;
+  scrollbar-width: none;
+}
+
+.kind-list::-webkit-scrollbar {
+  display: none;
+}
+
+.kind {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 16px;
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
+  background: var(--fill);
+  border: 0;
+  border-radius: 999px;
+}
+
+.kind-count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.kind.active {
+  font-weight: 600;
+  color: #fff;
+  background: var(--ink-2);
+}
+
+.kind.active .kind-count {
+  color: #c9c9c9;
+}
+
+.dochist-main {
+  min-width: 0;
+}
+
+.dochist-main h2 {
+  margin: 20px 0 10px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.dochist-main h2 .count {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.dochist-note {
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+
+.more {
+  width: 100%;
+  min-height: 52px;
+  margin-top: 8px;
+  font-weight: 600;
+  background: #fff;
+  border: 1.5px solid var(--ink);
+  border-radius: 14px;
+}
+
+/* 서류 표: PC 전까지는 줄마다 카드 (칸 이름은 data-label) */
+@media (max-width: 1199px) {
+  table.doc-table,
+  table.doc-table tbody {
+    display: grid;
+    gap: 8px;
+  }
+
+  table.doc-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  table.doc-table tr {
+    display: block;
+    padding: 6px 18px;
+    background: var(--fill);
+    border-radius: 14px;
+  }
+
+  table.doc-table td {
+    display: grid;
+    grid-template-columns: 76px minmax(0, 1fr);
+    gap: 10px;
+    padding: 7px 0;
+    font-size: 15px;
+    border-bottom: 1px solid #e0e0e0;
+    overflow-wrap: anywhere;
+  }
+
+  table.doc-table td:last-child {
+    border-bottom: 0;
+  }
+
+  table.doc-table td::before {
+    content: attr(data-label);
+    color: var(--muted);
+  }
+
+  table.doc-table .status {
+    justify-self: start;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1199px) {
+  .dochist {
+    max-width: 760px;
+    margin: 0 auto;
+  }
+
+  table.doc-table tbody {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (min-width: 1200px) {
+  .dochist {
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    gap: 56px;
+    align-items: start;
+    max-width: 1320px;
+    padding-top: 24px;
+  }
+
+  .dochist-side {
+    position: sticky;
+    top: 24px;
+  }
+
+  .dochist h1 {
+    margin-top: 0;
+    font-size: 28px;
+  }
+
+  .kind-list {
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+  }
+
+  .kind {
+    justify-content: space-between;
+    width: 100%;
+    min-height: 60px;
+    padding: 0 18px 0 20px;
+    font-size: 16px;
+    border-radius: 14px;
+  }
+
+  .dochist-main h2 {
+    margin-top: 0;
+    font-size: 22px;
+  }
+
+  table.doc-table td {
+    vertical-align: top;
+  }
+
+  table.doc-table .doc-file,
+  table.doc-table td:nth-child(2),
+  table.doc-table td:nth-child(6),
+  table.doc-table td:nth-child(7),
+  table.doc-table td:nth-child(8) {
+    white-space: nowrap;
+  }
+
+  table.doc-table .doc-reason {
+    min-width: 200px;
+    color: #444;
+  }
+
+  .more {
+    width: auto;
+    padding: 0 32px;
+  }
 }
