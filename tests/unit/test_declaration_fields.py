@@ -3,7 +3,7 @@ import csv
 import re
 from pathlib import Path
 
-from tools.declaration import DECLARATION_FIELDS
+from tools.declaration import DECLARATION_FIELDS, FIELD_KEYS
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -39,6 +39,10 @@ def test_정답지_출처와_같다_세번부호만_HS_결과에서():
             assert source == "hs[0].hs_code"
         else:
             assert truth[field] == source
+
+
+def test_칸_키가_schema와_같은_순서():
+    assert FIELD_KEYS == [f for f, _, _, _ in _schema_rows()]
 
 
 def test_읽기_칸_표시는_있음_또는_없음():
