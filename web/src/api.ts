@@ -77,9 +77,10 @@ export function chooseHs(jobId: string, choices: HSChoice[]): Promise<ChooseHsRe
   return request("POST", `/api/jobs/${encodeURIComponent(jobId)}/hs`, { choices });
 }
 
-/** 사람이 승인해 WMS 에 등록한다. 불일치가 남은 작업은 서버가 409 로 거절한다. */
-export function approveJob(jobId: string, approver: string): Promise<ApproveResponse> {
-  return request("POST", `/api/jobs/${encodeURIComponent(jobId)}/approve`, { approver });
+/** 사람이 승인해 WMS 에 등록한다. 불일치가 남은 작업은 판독 오류 사유(overrideReason)가 없으면 서버가 409 로 거절한다. */
+export function approveJob(jobId: string, approver: string, overrideReason?: string): Promise<ApproveResponse> {
+  const body = overrideReason ? { approver, override_reason: overrideReason } : { approver };
+  return request("POST", `/api/jobs/${encodeURIComponent(jobId)}/approve`, body);
 }
 /** HS 확인 요청서 PDF 내려받기 주소 (GET /api/jobs/{id}/hs-request, X2 #260). HS가 '사람 확인 필요'로 남은 품목이 있을 때 받는다 */
 export function hsRequestUrl(jobId: string): string {

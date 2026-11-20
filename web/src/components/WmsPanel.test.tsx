@@ -49,7 +49,7 @@ describe("WmsPanel", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("WMS에 등록하지 못했습니다.");
-    expect(alert).toHaveTextContent("서류를 고쳐 다시 올려 주세요.");
+    expect(alert).toHaveTextContent("원본을 확인해 판독 오류면 사유를 적고 승인해 주세요.");
     expect(alert).toHaveTextContent("서버: 불일치가 남아 있어 WMS에 등록할 수 없습니다");
   });
 
@@ -131,5 +131,40 @@ describe("WmsPanel", () => {
     await user.type(screen.getByLabelText("승인자"), "김담당");
     await user.click(screen.getByRole("button", { name: "승인하고 WMS 등록" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("WMS에 등록하지 못했습니다.");
+  });
+
+  it("불일치가 남으면 판독 오류 확인 체크와 사유를 채워야 승인할 수 있고, 사유를 함께 보낸다", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.approveJob).mockResolvedValue({ wms: { status: "등록됨", wms_id: "WMS-0001" } });
+    renderWithQuery(
+      <WmsPanel jobId="job-7c1e" jobStatus="waiting_approval" wms={exampleWms} blocked="불일치 1건: 서류를 고쳐 다시 올리거나…" />,
+    );
+    const button = screen.getByRole("button", { name: "판독 오류로 승인하고 WMS 등록" });
+
+    await user.type(screen.getByLabelText("승인자"), "김담당");
+    expect(button).toBeDisabled();
+    await user.click(screen.getByRole("checkbox", { name: "원본 서류를 직접 확인했고, 불일치는 판독 오류입니다" }));
+    expect(button).toBeDisabled(); // 사유가 아직 없다
+    await user.type(screen.getByLabelText("사유"), " 원본 송장 번호 같음 ");
+    expect(button).toBeEnabled();
+    await user.click(button);
+
+    await waitFor(() => expect(api.approveJob).toHaveBeenCalledWith("job-7c1e", "김담당", "원본 송장 번호 같음"));
+  });
+
+  it("판독 오류로 넘겨 등록한 작업은 사유를 보인다", () => {
+    renderWithQuery(
+      <WmsPanel
+        jobId="job-7c1e"
+        jobStatus="done"
+        wms={{ status: "등록됨", by: "human", wms_id: "WMS-0001", approver: "김담당", override_reason: "원본 송장 번호 같음" }}
+      />,
+    );
+    expect(screen.getByText("불일치를 판독 오류로 확인해 승인 · 사유: 원본 송장 번호 같음")).toBeInTheDocument();
+  });
+
+  it("불일치가 없으면 판독 오류 입력을 보이지 않는다", () => {
+    renderWithQuery(<WmsPanel jobId="job-7c1e" jobStatus="waiting_approval" wms={exampleWms} />);
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   });
 });

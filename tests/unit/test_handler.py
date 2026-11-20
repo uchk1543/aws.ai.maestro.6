@@ -246,7 +246,7 @@ def test_post_then_worker_shows_mismatch(fakes, lambda_client):
     draft = DeclarationDraft.model_validate(job["result"]["declaration_draft"])
     assert "total_gross_kg" in draft.blank_fields
     # 승인 대기로 끝나면 화면이 승인 입력을 그리도록 wms를 채운다 (#159, 실제 run_job 출력 FB14)
-    assert job["result"]["wms"] == {"status": "승인 대기", "by": None, "wms_id": None, "approver": None, "approved_at": None}
+    assert job["result"]["wms"] == {"status": "승인 대기", "by": None, "wms_id": None, "approver": None, "approved_at": None, "override_reason": None}
 
 
 def test_matching_docs_are_done(fakes, lambda_client):
@@ -833,8 +833,46 @@ def test_approve_with_mismatch_is_409_and_changes_nothing(wms_fakes):
     status, body = post_approve()
 
     assert status == 409
-    assert body == {"error": "불일치 1건(X-WT-01)이 남아 있어 WMS에 등록할 수 없습니다. 서류를 고쳐 다시 올려 주세요"}
+    assert body == {"error": "불일치 1건(X-WT-01)이 남아 있어 WMS에 등록할 수 없습니다. "
+        "서류를 고쳐 다시 올리거나, 원본을 확인해 판독 오류면 사유를 적고 승인해 주세요"}
     assert memory.records == {} and table.items[APPROVE_JOB] == before
+
+
+def test_approve_with_mismatch_and_override_reason_registers(wms_fakes):
+    """불일치가 남아도 검수자가 원본을 보고 판독 오류라고 사유를 적으면 등록한다. 사유는 wms와 단계 기록에 남는다."""
+    table, memory = wms_fakes
+    put_approve_job(table)  # X-WT-01 불일치
+
+    status, body = post_approve({"approver": "김담당", "override_reason": "  원본 총중량 6,250kg 확인,   판독 오류 "})
+
+    assert (status, body) == (200, {"wms": {"status": "등록됨", "wms_id": "wms-0001"}})
+    [(_, record)] = memory.records.values()
+    assert record.by == "human"
+    _, job = call("GET", f"/jobs/{APPROVE_JOB}")
+    assert job["status"] == "done"
+    assert job["result"]["wms"]["override_reason"] == "원본 총중량 6,250kg 확인, 판독 오류"
+    assert job["steps"][-2]["summary"] == (
+        "사람 승인(김담당)으로 WMS 등록: wms-0001 (불일치 1건(X-WT-01)을 판독 오류로 확인, 사유: 원본 총중량 6,250kg 확인, 판독 오류)"
+    )
+    assert job["next_action"]["kind"] == "none"
+
+
+def test_override_reason_is_not_kept_when_no_mismatch(wms_fakes):
+    """확인 필요만 남은 건은 예외로 넘긴 것이 없으므로 사유를 남기지 않는다."""
+    table, _ = wms_fakes
+    put_approve_job(table, grade="확인 필요")
+    assert post_approve({"approver": "김담당", "override_reason": "판독 오류"})[0] == 200
+    _, job = call("GET", f"/jobs/{APPROVE_JOB}")
+    assert job["result"]["wms"]["override_reason"] is None
+    assert "사유" not in job["steps"][-2]["summary"]
+
+
+@pytest.mark.parametrize("reason", ["", "   ", 7, ["판독 오류"], "가" * 201])
+def test_approve_bad_override_reason_is_400(wms_fakes, reason):
+    table, memory = wms_fakes
+    put_approve_job(table)
+    assert post_approve({"approver": "김담당", "override_reason": reason})[0] == 400
+    assert memory.records == {}
 
 
 def test_approve_twice_registers_once(wms_fakes):
@@ -1080,7 +1118,7 @@ def test_hs_choice_registers_to_wms_when_nothing_is_left(hs_fakes, wms_memory, s
     _, job = call("GET", f"/jobs/{HS_JOB}")
     Job.model_validate(job)
     assert job["status"] == "done"
-    assert job["result"]["wms"] == {"status": "등록됨", "by": "auto", "wms_id": wms_id, "approver": None, "approved_at": None}
+    assert job["result"]["wms"] == {"status": "등록됨", "by": "auto", "wms_id": wms_id, "approver": None, "approved_at": None, "override_reason": None}
     assert job["steps"][-2] == {"tool": "push_to_wms", "summary": f"WMS 자동 등록: {wms_id}", "ok": True}
     assert job["steps"][-1] == {"tool": "mark_registered", "summary": f"화물 기록 B/L {BL}: 입항 → 수입신고", "ok": True}
     assert shipments.rows[BL].customs_status == "수입신고"
@@ -1101,7 +1139,7 @@ def test_hs_choice_with_problem_left_waits_for_approval(hs_fakes, wms_memory, gr
 
     _, job = call("GET", f"/jobs/{HS_JOB}")
     assert job["status"] == "waiting_approval"
-    assert job["result"]["wms"] == {"status": "승인 대기", "by": None, "wms_id": None, "approver": None, "approved_at": None}
+    assert job["result"]["wms"] == {"status": "승인 대기", "by": None, "wms_id": None, "approver": None, "approved_at": None, "override_reason": None}
     assert job["steps"][-1]["tool"] == "draft_declaration"
     assert wms_memory.records == {}
 
@@ -1638,7 +1676,7 @@ def test_jobs_list_by_next_action_matches_stats_count(mixed252):
     first, second = body["items"]  # 최근 작업 먼저
     assert (first["job_id"], first["bl_no"], first["consignee"], first["mismatch"]) == ("job-0000f002", "BL-B", None, 1)
     assert (second["bl_no"], second["consignee"], second["hs_pending"]) == ("BL-A", "샘플무역", 1)
-    assert second["next_action"]["message"] == "불일치 1건: 서류를 고쳐 다시 올려야 등록할 수 있습니다"
+    assert second["next_action"]["message"] == "불일치 1건: 서류를 고쳐 다시 올리거나, 원본을 확인해 판독 오류면 사유를 적고 승인하세요"
 
 
 def test_jobs_list_without_filter_skips_done_and_rejects_bad_kind(mixed252):

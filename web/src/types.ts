@@ -99,6 +99,8 @@ export interface WmsState {
   approver?: string | null;
   /** 승인 시각, 한국 시간 ISO 8601 */
   approved_at?: string | null;
+  /** 불일치가 남았는데 검수자가 원본을 보고 판독 오류로 판단해 승인했을 때 적은 사유. 그 밖은 null */
+  override_reason?: string | null;
 }
 export interface JobResult {
   issues: Issue[];

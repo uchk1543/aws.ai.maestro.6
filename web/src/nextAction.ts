@@ -18,7 +18,7 @@ export function nextActionOf(job: Job): NextAction {
   const issues = result?.issues ?? [];
   const mismatch = issues.filter((i) => i.grade === "불일치").length;
   if (mismatch > 0) {
-    return { kind: "fix_docs", message: `불일치 ${mismatch}건: 서류를 고쳐 다시 올려야 등록할 수 있습니다`, count: mismatch };
+    return { kind: "fix_docs", message: `불일치 ${mismatch}건: 서류를 고쳐 다시 올리거나, 원본을 확인해 판독 오류면 사유를 적고 승인하세요`, count: mismatch };
   }
   const pending = (result?.hs ?? []).filter((h) => h.status === "사람 확인 필요").length;
   if (pending > 0) return { kind: "choose_hs", message: `HS ${pending}개를 고르세요`, count: pending };
