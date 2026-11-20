@@ -4,6 +4,7 @@ import { ApiError, getJob } from "../api";
 import { DeclarationTable } from "../components/DeclarationTable";
 import { HsPicker } from "../components/HsPicker";
 import { IssueList } from "../components/IssueList";
+import { WmsPanel } from "../components/WmsPanel";
 import type { Job, JobStatus } from "../types";
 
 export const POLL_MS = 2000;
@@ -77,6 +78,7 @@ export function JobPage({ jobId }: { jobId: string }) {
           {job.result && <IssueList issues={job.result.issues} />}
           {job.result && <HsPicker jobId={job.job_id} jobStatus={job.status} results={job.result.hs} />}
           {job.result && <DeclarationTable draft={job.result.declaration_draft} />}
+          {job.result && <WmsPanel jobId={job.job_id} jobStatus={job.status} wms={job.result.wms} />}
         </>
       )}
     </section>

@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import jobExample from "../../docs/examples/job_waiting_approval.json";
 import { ApiError } from "./api";
-import { mockJobAt, mockRequest, resetMock } from "./mock";
+import { clearMockMismatches, mockJobAt, mockRequest, resetMock } from "./mock";
 import type { Job } from "./types";
 
 describe("mockRequest", () => {
@@ -64,6 +64,23 @@ describe("mockRequest", () => {
     await expect(mockRequest("POST", `/api/jobs/${id}/hs`, { choices: [] })).rejects.toMatchObject({ status: 400 });
     await expect(mockRequest("POST", `/api/jobs/${id}/hs`, { choices: [{ line: 9, hs: "8507600000" }] })).rejects.toMatchObject({ status: 400 });
     await expect(mockRequest("POST", `/api/jobs/${id}/hs`, { choices: [{ line: 1, hs: "8507.60" }] })).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("POST /api/jobs/{id}/approve 는 예시처럼 불일치가 남았으면 409", async () => {
+    resetMock();
+    await expect(
+      mockRequest("POST", `/api/jobs/${jobExample.job_id}/approve`, { approver: "김담당" }),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("POST /api/jobs/{id}/approve 는 불일치가 없으면 등록하고, approver 가 없으면 400", async () => {
+    resetMock();
+    clearMockMismatches();
+    const id = jobExample.job_id;
+    await expect(mockRequest("POST", `/api/jobs/${id}/approve`, { approver: " " })).rejects.toMatchObject({ status: 400 });
+
+    const res = await mockRequest("POST", `/api/jobs/${id}/approve`, { approver: "김담당" });
+    expect(res).toEqual({ wms: { status: "등록됨", wms_id: "WMS-MOCK-0001" } });
   });
 
   it("가짜 응답이 없는 경로는 404", async () => {

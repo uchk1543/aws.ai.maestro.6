@@ -1,6 +1,6 @@
 // api.ts: 서버를 부르지 않고 fetch 를 가짜로 바꿔 경로·본문·오류 처리를 본다
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, chooseHs, contentTypeOf, createJob, createUploads, putToS3 } from "./api";
+import { ApiError, approveJob, chooseHs, contentTypeOf, createJob, createUploads, putToS3 } from "./api";
 
 function reply(status: number, body: unknown) {
   return Promise.resolve(new Response(JSON.stringify(body), { status }));
@@ -71,6 +71,18 @@ describe("api", () => {
     expect(path).toBe("/api/jobs/job-0000abcd/hs");
     expect(init.method).toBe("POST");
     expect(JSON.parse(init.body as string)).toEqual({ choices: [{ line: 1, hs: "8507600000" }] });
+  });
+
+  it("POST /api/jobs/{id}/approve 에 approver 를 보내고, 409 는 ApiError(409)", async () => {
+    const fetchMock = vi.fn(() => reply(409, { error: "불일치가 남아 있습니다" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const err = await approveJob("job-0000abcd", "김담당").catch((e) => e);
+
+    const [path, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(path).toBe("/api/jobs/job-0000abcd/approve");
+    expect(JSON.parse(init.body as string)).toEqual({ approver: "김담당" });
+    expect(err).toMatchObject({ status: 409, message: "불일치가 남아 있습니다" });
   });
 
   it("S3 PUT 이 실패하면 ApiError", async () => {

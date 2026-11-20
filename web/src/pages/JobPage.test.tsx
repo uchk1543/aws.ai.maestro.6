@@ -54,7 +54,7 @@ describe("JobPage", () => {
     expect(items).toHaveLength(example.steps.length);
     expect(items[2]).toHaveTextContent("불일치 1건");
     expect(items[2]).toHaveTextContent("cross_check");
-    expect(screen.getByText("승인 대기")).toBeInTheDocument();
+    expect(screen.getByText("승인 대기", { selector: ".status" })).toBeInTheDocument();
     expect(api.getJob).toHaveBeenCalledWith("job-7c1e");
   });
 
