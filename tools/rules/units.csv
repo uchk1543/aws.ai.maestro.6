@@ -1,0 +1,23 @@
+alias,canonical,kind,source
+CTN,CTN,count,agent-design.md 3번 (CTNS = CTN = CARTON = 박스)
+CTNS,CTN,count,agent-design.md 3번 (CTNS = CTN = CARTON = 박스)
+CARTON,CTN,count,agent-design.md 3번 (CTNS = CTN = CARTON = 박스)
+CARTONS,CTN,count,samples/RULES.md N2 (CTNS·CARTONS 표기 차이)
+박스,CTN,count,agent-design.md 3번 (CTNS = CTN = CARTON = 박스)
+PC,EA,count,agent-design.md 3번 (PCS = EA)
+PCS,EA,count,agent-design.md 3번 (PCS = EA)
+EA,EA,count,agent-design.md 3번 (PCS = EA)
+PR,PR,count,samples/RULES.md G3 (PRS는 켤레. HS 수량단위 2U)
+PRS,PR,count,samples/RULES.md G3 (PRS는 켤레. HS 수량단위 2U)
+SET,SET,count,tools/extract.py _QTY_UNITS와 같은 표기
+SETS,SET,count,tools/extract.py _QTY_UNITS와 같은 표기
+PKG,PKG,count,tools/extract.py _QTY_UNITS와 같은 표기
+PKGS,PKG,count,tools/extract.py _QTY_UNITS와 같은 표기
+PLT,PLT,count,tools/extract.py _QTY_UNITS와 같은 표기
+PLTS,PLT,count,tools/extract.py _QTY_UNITS와 같은 표기
+PALLET,PLT,count,tools/extract.py _QTY_UNITS와 같은 표기
+PALLETS,PLT,count,tools/extract.py _QTY_UNITS와 같은 표기
+KG,KG,weight,samples/RULES.md N2 (KGS 표기 차이)
+KGS,KG,weight,samples/RULES.md N2 (KGS 표기 차이)
+LB,LB,weight,agent-design.md 3번 (LBS → kg)
+LBS,LB,weight,agent-design.md 3번 (LBS → kg)
