@@ -2922,6 +2922,21 @@ video.port-media.on {
   }
 }
 
+/* FB20 작업 화면: 처리 중이 3분을 넘으면 다시 올리라는 안내 */
+.slow-note {
+  display: grid;
+  gap: 6px;
+  margin: 4px 0 16px;
+  padding: 14px 18px;
+  background: var(--fill-2);
+  border: 1.5px solid var(--ink);
+  border-radius: 14px;
+}
+
+.slow-note p {
+  margin: 0;
+}
+
 /* FB07-c HS 직접 입력: 라디오 옆 글자 칸 (.hs-candidate input 의 20px 크기를 덮는다) */
 .hs-candidate .hs-manual-input {
   display: block;

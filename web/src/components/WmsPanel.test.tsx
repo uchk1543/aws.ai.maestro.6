@@ -76,4 +76,31 @@ describe("WmsPanel", () => {
     expect(screen.getByText("WMS-0042")).toBeInTheDocument();
     expect(screen.queryByLabelText("승인자")).not.toBeInTheDocument();
   });
+
+  it("승인 대기인데 서버 wms 가 null 이면(배포 전·옛 작업) 승인 대기로 보고 승인 입력을 보인다 (FB01-b)", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.approveJob).mockResolvedValue({ wms: { status: "등록됨", wms_id: "WMS-0007" } } as never);
+    renderWithQuery(<WmsPanel jobId="job-7c1e" jobStatus="waiting_approval" wms={null} />);
+
+    expect(screen.getByText("승인 대기")).toBeInTheDocument();
+    expect(screen.queryByText("WMS 상태가 아직 없습니다.")).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText("승인자"), "김담당");
+    await user.click(screen.getByRole("button", { name: "승인하고 WMS 등록" }));
+    await waitFor(() => expect(api.approveJob).toHaveBeenCalledWith("job-7c1e", "김담당"));
+  });
+
+  it("wms 가 null 이어도 승인 대기가 아니면(끝남) 승인 입력은 없다", () => {
+    renderWithQuery(<WmsPanel jobId="job-7c1e" jobStatus="done" wms={null} />);
+    expect(screen.getByText("WMS 상태가 아직 없습니다.")).toBeInTheDocument();
+    expect(screen.queryByLabelText("승인자")).not.toBeInTheDocument();
+  });
+
+  it("wms 가 null 인 승인 대기에서 불일치가 남아 409 면 같은 안내를 보인다", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.approveJob).mockRejectedValue(new api.ApiError(409, "불일치가 남아 등록하지 않습니다"));
+    renderWithQuery(<WmsPanel jobId="job-7c1e" jobStatus="waiting_approval" wms={null} />);
+    await user.type(screen.getByLabelText("승인자"), "김담당");
+    await user.click(screen.getByRole("button", { name: "승인하고 WMS 등록" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("WMS에 등록하지 못했습니다.");
+  });
 });

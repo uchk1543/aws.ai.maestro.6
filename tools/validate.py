@@ -2,6 +2,7 @@
 
 P0 규칙 셋(X-INV-01 송장 번호, X-QTY-01 총수량, X-WT-01 총중량)은 서류 전체 값만 비교한다.
 P1 규칙(FB06 #163)은 X-PKG-01 총포장수(서류끼리), X-CNTR-01 컨테이너 번호 체크 디지트와 X-SUM-01 줄 금액 합(서류 한 장 안)이다.
+현장 칸 규칙(B13 #229)은 X-MARK-01 화인(선하증권↔포장명세서), X-PKG-02 컨테이너 줄 포장 수 합과 X-PKG-03 품목별 포장 수 합(서류 한 장 안)이다.
 규칙 문장틀과 허용 오차는 tools/rules/rules.csv, 비교 전에 맞추는 표기(단위 별칭, 번호·품명 정리)는
 tools/rules/units.csv, tools/rules/text_rules.csv 에 있다.
 """
@@ -385,10 +386,113 @@ def _check_amount_sum(docs: list[ExtractedDocument]) -> list[Issue]:
     return issues
 
 
-# 서류 한 장 안에서 판정하는 규칙(rules.csv의 rule_id → 판정 함수). 나머지는 서류끼리 비교(_check_rule)
+_MARK_DROP = re.compile(r"[^A-Z0-9]")  # 화인 비교용: 영문 대문자·숫자만 남긴다 (줄 구성과 구두점은 서류마다 다르다)
+def _marks_problem(doc: ExtractedDocument) -> str | None:
+    """화인으로 비교할 글자를 못 구하면 그 이유(예: '포장명세서 화인 흐림'). 구했으면 None."""
+    cell = doc.marks
+    if cell is None:
+        return f"{DOC_TYPE_KO[doc.doc_type]} 화인 칸 없음"
+    text = cell.value if isinstance(cell.value, str) else cell.raw
+    if _MARK_DROP.sub("", (text or "").upper()):
+        return None
+    return f"{DOC_TYPE_KO[doc.doc_type]} 화인 {cell.unreadable or '읽을 글자가 없음'}"
+def _marks_text(doc: ExtractedDocument) -> str:
+    cell = doc.marks
+    assert cell is not None  # 호출하는 쪽이 칸이 있는 것만 넘긴다
+    return " ".join((cell.value if isinstance(cell.value, str) else cell.raw or "").split())
+def _check_marks(docs: list[ExtractedDocument]) -> list[Issue]:
+    """X-MARK-01: 선하증권 화인과 포장명세서 화인이 같은지. 영문 대문자·숫자만 남겨 비교한다.
+    줄을 더하거나 빼는 것은 틀린 것이 아닐 수 있어서 다르면 '확인 필요'다(불일치로 확정하지 않는다).
+    한쪽이라도 그 서류에 화인 칸이 없으면(스타일 2 포장명세서) 건너뛴다.
+    """
+    bl = next((d for d in docs if d.doc_type == "bill_of_lading"), None)
+    pl = next((d for d in docs if d.doc_type == "packing_list"), None)
+    if bl is None or pl is None or _is_absent(bl.marks) or _is_absent(pl.marks):
+        return []
+    template = _rule("X-MARK-01", "확인 필요")["template"]
+    cells = {d.doc_type: IssueCell(doc=d.doc_type, field="marks", raw=d.marks.raw if d.marks else None) for d in (bl, pl)}
+    for doc in (bl, pl):
+        problem = _marks_problem(doc)
+        if problem:
+            return [Issue(rule_id="X-MARK-01", grade="확인 필요", cells=[cells[doc.doc_type]], evidence=template.format(reason=problem))]
+    if _MARK_DROP.sub("", _marks_text(bl).upper()) == _MARK_DROP.sub("", _marks_text(pl).upper()):
+        return []
+    reason = f"선하증권 '{_marks_text(bl)}'과 포장명세서 '{_marks_text(pl)}'이 다름"
+    return [Issue(rule_id="X-MARK-01", grade="확인 필요", cells=[cells["bill_of_lading"], cells["packing_list"]], evidence=template.format(reason=reason))]
+def _check_package_sum(
+    docs: list[ExtractedDocument],
+    *,
+    rule_id: str,
+    doc_type: str,
+    rows: Callable[[ExtractedDocument], list[tuple[int, Cell | None]]],
+    rows_field: str,
+    row_label: str,
+) -> list[Issue]:
+    """줄별 포장 수의 합이 총포장수와 같은지. 합은 코드가 더한다.
+    총포장수 칸이 없거나, 줄이 없거나, 줄 포장 수가 모두 '칸 없음'이면 건너뛴다(그 양식에 없는 칸).
+    일부 줄만 못 읽었거나 총포장수를 숫자로 못 풀면 합을 내지 않고 '확인 필요'다.
+    """
+    base = _rule(rule_id, "불일치")
+    tol = float(base["tolerance"])
+    issues: list[Issue] = []
+    for doc in docs:
+        if doc.doc_type != doc_type or _is_absent(doc.total_packages):
+            continue
+        total = doc.total_packages
+        assert total is not None
+        lines = rows(doc)
+        if not lines or all(_is_absent(c) for _, c in lines):
+            continue
+        ko = DOC_TYPE_KO[doc.doc_type]
+        total_cell = IssueCell(doc=doc.doc_type, field="total_packages", raw=total.raw)
+        problem: tuple[str, IssueCell] | None = None
+        if not isinstance(total.value, (int, float)):
+            problem = (f"총포장수 {total.unreadable or '숫자로 풀 수 없음'}", total_cell)
+        else:
+            for n, cell in lines:
+                if cell is None or not isinstance(cell.value, (int, float)):
+                    why = "칸 없음" if _is_absent(cell) else (cell.unreadable if cell and cell.unreadable else "숫자로 풀 수 없음")
+                    field = f"{rows_field}[{n - 1}].packages"
+                    problem = (f"{row_label.format(n=n)} 포장 수 {why}", IssueCell(doc=doc.doc_type, field=field, raw=cell.raw if cell else None))
+                    break
+        if problem:
+            msg = _rule(rule_id, "확인 필요")["template"].format(doc=ko, reason=problem[0])
+            issues.append(Issue(rule_id=rule_id, grade="확인 필요", cells=[problem[1]], evidence=msg))
+            continue
+        values = [float(c.value) for _, c in lines if c is not None and isinstance(c.value, (int, float))]
+        line_sum = round(sum(values), 3)
+        if abs(line_sum - float(total.value)) <= tol + _EPS:  # type: ignore[arg-type]
+            continue
+        msg = base["template"].format(a_doc=ko, a_val=_fmt(line_sum), b_val=_fmt(float(total.value)))  # type: ignore[arg-type]
+        sum_cell = IssueCell(doc=doc.doc_type, field=f"{rows_field}[*].packages", raw=" + ".join(c.raw or "" for _, c in lines if c is not None))
+        issues.append(Issue(rule_id=rule_id, grade="불일치", cells=[sum_cell, total_cell], evidence=msg))
+    return issues
+def _check_container_packages(docs: list[ExtractedDocument]) -> list[Issue]:
+    """X-PKG-02: 선하증권 컨테이너 줄 포장 수의 합이 총포장수와 같은지."""
+    return _check_package_sum(
+        docs,
+        rule_id="X-PKG-02",
+        doc_type="bill_of_lading",
+        rows=lambda d: [(c.line, c.packages) for c in d.containers],
+        rows_field="containers",
+        row_label="컨테이너 {n}번째 줄",
+    )
+def _check_item_packages(docs: list[ExtractedDocument]) -> list[Issue]:
+    """X-PKG-03: 포장명세서 품목별 포장 수의 합이 총포장수와 같은지."""
+    return _check_package_sum(
+        docs,
+        rule_id="X-PKG-03",
+        doc_type="packing_list",
+        rows=lambda d: [(i.line, i.packages) for i in d.items],
+        rows_field="items",
+        row_label="{n}행",
+    )# 서류 한 장 안에서 판정하는 규칙(rules.csv의 rule_id → 판정 함수). 나머지는 서류끼리 비교(_check_rule)
 _SINGLE_DOC_RULES: dict[str, Callable[[list[ExtractedDocument]], list[Issue]]] = {
     "X-CNTR-01": _check_container,
     "X-SUM-01": _check_amount_sum,
+    "X-MARK-01": _check_marks,
+    "X-PKG-02": _check_container_packages,
+    "X-PKG-03": _check_item_packages,
 }
 
 
