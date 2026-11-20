@@ -39,7 +39,7 @@ curl GET /jobs/{id} → 저장된 Job 그대로
 | 인사 응답·토큰 | '안녕하세요, 만나서 반갑습니다!' / 입력 26, 출력 21, 합계 47 / 0.8초 |
 | structured_output 동작 | 동작함 (`Classification` → doc_type=packing_list, 근거 포함) |
 | 도구 호출 | 됨 (`today` 도구, auto) |
-| 서류 한 장 읽는 시간 | 미확인: samples/에 서류 없음. 받으면 `ping_bedrock <파일> <doc_type>` |
+| 서류 한 장 읽는 시간 | 평균 3.7초, 중간 3.5초, 최대 6.2초 (개발용 상업송장·포장명세서 150장, 동시 3개, read-v2, #93). 분류는 평균 2.0초 (288장, #86) |
 | 정한 READ_MODE | `structured` (기본값). 실제 서류에서 실패하면 `json` |
 
 로컬 실행에는 `botocore[crt]`가 필요하다 (aws login 자격 증명). dev 의존성에 넣었다.
