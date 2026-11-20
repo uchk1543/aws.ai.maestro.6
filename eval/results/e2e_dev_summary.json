@@ -1,0 +1,289 @@
+{
+ "sets": 30,
+ "status": {
+  "waiting_approval": 30
+ },
+ "model_calls": 338,
+ "tokens": {
+  "tokens_in": 1796192,
+  "tokens_out": 145781,
+  "cache_read": 0,
+  "cache_write": 0,
+  "per_set_in": 59873,
+  "per_set_out": 4859
+ },
+ "textract_pages": 114,
+ "cost_usd": {
+  "total": 5.2212,
+  "model": 5.0502,
+  "textract": 0.171,
+  "per_set": 0.174,
+  "per_doc": 0.0458,
+  "price": {
+   "in_per_mtok": 2.0,
+   "out_per_mtok": 10.0,
+   "textract_per_page": 0.0015
+  },
+  "note": "토큰·쪽 수로 어림한 값. 모델은 Anthropic 직접 요금 기준이라 Bedrock 청구액과 다를 수 있다"
+ },
+ "checked_by": {
+  "textract": 14,
+  "pdf_text": 5,
+  "model_reread": 1,
+  "none": 1
+ },
+ "classify_by_format": {
+  "pdf": {
+   "분류": 54,
+   "분류 맞음": 54
+  },
+  "png": {
+   "분류": 20,
+   "분류 맞음": 20
+  },
+  "scan": {
+   "분류": 40,
+   "분류 맞음": 40
+  }
+ },
+ "detection": {
+  "planted": 15,
+  "detected": 15,
+  "flagged": 15,
+  "normal_sets": 17,
+  "false_positive_sets": 5,
+  "check_needed_sets": 0,
+  "wrong_cell_sets": 0,
+  "by_format": {
+   "pdf": {
+    "detected": 5,
+    "planted": 5
+   },
+   "png": {
+    "detected": 5,
+    "planted": 5
+   },
+   "scan": {
+    "detected": 5,
+    "planted": 5
+   }
+  },
+  "by_error_type": {
+   "char_swap": {
+    "detected": 3,
+    "planted": 3
+   },
+   "decimal_shift": {
+    "detected": 2,
+    "planted": 2
+   },
+   "digit_swap": {
+    "detected": 4,
+    "planted": 4
+   },
+   "digit_typo": {
+    "detected": 1,
+    "planted": 1
+   },
+   "lb_as_kg": {
+    "detected": 2,
+    "planted": 2
+   },
+   "net_as_gross": {
+    "detected": 1,
+    "planted": 1
+   },
+   "total_omits_line": {
+    "detected": 1,
+    "planted": 1
+   },
+   "zero_slip": {
+    "detected": 1,
+    "planted": 1
+   }
+  }
+ },
+ "false_positives": [
+  {
+   "set_id": "D004",
+   "rule_id": "X-WT-01",
+   "evidence": "선하증권 총중량 11,900kg과 포장명세서·상업송장 12,185.6kg이 다릅니다.",
+   "variant": null
+  },
+  {
+   "set_id": "D011",
+   "rule_id": "X-PKG-01",
+   "evidence": "포장명세서 총포장수 327과 선하증권 325이 다릅니다.",
+   "variant": null
+  },
+  {
+   "set_id": "D016",
+   "rule_id": "X-CNTR-01",
+   "evidence": "선하증권 컨테이너 번호 SMLU7779294의 체크 디지트가 맞지 않습니다(끝 숫자는 2이어야 함).",
+   "variant": null
+  },
+  {
+   "set_id": "D046",
+   "rule_id": "X-INV-01",
+   "evidence": "원산지증명서 송장 번호 TNC-26-0296과 포장명세서·상업송장 TNC-26-0269이 다릅니다.",
+   "variant": null
+  },
+  {
+   "set_id": "D053",
+   "rule_id": "X-SUM-01",
+   "evidence": "상업송장 줄 금액 합 29,710과 총금액 29,701이 다릅니다.",
+   "variant": null
+  }
+ ],
+ "misses": [],
+ "detection_p0_p1": {
+  "planted": 21,
+  "detected": 20,
+  "flagged": 21,
+  "normal_sets": 12,
+  "false_positive_sets": 0,
+  "check_needed_sets": 0,
+  "wrong_cell_sets": 0,
+  "by_format": {
+   "pdf": {
+    "detected": 8,
+    "planted": 8
+   },
+   "png": {
+    "detected": 5,
+    "planted": 5
+   },
+   "scan": {
+    "detected": 7,
+    "planted": 8
+   }
+  },
+  "by_error_type": {
+   "carton_slip": {
+    "detected": 1,
+    "planted": 1
+   },
+   "char_swap": {
+    "detected": 4,
+    "planted": 4
+   },
+   "check_digit": {
+    "detected": 1,
+    "planted": 1
+   },
+   "decimal_shift": {
+    "detected": 2,
+    "planted": 2
+   },
+   "digit_swap": {
+    "detected": 4,
+    "planted": 4
+   },
+   "digit_typo": {
+    "detected": 1,
+    "planted": 1
+   },
+   "incoterms_conflict": {
+    "detected": 0,
+    "planted": 1
+   },
+   "lb_as_kg": {
+    "detected": 2,
+    "planted": 2
+   },
+   "net_as_gross": {
+    "detected": 2,
+    "planted": 2
+   },
+   "total_digit_swap": {
+    "detected": 1,
+    "planted": 1
+   },
+   "total_omits_line": {
+    "detected": 1,
+    "planted": 1
+   },
+   "zero_slip": {
+    "detected": 1,
+    "planted": 1
+   }
+  },
+  "false_positives": [],
+  "misses": [
+   {
+    "set_id": "D033",
+    "doc": "bill_of_lading",
+    "field": "freight_term",
+    "error_type": "incoterms_conflict"
+   }
+  ]
+ },
+ "fields": {
+  "docs": 60,
+  "docs_correct": 47,
+  "cells": 180,
+  "cells_correct": 167,
+  "unread": 13,
+  "by_field": {
+   "invoice_no": {
+    "correct": 60,
+    "total": 60
+   },
+   "total_gross_kg": {
+    "correct": 60,
+    "total": 60
+   },
+   "total_qty": {
+    "correct": 47,
+    "total": 60
+   }
+  },
+  "by_format": {
+   "pdf": {
+    "correct": 16,
+    "total": 20
+   },
+   "png": {
+    "correct": 15,
+    "total": 20
+   },
+   "scan": {
+    "correct": 16,
+    "total": 20
+   }
+  }
+ },
+ "hs": {
+  "사람 확인 필요": 53,
+  "자동 확정": 1
+ },
+ "hs_score": {
+  "rows": 54,
+  "no_answer": 0,
+  "auto": 1,
+  "wrong_auto": 0,
+  "human": 53,
+  "human_in_top3": 46,
+  "human_no_candidates": 0,
+  "wrong_auto_rows": []
+ },
+ "warnings": 4,
+ "seconds_by_ci_format": {
+  "pdf": {
+   "mean": 17.6,
+   "max": 24.2
+  },
+  "png": {
+   "mean": 19.3,
+   "max": 24.1
+  },
+  "scan": {
+   "mean": 19.5,
+   "max": 24.5
+  }
+ },
+ "seconds": {
+  "mean": 18.8,
+  "max": 24.5
+ }
+}
