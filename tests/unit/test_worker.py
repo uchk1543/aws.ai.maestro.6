@@ -4,6 +4,8 @@
 """
 
 import json
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -18,7 +20,8 @@ import tools.wms as wms
 from tests.unit.fakes import MemoryHSHistory, MemoryWms
 from tests.unit.test_report_shipment import TODAY, MemoryWriter
 from tools.models import (
-    Cell, DeclarationDraft, ExtractedDocument, HSResult, Issue, Job, JobResult, OcrLine, OcrResult, Shipment, Step, WmsState,
+    Cell, DeclarationDraft, ExtractedDocument, HSPick, HSResult, HSSearchTerms, Issue, Job, JobResult, OcrLine, OcrResult,
+    Shipment, Step, WmsState,
 )
 from tools.ocr import PageImage
 
@@ -264,7 +267,7 @@ def test_docs_and_importer_are_saved_then_hs_and_approve_are_200(api_fakes, monk
     row = table.items[JOB]
     assert row["importer"] == IMPORTER  # 앞뒤 공백만 뗀 raw
     assert [d.file for d in handler._DOCS.validate_json(row["docs"])] == [d.file for d in docs]
-    assert seen["hs_recommender"] is worker.recommend_line
+    assert isinstance(seen["hs_recommender"].__self__, worker.HsModelRun)  # 작업마다 새 시간 상한 (#132 리뷰)
     row = shipments.rows[BL]
     assert (row.customs_status, row.arrived_at, row.job_id, row.consignee) == ("입항", TODAY, JOB, IMPORTER)
 
@@ -410,7 +413,46 @@ def test_no_docs_writes_no_columns(table, monkeypatch):
     assert "docs" not in table.items[JOB] and "importer" not in table.items[JOB]
 
 
-def test_recommend_line_uses_importer_history_or_empty_history(monkeypatch):
+@pytest.fixture
+def fake_hs_models(monkeypatch):
+    """HsModelRun.recommend가 넘기는 모델(검색어 뽑기·후보 고르기)을 가짜로 바꾼다. Bedrock을 부르지 않는다.
+
+    검색어는 가구 낱말을 내고, 고르기는 후보 중 9401(의자)로 시작하는 것을 1순위로 고른다. 받은 인자를 기록한다.
+    """
+    calls: dict[str, list] = {"terms": [], "pick": []}
+
+    def terms_reader(name):
+        calls["terms"].append(name)
+        return HSSearchTerms(terms=["의자", "chair", "furniture"])
+
+    def picker(name, candidates):
+        calls["pick"].append((name, [c.hs for c in candidates]))
+        chairs = [c for c in candidates if c.hs.startswith("9401")]
+        return HSPick(picks=chairs[:3])
+
+    monkeypatch.setattr(hs, "bedrock_terms_reader", terms_reader)
+    monkeypatch.setattr(hs, "bedrock_picker", picker)
+    return calls
+
+
+def test_recommend_passes_model_terms_and_picker(monkeypatch, fake_hs_models):
+    """확정 이력이 없으면 모델이 뽑은 검색어로 HS부호 표를 찾고, 모델이 후보 안에서 고른 것을 낸다 (#132 4번).
+
+    배포본에서 품명 그대로 검색하면 'KNOCK-DOWN'의 'DOWN'(깃털) 같은 낱말에 끌려가 가구가 후보에 없었다.
+    """
+    monkeypatch.setattr(handler, "_hs_history", lambda: MemoryHSHistory())
+
+    got = worker.HsModelRun().recommend(read_docs(), 1)
+
+    assert len(fake_hs_models["terms"]) == 1 and len(fake_hs_models["pick"]) == 1
+    name, shown = fake_hs_models["pick"][0]
+    assert name == fake_hs_models["terms"][0]  # 같은 품명으로 검색어를 뽑고 고른다
+    assert any(c.startswith("9401") for c in shown)  # 모델 검색어로 찾은 후보에 의자가 있다
+    assert got.status == "사람 확인 필요" and got.candidates
+    assert all(c.hs.startswith("9401") for c in got.candidates)
+
+
+def test_recommend_uses_importer_history_or_empty_history(monkeypatch, fake_hs_models):
     """수입자를 알면 그 수입자 이력으로 자동 확정, 모르면 이력을 찾지 않는다 (빈 키·다른 수입자와 섞임 방지)."""
     history = MemoryHSHistory()
     monkeypatch.setattr(handler, "_hs_history", lambda: history)
@@ -419,11 +461,90 @@ def test_recommend_line_uses_importer_history_or_empty_history(monkeypatch):
     history.put(IMPORTER, key, "8507602000", "job-old")  # HS부호 표에 있는 코드여야 이력을 믿는다
     history.put("", key, "9999999999", "job-x")
 
-    got = worker.recommend_line(docs, 1)
+    run = worker.HsModelRun()
+    got = run.recommend(docs, 1)
     assert (got.status, got.by, got.hs_code) == ("자동 확정", "history", "8507602000")
+    assert run.step() is None  # 이력으로 끝나면 모델을 부르지 않고 단계 기록도 없다
 
-    got = worker.recommend_line(read_docs(consignee=None), 1)
+    got = worker.HsModelRun().recommend(read_docs(consignee=None), 1)
     assert got.by != "history" and got.hs_code != "9999999999"
+
+
+def test_model_used_on_every_line_is_one_ok_step(monkeypatch, fake_hs_models):
+    """모델을 모두 쓰면 단계 기록에 한 줄(ok)로 남긴다. 모델을 썼는지 화면과 평가에서 보이게 한다 (#132 리뷰)."""
+    monkeypatch.setattr(handler, "_hs_history", lambda: MemoryHSHistory())
+    run = worker.HsModelRun()
+    run.recommend(read_docs(), 1)
+
+    step = run.step()
+    assert (step.tool, step.ok) == ("hs_model", True) and "1행 모두 사용" in step.summary
+
+
+def test_model_failure_falls_back_and_is_logged_as_step(monkeypatch, fake_hs_models):
+    """후보 고르기가 실패하면 찾은 후보의 앞 3개를 보여 주고(자동 확정 없음), 어느 행에서 왜 못 썼는지 단계 기록에 남긴다."""
+    monkeypatch.setattr(handler, "_hs_history", lambda: MemoryHSHistory())
+
+    def broken_picker(name, candidates):
+        raise RuntimeError("AccessDenied")
+
+    monkeypatch.setattr(hs, "bedrock_picker", broken_picker)
+    run = worker.HsModelRun()
+    got = run.recommend(read_docs(), 1)
+
+    assert got.status == "사람 확인 필요" and got.by is None and len(got.candidates) <= 3
+    step = run.step()
+    assert step.ok is False and "1행 후보 고르기 실패(RuntimeError)" in step.summary
+
+
+def test_model_call_over_the_time_limit_is_not_waited_for(monkeypatch, fake_hs_models):
+    """모델 호출이 상한(처리 시작부터)을 넘으면 기다리지 않고 품명 검색으로 대신한다. Lambda 300초를 넘지 않게 (#132 리뷰)."""
+    monkeypatch.setattr(handler, "_hs_history", lambda: MemoryHSHistory())
+    release = threading.Event()
+
+    def hanging_reader(name):
+        release.wait(5)  # 120초 읽기 타임아웃으로 멈춘 호출 대신
+        return HSSearchTerms(terms=["의자"])
+
+    monkeypatch.setattr(hs, "bedrock_terms_reader", hanging_reader)
+    run = worker.HsModelRun(seconds=0.2)
+    started = time.monotonic()
+    try:
+        got = run.recommend(read_docs(), 1)
+        waited = time.monotonic() - started
+    finally:
+        release.set()
+
+    assert waited < 2 and got.status == "사람 확인 필요"
+    summary = run.step().summary
+    assert "1행 검색어 뽑기 시간 초과" in summary and "후보 고르기 건너뜀" in summary  # 상한이 지나 고르기도 부르지 않는다
+    assert fake_hs_models["pick"] == []
+
+
+def test_model_is_skipped_after_the_time_limit(monkeypatch, fake_hs_models):
+    """상한이 이미 지났으면 모델을 부르지 않는다."""
+    monkeypatch.setattr(handler, "_hs_history", lambda: MemoryHSHistory())
+    run = worker.HsModelRun(seconds=0)
+    got = run.recommend(read_docs(), 1)
+
+    assert fake_hs_models == {"terms": [], "pick": []}
+    assert got.status == "사람 확인 필요" and got.by is None
+    step = run.step()
+    assert step.ok is False and "검색어 뽑기 건너뜀" in step.summary and "후보 고르기 건너뜀" in step.summary
+
+
+def test_worker_adds_hs_model_step_after_run_job(table, monkeypatch, fake_hs_models):
+    """처리 Lambda는 run_job이 끝난 뒤 HS 모델 단계 한 줄을 단계 기록에 더해 저장한다."""
+    monkeypatch.setattr(handler, "_hs_history", lambda: MemoryHSHistory())
+    put_job(table)
+
+    def fake(job_id, files, fetch, *, hs_recommender=None, **_):
+        hs_recommender(read_docs(), 1)
+        return Job(job_id=job_id, status="failed", error="시험")
+
+    monkeypatch.setattr(document_agent, "run_job", fake)
+    worker.lambda_handler({"job_id": JOB, "files": FILES}, None)
+
+    assert [s.tool for s in saved(table).steps][-1] == "hs_model"
 
 
 def test_other_columns_of_the_row_are_kept(table, monkeypatch):

@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "../api";
-import { isAllowedFile, MAX_BYTES, UploadPage } from "./UploadPage";
+import { isAllowedFile, MAX_IMAGE_BYTES, MAX_PDF_BYTES, maxBytesOf, UploadPage } from "./UploadPage";
 
 vi.mock("../api", async (importOriginal) => {
   const real = await importOriginal<typeof import("../api")>();
@@ -130,10 +130,27 @@ describe("UploadPage", () => {
     render(<UploadPage />);
     expect(screen.getByRole("button", { name: "업로드" })).toBeDisabled();
 
-    const big = new File([new Uint8Array(MAX_BYTES + 1)], "big.png", { type: "image/png" });
+    const big = new File([new Uint8Array(MAX_IMAGE_BYTES + 1)], "big.png", { type: "image/png" });
     await user.upload(picker(), big);
 
-    expect(screen.getByText("· 너무 큽니다", { exact: false })).toBeInTheDocument();
+    expect(screen.getByText("· 20.0MB까지입니다", { exact: false })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "1개 업로드" })).toBeDisabled();
+  });
+
+  it("사진은 20MB, PDF 는 4.5MB 까지: 10MB 사진은 고를 수 있고 5MB PDF 는 막힌다 (G13)", async () => {
+    const user = userEvent.setup();
+    render(<UploadPage />);
+    expect(screen.getByText("PDF 4.5MB · 사진 20.0MB까지")).toBeInTheDocument();
+
+    await user.upload(picker(), new File([new Uint8Array(10_000_000)], "photo.jpg", { type: "image/jpeg" }));
+    expect(screen.getByRole("button", { name: "1개 업로드" })).toBeEnabled();
+
+    await user.upload(picker(), new File([new Uint8Array(5_000_000)], "scan.pdf", { type: "application/pdf" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("PDF는 4.5MB까지입니다. 쪽을 나누거나 사진으로 찍어 올려 주세요.");
+    expect(screen.getByRole("button", { name: "2개 업로드" })).toBeDisabled();
+  });
+
+  it("maxBytesOf 는 확장자로 한도를 고른다 (대소문자 무시)", () => {
+    expect([maxBytesOf("a.PDF"), maxBytesOf("b.jpeg"), maxBytesOf("c.png")]).toEqual([MAX_PDF_BYTES, MAX_IMAGE_BYTES, MAX_IMAGE_BYTES]);
   });
 });

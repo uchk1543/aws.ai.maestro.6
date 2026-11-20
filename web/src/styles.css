@@ -1832,9 +1832,23 @@ table.cells tr.suspect td {
   border: 0;
 }
 
+/* PDF 원본: 브라우저 PDF 보기의 도구 막대를 끄고(pdfViewSrc) 쪽 하나 비율(A4)로 둔다. 둥근 흰 틀 안에 넣어
+   쪽 둘레에 남는 회색 여백을 가린다 */
+.viewer-pdf {
+  width: 100%;
+  overflow: hidden;
+  max-width: calc(var(--fit-h, 100000px) / 1.4142);
+  margin: 0 auto;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
 iframe.viewer-original {
-  height: 70vh;
-  min-height: 420px;
+  width: calc(100% + 16px);
+  height: auto;
+  aspect-ratio: 1 / 1.4142;
+  margin: -8px;
 }
 
 /* 문서 분류 내역 거르기 칩 (대시보드에서 들어올 때) */
@@ -2485,6 +2499,8 @@ video.port-media.on {
   .dash {
     max-width: 760px;
     margin: 0 auto;
+  }
+}
 
 /* 문서 분류 내역: 스크롤하지 않아도 서류 한 쪽이 한 화면에 다 들어오게 (화면 높이에서 머리·메뉴 높이를 뺀 만큼) */
 .doc-card {
@@ -2565,7 +2581,10 @@ video.port-media.on {
 
   .dash-panel {
     padding: 24px;
+  }
+}
 
+@media (min-width: 1200px) {
   .doc-card {
     --fit-h: calc(100vh - 350px);
     --fit-h: calc(100dvh - 350px);
@@ -2574,6 +2593,135 @@ video.port-media.on {
   /* 오른쪽 인식 결과가 길면 그 칸 안에서만 스크롤한다 (카드 전체는 한 화면) */
   .doc-card-info {
     max-height: calc(var(--fit-h) + 24px);
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+}
+
+/* G12 위변조 확인: 머리의 관리자 문서 버튼 자리, 오른쪽 아래 읽은 칸 표 */
+.review-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin-bottom: 12px;
+}
+
+.review-head h2 {
+  margin: 0 auto 0 0;
+}
+
+.review-admin {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--fill-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.review-admin:disabled {
+  cursor: not-allowed;
+}
+
+.read-fields {
+  margin-top: 22px;
+}
+
+.read-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.read-table thead th {
+  padding: 0 10px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+
+.read-table tbody th,
+.read-table tbody td {
+  padding: 10px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line);
+}
+
+.read-table tbody th {
+  width: 38%;
+  font-weight: 600;
+}
+
+.read-key {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.read-missing {
+  color: var(--muted);
+}
+
+.read-pick {
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.read-issue {
+  display: block;
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.read-issue .grade {
+  min-height: 22px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.read-how {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.read-table tr.row-mismatch {
+  background: #fdf0ee;
+  box-shadow: inset 3px 0 0 var(--red);
+}
+
+.read-table tr.row-check {
+  background: var(--fill-2);
+  box-shadow: inset 3px 0 0 var(--ink);
+}
+
+.read-table tr.active {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
+@media (min-width: 1200px) {
+  /* PC: 오류 목록과 읽은 칸 표가 길면 오른쪽 칸 안에서만 넘긴다 */
+  .review-side {
+    max-height: calc(100vh - 160px);
     overflow-y: auto;
     padding-right: 4px;
   }
