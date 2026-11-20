@@ -263,18 +263,50 @@ def format_report(detection: dict, fields: dict | None = None) -> str:
     return "\n".join(lines)
 
 
-def oracle_docs(fields_csv: Path = EVAL_DIR / "fields.csv", split_prefix: str = "D") -> dict[str, list[ExtractedDocument]]:
+def oracle_docs(
+    fields_csv: Path = EVAL_DIR / "fields.csv",
+    split_prefix: str = "D",
+    *,
+    with_p1: bool = False,
+    answers_csv: Path = EVAL_DIR / "answers.csv",
+) -> dict[str, list[ExtractedDocument]]:
     """정답 값(심은 오류 포함)을 그대로 읽은 것처럼 만든 가짜 읽기 결과. 모델 호출 없이 규칙만 시험할 때 쓴다.
 
-    실제 판독 오류는 들어 있지 않으므로 이 점수는 규칙의 상한이다. 상업송장과 포장명세서만 만든다.
+    실제 판독 오류는 들어 있지 않으므로 이 점수는 규칙의 상한이다. 기본은 상업송장과 포장명세서만 만든다.
+    with_p1=True면 선하증권(컨테이너 번호, 총포장수, 총중량)과 원산지증명서(송장 번호)도 만들고,
+    정답지 CSV에 없는 두 값을 심기 전 값(answers.csv의 original_value)으로 채운다. 생성기는 오류를 한 칸에만 심기 때문이다.
+      - 상업송장 줄 금액: 줄 하나에 심기 전 총금액 (총금액이 틀린 세트에서만 총금액과 달라진다)
+      - 포장명세서 총포장수: 심기 전 선하증권 총포장수
     """
+    wanted = ("commercial_invoice", "packing_list") + (("bill_of_lading", "certificate_of_origin") if with_p1 else ())
     values: dict[tuple[str, str], dict[str, str]] = defaultdict(dict)
     with fields_csv.open(encoding="utf-8", newline="") as fh:
         for row in csv.DictReader(fh):
-            if row["set_id"].startswith(split_prefix) and row["doc"] in ("commercial_invoice", "packing_list"):
+            if row["set_id"].startswith(split_prefix) and row["doc"] in wanted:
                 values[(row["set_id"], row["doc"])][row["field"]] = row["answer"]
+    original = {(a["set_id"], a["doc"], a["field"]): a["original_value"] for a in load_answers(answers_csv) if a["original_value"]}
+
+    def text_cell(text: str | None) -> Cell | None:
+        return Cell(raw=text, value=text) if text else None
+
+    def number_cell(text: str | None, unit: str | None = None) -> Cell | None:
+        return Cell(raw=text, value=_number(text), unit=unit) if text else None
+
     docs: dict[str, list[ExtractedDocument]] = defaultdict(list)
     for (set_id, doc_type), f in values.items():
+        extra: dict = {}
+        if with_p1 and doc_type == "bill_of_lading":
+            extra = {"container_no": text_cell(f.get("container_no")), "total_packages": number_cell(f.get("total_packages"), "CTN")}
+        elif with_p1 and doc_type == "packing_list":
+            bl = values.get((set_id, "bill_of_lading"), {})
+            packages = original.get((set_id, "bill_of_lading", "total_packages")) or bl.get("total_packages")
+            extra = {"total_packages": number_cell(packages, "CTN")}
+        elif with_p1 and doc_type == "commercial_invoice" and f.get("total_amount"):
+            line = original.get((set_id, doc_type, "total_amount")) or f["total_amount"]
+            extra = {
+                "total_amount": number_cell(f["total_amount"], "USD"),
+                "items": [ExtractedItem(line=1, amount=number_cell(line, "USD"))],
+            }
         docs[set_id].append(
             ExtractedDocument(
                 doc_type=doc_type,  # type: ignore[arg-type]
@@ -284,6 +316,7 @@ def oracle_docs(fields_csv: Path = EVAL_DIR / "fields.csv", split_prefix: str = 
                 total_gross_kg=(
                     Cell(raw=f["total_gross_kg"], value=_number(f["total_gross_kg"])) if f.get("total_gross_kg") else None
                 ),
+                **extra,
             )
         )
     return dict(docs)
@@ -436,21 +469,23 @@ def format_hs_report(r: dict) -> str:
 
 
 def main() -> None:
-    """정답 값으로 규칙만 채점한다 (모델 호출 없음). 예: uv run python -m eval.score --split dev [--hs] [--hs-model]"""
+    """정답 값으로 규칙만 채점한다 (모델 호출 없음). 예: uv run python -m eval.score --split dev [--p1] [--hs] [--hs-model]"""
     from tools.validate import cross_check  # 순환을 피하려고 여기서 부른다
 
     parser = argparse.ArgumentParser(description=main.__doc__)
     parser.add_argument("--split", default="dev", choices=["dev", "test"])
     parser.add_argument("--hs", action="store_true", help="HS 확정과 자동 처리율도 센다 (모델 없음·정답·함정 세 가지)")
+    parser.add_argument("--p1", action="store_true", help="P1 규칙도 센다: 선하증권·원산지증명서까지 만들고 P0+P1 심은 오류를 정답으로 본다")
     parser.add_argument("--hs-model", action="store_true", help="진짜 Bedrock 모델로 HS를 추천해 센다 (aws login과 MODEL_ID 필요, 모델을 부른다)")
     args = parser.parse_args()
     if args.split == "test":
         raise SystemExit("발표용(test)은 저장소에 없고 마지막에 한 번만 돌린다. 이 명령은 dev만 지원한다.")
-    docs = oracle_docs()
+    docs = oracle_docs(with_p1=args.p1)
     with contextlib.redirect_stdout(io.StringIO()):  # cross_check의 [tool] 출력을 숨긴다
         issues = {set_id: cross_check(d) for set_id, d in docs.items() if len(d) >= 2}
     formats = load_formats()
-    detection = score_detection(load_answers(), issues, args.split, fmt_by_doc=formats)
+    phases = ("P0", "P1") if args.p1 else ("P0",)
+    detection = score_detection(load_answers(), issues, args.split, phases=phases, fmt_by_doc=formats)
     fields = score_fields(EVAL_DIR / "fields.csv", docs, fmt_by_doc=formats)
     print(format_report(detection, fields))
     if args.hs or args.hs_model:

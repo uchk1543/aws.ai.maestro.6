@@ -38,13 +38,30 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 | `POST /api/jobs/{id}/hs` | `{"choices":[{"line","hs"}]}` | `{"declaration_draft":{...}}` |
 | `POST /api/jobs/{id}/approve` | `{"approver"}` | `{"wms":{"status","wms_id"}}`, 불일치가 남았으면 409 |
 | `POST /api/chat` | `{"session_id","message"}` | `docs/examples/chat_response.json` |
+| `GET /api/chat/{session_id}` | - | `docs/examples/chat_history.json` (대화 기록 최근 50줄, 오래된 순. #157) |
 | `GET /api/documents?doc_type=<종류>&cursor=<다음 쪽>` | - | `docs/examples/documents.json` (문서 분류 내역, #143) |
 | `GET /api/jobs/{id}/files` | - | `docs/examples/job_files.json` (서류 보기: 원본 주소 + 읽은 칸, #156) |
+| `GET /api/stats` | - | `docs/examples/stats.json` (대시보드 통계, F11 #195) |
+
+대화 기록 (`POST /api/chat`·`GET /api/chat/{session_id}`, E6 #157. 모양은 `tools/models.py`의 `ChatHistoryLine`·`ChatHistoryResponse`)
+- `session_id`: 영문 대소문자·숫자로 시작하고 영문 대소문자·숫자·`-`로 1~64자 (`^[A-Za-z0-9][A-Za-z0-9-]{0,63}$`). `-` 하나는 익명 요청 표시(Query_Agent 로그)라 받지 않는다. 화면의 `crypto.randomUUID()`와 `s-<밀리초>-<16진수>`가 이 형식이다
+  - `POST /api/chat`: 칸이 없거나 null이면 답은 하고 기록은 남기지 않는다. 그 밖의 값이 형식에 맞지 않으면(빈 문자열 포함) 400 "session_id는 영문·숫자로 시작하고 영문·숫자·-로 64자까지입니다"
+  - `GET /api/chat/{session_id}`: 형식에 맞지 않으면 같은 400
+- 요청 하나가 질문 한 줄(`role` `user`)과 답 한 줄(`role` `assistant`)을 남긴다. 기록 저장이 실패해도 답은 그대로 200이다
+- `messages[]` 칸: `session_id`, `ts`, `role`, `text`, `filters`, `count`, `rule`, `blocked`, `block_reason`
+  - 질문 줄: `text`는 앞뒤 공백을 뺀 질문. 나머지 다섯 칸은 모두 null
+  - 막지 않은 답 줄 (`ChatResponse.blocked`가 null): `blocked` false, `filters`는 모델이 낸 조회 조건, `block_reason` null
+    - 조회한 답: `count`는 코드가 센 건수(`rows` 수), `rule`은 통관 지연으로 조회했을 때만 규칙 문장(그 밖은 null)
+    - 조회하지 않은 답 (조건을 못 만듦, 되묻기, 못 담는 조건 `unsupported`, 화물 기록에 없는 상태): `count`·`rule` null. 0건 조회와 구분한다
+  - 가드레일(E7 #152)이 막은 답 줄 (`ChatResponse.blocked`가 있음): `blocked` true, `block_reason`은 `ChatResponse.blocked` 값(예: `무관한 질문`, `프롬프트 공격`), `filters`·`count`·`rule` null
+- `ts`: `<요청 받은 시각, 한국 시간 YYYYMMDDHHMMSSmmm 17자리>#<요청마다 새로 만든 16진수 8자리>#<0 질문 | 1 답>`. 예: `20261121090000123#a1b2c3d4#0`. 앞 17자리는 `infra/README.md` team06-chat의 `ts` 형식 그대로이고, 뒤 꼬리는 같은 밀리초의 두 줄이 겹치지 않게 더한 것이다. 글자 순서가 저장 순서이고, 같은 요청의 질문 줄 바로 뒤에 답 줄이 온다. 화면에 보일 시각은 앞 17자리에서 구한다
+- `GET`은 그 세션에서 `ts`가 가장 큰 50줄을 읽어 만료된 줄을 빼고 오래된 순으로 준다 (줄 기준이라 맨 앞 줄이 짝 없는 답 줄일 수 있다). 기록이 없으면 `{"messages": []}`, 읽기 실패는 502 "대화 기록을 불러오지 못했습니다"
+- 저장: team06-chat (파티션 키 `session_id`, 정렬 키 `ts`, 둘 다 문자열. `infra/README.md` "테이블"). 한 줄의 칸은 `session_id`, `ts`, `role`, `text`, `expires_at`(UTC 유닉스 초 = 요청 시각 + 604800, TTL 7일)이고, 답 줄은 `blocked`와 값이 있는 `filters`(map)·`count`·`rule`·`block_reason`을 더한다. null은 칸을 쓰지 않는다. `block_reason`은 E6이 더한 칸이다. `expires_at`은 `GET` 응답에 없다
 
 서류 보기 (`GET /api/jobs/{id}/files`, F7 #156. 모양은 `tools/models.py`의 `JobFilesResponse`)
 - 서류마다 `url`(원본, 미리 서명된 GET 300초, inline), `content_type`. 화면은 PDF는 iframe, 이미지는 img로 띄운다
-- `pages`: 이미지 서류만 원본 한 장과 크기(px). PDF는 쪽 그림을 만들지 않아 빈 목록
-- `marks`: 칸 위치(bbox). OCR 좌표가 없어 지금은 늘 빈 목록 (Textract B4 뒤)
+- `pages`: 이미지 서류는 원본 한 장과 크기(px). PDF는 처리 Lambda가 그려 둔 쪽 그림(JPEG, 150dpi, 앞 5쪽, `uploads/<원본 키>.pN.jpg`). 그리지 못한 PDF는 빈 목록 (F10 #188)
+- `marks`: 서류 위 표시와 위치(bbox, 쪽 그림에 대한 0~1 비율). 처리 Lambda가 서류마다 매번 Textract OCR을 돌려 저장하고(작업 줄의 `ocr` 칸), 코드가 OCR 글자 줄에서 분류 근거의 제목(`title`)·특징 칸(`feature`)과 읽은 칸의 raw(`field`)를 찾는다. 못 찾은 것은 넣지 않는다. OCR이나 쪽 그림이 없으면 빈 목록 (F10 #188)
 - `fields[]`: 읽은 칸 `{field, label, raw, value, unit, unreadable}`. `field`는 `IssueCell.field`와 같은 이름이라 `issues[].cells`의 `doc`+`field`로 불일치 칸을 바로 짚는다. 읽지 않은 서류는 빈 목록
 - 분류 전(queued·running)인 서류는 빼고, 종류·근거는 문서 분류 내역과 같은 규칙
 
@@ -64,6 +81,14 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 - `suspect`: 서류가 셋 이상일 때 다수결로 고른 서류 종류, 둘뿐이면 null
 처리 방식: API Gateway는 요청 하나를 30초 안에 끝내야 해서, `POST /api/jobs`는 작업을 `queued`로 저장하고 `job_id`를 바로 돌려준다.
 처리 Lambda가 비동기로 `run_job`을 돌려 `running` → `waiting_approval`·`done`·`failed`로 바꾼다. 화면은 `GET /api/jobs/{id}`를 2초마다 부른다.
+대시보드 통계 (`GET /api/stats`, F11 #195. 모양은 `tools/models.py`의 `StatsResponse`)
+- 모델 호출 없이 코드가 team06-jobs·team06-shipments를 센다. 화면은 다시 세지 않는다. 날짜는 한국 시간
+- `todo`: 승인 대기 작업, 그중 불일치가 남은 작업, HS를 사람이 골라야 하는 품목, 분류 못 한 서류(문서 분류 내역의 unknown), 통관 지연 화물
+- `flow`: 통관 상태 6개(진행 순서)별 화물 수. `delayed`: 통관 지연 화물(입항 후 지난 날 수가 큰 순서, 10건까지)
+- `auto`: 처리가 끝난 작업(승인 대기 + 끝남)과 그중 WMS에 자동 등록된 작업 수. `top_rules`: 걸린 문제 수가 많은 규칙 5개
+- 통계에서 문서 분류 내역으로 갈 때 `GET /api/documents`에 거르기를 붙인다: `job_status`, `grade`(그 등급의 문제가 남은 작업), `rule_id`(그 규칙에 걸린 작업), `hs=pending`(HS를 사람이 골라야 하는 작업). 거르기가 있으면 `counts`도 그 안에서 센다
+  - `grade`·`hs=pending`은 모든 상태의 작업에서 찾는다. `todo.mismatch_jobs`·`todo.hs_pending`은 승인 대기 작업만 세므로, 숫자와 목록을 맞추려면 `job_status=waiting_approval`을 함께 붙인다
+
 ## 화물 기록 (team06-shipments 한 줄)
 - 예시: `docs/examples/shipment.json`
 - `customs_status` 값은 아래 6개만 쓴다 (진행 순서). 검사 중은 심사 중 뒤에 거치는 선택 단계다.
@@ -80,7 +105,7 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
   - 입항일 당일이 0일이다. 입항일이 11/17이면 11/20부터 지연이다.
   - 오늘은 한국 시간(Asia/Seoul) 날짜다. 지연 일수 `DELAY_DAYS = 3`은 코드 한 곳에 상수로 둔다.
   - 3일은 데모용으로 정한 값이다. 법령이나 관세청 기준이 아니다. 바꿀 때는 이 문서와 `DELAY_DAYS`, 현황 질문 정답(`eval/queries.csv`)을 함께 고친다.
-  - 답에는 쓴 규칙을 함께 보여 준다 (`ChatResponse.rule`, 예: "입항 후 3일 지나도 수리·반출 아님").
+  - 답에는 쓴 규칙을 함께 보여 준다. 답 문장 끝에 "(통관 지연 기준: …)"으로 붙이고(`ChatResponse`에는 따로 칸이 없다), 대화 기록 줄에는 `rule` 칸으로 남긴다. 예: "입항 후 3일 지나도 수리·반출 아님".
 - 기간 조건(`today` · `this_week` · `last_week` · `range`)은 `arrived_at`(입항일) 기준이다. 주는 월요일부터 일요일까지이고, 날짜 계산은 코드가 한국 시간으로 한다.
 - 현황 조회 조건(`ChatFilters`, `POST /api/chat` 응답의 `filters`)은 상태 하나·기간만 담는다 (#165).
   - `unsupported`: 모델이 이 칸으로 나타내지 못한 조건 목록 (예: 수하인, B/L 번호, 상태 둘 이상). 비어 있지 않으면 조회하지 않고 "… 조건은 아직 조회할 수 없습니다"로 답한다 (`rows` 빈 목록).

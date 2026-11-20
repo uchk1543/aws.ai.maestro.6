@@ -114,8 +114,10 @@ function Answer({ response }: { response: ChatResponse }) {
   );
 }
 
-export function ChatPage() {
+/** ask: 대시보드 화물 통계를 누르면 주소(#/chat?q=…)로 오는 질문. 열릴 때 한 번 보낸다 (G15). */
+export function ChatPage({ ask: askOnOpen }: { ask?: string } = {}) {
   const [messages, setMessages] = useState<ChatMessage[]>(loadMessages);
+  const asked = useRef(false);
   const [input, setInput] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
   const mutation = useMutation({
@@ -135,6 +137,15 @@ export function ChatPage() {
     setInput("");
     mutation.mutate(text);
   }
+
+  useEffect(() => {
+    if (!askOnOpen || asked.current) return;
+    asked.current = true;
+    // 새로 고쳐도 다시 보내지 않게 주소에서 질문을 뺀다 (hashchange 를 내지 않는 replaceState)
+    window.history.replaceState(null, "", "#/chat");
+    ask(askOnOpen.slice(0, MAX_MESSAGE));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 열릴 때 한 번만
+  }, []);
 
   return (
     <section className={messages.length > 0 ? "chat has-log" : "chat"}>

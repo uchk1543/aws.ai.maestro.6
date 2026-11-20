@@ -7,7 +7,7 @@
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # ---------------------------------------------------------------------------
 # 값 목록 (docs/schema.md)
@@ -24,6 +24,7 @@ HSBy = Literal["history", "auto_match", "human"]
 WmsStatus = Literal["승인 대기", "등록됨"]
 WmsBy = Literal["auto", "human"]
 Period = Literal["today", "this_week", "last_week", "range"]
+ChatRole = Literal["user", "assistant"]
 
 DOC_TYPE_KO: dict[str, str] = {
     "bill_of_lading": "선하증권",
@@ -473,6 +474,59 @@ class ChatResponse(_Strict):
     )
 
 
+class ChatHistoryLine(_Strict):
+    """대화 기록 한 줄 (team06-chat 한 줄, GET /chat/{session_id}의 messages 한 줄. E6 #157).
+
+    질문 줄(user)은 filters·count·rule·blocked·block_reason을 모두 null로 둔다.
+    답 줄(assistant)은 blocked가 꼭 있다. 막지 않은 답(false)은 filters가 있고 block_reason이 null이다.
+      count는 실제로 조회했을 때만 있고(조회 안 한 되묻기·읽기 실패·못 담는 조건·모르는 상태는 null), rule은 count가 있을 때만 쓴다.
+    가드레일이 막은 답(true, ChatResponse.blocked가 있던 답)은 block_reason이 비지 않은 문자열이고 filters·count·rule이 null이다.
+    테이블의 expires_at(TTL)은 저장 칸이라 이 모델에 없다 (docs/schema.md 약속 2).
+    """
+
+    session_id: str = Field(description="대화 세션 ID. 영문·숫자로 시작하고 영문·숫자·-로 64자까지 (docs/schema.md 약속 2)")
+    ts: str = Field(
+        description="정렬 키 '<한국 시간 YYYYMMDDHHMMSSmmm>#<16진수 8자리>#<0 질문|1 답>'. 예: '20261121090000123#a1b2c3d4#0'"
+    )
+    role: ChatRole = Field(description="user = 질문, assistant = 답")
+    text: str = Field(description="질문(앞뒤 공백을 뺀 것) 또는 답 문장")
+    filters: ChatFilters | None = Field(default=None, description="답 줄: 모델이 낸 조회 조건. 질문 줄·막힌 답은 null")
+    count: int | None = Field(
+        default=None, description="답 줄: 조회했을 때 코드가 센 건수(rows 수). 조회하지 않은 답·질문 줄·막힌 답은 null"
+    )
+    rule: str | None = Field(default=None, description="답 줄: 쓴 상태 규칙. 통관 지연으로 조회했을 때만(count가 있음). 그 밖은 null")
+    blocked: bool | None = Field(default=None, description="답 줄: 가드레일이 막았는지 (ChatResponse.blocked가 있었는지). 질문 줄은 null")
+    block_reason: str | None = Field(default=None, description="막힌 답 줄: 막힌 이유 (ChatResponse.blocked 값). 그 밖은 null")
+
+    @model_validator(mode="after")
+    def _null_rules(self) -> "ChatHistoryLine":
+        optional = (self.filters, self.count, self.rule, self.blocked, self.block_reason)
+        if self.role == "user":
+            if any(v is not None for v in optional):
+                raise ValueError("질문 줄(user)은 filters·count·rule·blocked·block_reason이 모두 null입니다")
+        elif self.blocked is None:
+            raise ValueError("답 줄(assistant)에는 blocked가 있어야 합니다")
+        elif not self.blocked:
+            if self.filters is None:
+                raise ValueError("막지 않은 답 줄(blocked false)에는 filters가 있어야 합니다")
+            if self.block_reason is not None:
+                raise ValueError("막지 않은 답 줄(blocked false)의 block_reason은 null입니다")
+            if self.rule is not None and self.count is None:
+                raise ValueError("rule은 조회한 답 줄(count가 있음)에만 씁니다")
+        else:
+            if not self.block_reason:
+                raise ValueError("막힌 답 줄(blocked true)에는 block_reason이 있어야 합니다")
+            if any(v is not None for v in (self.filters, self.count, self.rule)):
+                raise ValueError("막힌 답 줄(blocked true)은 filters·count·rule이 모두 null입니다")
+        return self
+
+
+class ChatHistoryResponse(_Strict):
+    """GET /chat/{session_id} 응답 (E6 #157). 만료 안 된 최근 50줄까지, 오래된 순."""
+
+    messages: list[ChatHistoryLine] = Field(default_factory=list, description="대화 기록. 오래된 줄 먼저")
+
+
 ClassifiedBy = Literal["model", "user"]
 
 
@@ -504,7 +558,7 @@ MarkKind = Literal["title", "feature", "field"]
 
 
 class DocPage(_Strict):
-    """서류 한 쪽의 그림. 지금은 이미지 서류만 원본 한 장을 준다 (PDF는 쪽 그림을 만들지 않는다)."""
+    """서류 한 쪽의 그림. 이미지 서류는 원본 한 장, PDF는 처리 Lambda가 그려 둔 쪽 그림 (F10 #188)."""
 
     url: str = Field(description="그림 주소 (미리 서명된 GET, 몇 분 뒤 만료)")
     width: int = Field(description="가로 px")
@@ -512,7 +566,7 @@ class DocPage(_Strict):
 
 
 class DocMark(_Strict):
-    """서류 위 표시. 위치(bbox)는 OCR 좌표가 있어야 해서 지금은 비어 있다 (Textract B4 뒤)."""
+    """서류 위 표시. 위치(bbox)는 처리 Lambda가 저장한 Textract OCR 글자 줄에서 코드가 찾는다 (F10 #188)."""
 
     kind: MarkKind = Field(description="title 제목 · feature 분류 특징 칸 · field 읽은 칸")
     label: str = Field(description="보일 이름")
@@ -544,7 +598,7 @@ class JobFileView(_Strict):
     url: str = Field(description="원본 파일 주소 (미리 서명된 GET, 몇 분 뒤 만료). PDF는 iframe, 이미지는 img로 띄운다")
     content_type: str = Field(description="원본 형식. 예: 'application/pdf', 'image/png'")
     pages: list[DocPage] = Field(default_factory=list, description="쪽 그림. 이미지 서류만 한 장, PDF는 빈 목록")
-    marks: list[DocMark] = Field(default_factory=list, description="서류 위 표시. 지금은 늘 빈 목록")
+    marks: list[DocMark] = Field(default_factory=list, description="서류 위 표시. OCR이나 쪽 그림이 없으면 빈 목록")
     fields: list[ReadField] = Field(default_factory=list, description="읽은 칸. 읽지 않은 서류는 빈 목록")
 
 
@@ -552,6 +606,67 @@ class JobFilesResponse(_Strict):
     """GET /jobs/{id}/files 응답."""
 
     files: list[JobFileView] = Field(default_factory=list, description="올린 순서")
+
+
+# ---------------------------------------------------------------------------
+# 대시보드 통계 (F11 #195). 화면(G15 #196)은 서버가 센 값을 그대로 보여 준다
+# ---------------------------------------------------------------------------
+class TodoCounts(_Strict):
+    """지금 할 일 건수."""
+
+    waiting_approval: int = Field(description="승인 대기 작업 수")
+    mismatch_jobs: int = Field(description="불일치가 남은 승인 대기 작업 수")
+    hs_pending: int = Field(description="승인 대기 작업에서 사람이 HS를 골라야 하는 품목 수")
+    unclassified: int = Field(description="분류 못 한 서류 수 (문서 분류 내역의 unknown)")
+    delayed: int = Field(description="통관 지연 화물 수 (docs/schema.md 화물 기록 규칙)")
+
+
+class FlowStage(_Strict):
+    """통관 단계 하나의 화물 수."""
+
+    status: str = Field(description="통관 상태. 입항 · 수입신고 · 심사 중 · 검사 중 · 수리 · 반출")
+    count: int = Field(description="이 상태인 화물 수")
+
+
+class DelayedShipment(_Strict):
+    """통관 지연 화물 한 건."""
+
+    bl_no: str = Field(description="B/L 번호")
+    consignee: str = Field(description="수하인")
+    item: str = Field(description="대표 품명")
+    arrived_at: date = Field(description="입항일")
+    customs_status: str = Field(description="지금 통관 상태")
+    days: int = Field(description="입항 후 지난 날 수 (입항일 당일이 0, 한국 시간)")
+    job_id: str | None = Field(default=None, description="처리한 작업. 미리 넣은 기록이면 null")
+
+
+class AutoRate(_Strict):
+    """자동 처리율의 분자·분모 (화면이 비율을 그린다)."""
+
+    finished: int = Field(description="처리가 끝난 작업 수 (승인 대기 + 끝남)")
+    auto: int = Field(description="그중 사람 손 없이 WMS에 자동 등록된 작업 수")
+
+
+class RuleCount(_Strict):
+    """자주 걸린 오류 규칙 하나."""
+
+    rule_id: str = Field(description="규칙 표의 rule_id. 예: 'X-WT-01'")
+    grade: Grade = Field(description="이 규칙으로 가장 많이 나온 등급")
+    count: int = Field(description="걸린 문제 수")
+    example: str = Field(description="예시 근거 문장 (같은 규칙으로 처음 센 것. 작업 순서는 정해지지 않는다)")
+
+
+class StatsResponse(_Strict):
+    """GET /stats 응답 (대시보드, F11 #195). 모델 호출 없이 team06-jobs·team06-shipments를 센다."""
+
+    today: date = Field(description="한국 시간 오늘")
+    todo: TodoCounts = Field(description="지금 할 일 건수")
+    flow: list[FlowStage] = Field(description="통관 단계별 화물 수 (진행 순서)")
+    delayed: list[DelayedShipment] = Field(default_factory=list, description="통관 지연 화물. 오래된 순서로 10건까지")
+    delay_rule: str = Field(description="통관 지연 기준 문장")
+    docs_by_type: dict[DocType, int] = Field(description="종류별 서류 수 (문서 분류 내역 counts와 같다)")
+    auto: AutoRate = Field(description="자동 처리율")
+    top_rules: list[RuleCount] = Field(default_factory=list, description="자주 걸린 오류 규칙 상위 5개")
 
 
 # ---------------------------------------------------------------------------
