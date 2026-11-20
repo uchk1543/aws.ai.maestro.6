@@ -6,7 +6,7 @@ CloudFront가 /api/*를 API Gateway로 보내고, rawPath에 /api가 붙어 온�
     POST /api/uploads        → {"uploads"}             (F2, 파일마다 S3에 직접 PUT할 미리 서명된 URL)
     POST /api/jobs           → {"job_id"}              (F3, queued로 저장하고 처리 Lambda를 비동기로 부른 뒤 바로 응답)
     GET  /api/jobs/{id}      → Job                     (화면이 2초마다)
-    POST /api/jobs/{id}/hs   → {"declaration_draft"}   (C3, 사람이 고른 HS 반영)
+    POST /api/jobs/{id}/hs   → {"declaration_draft"}   (C3, 사람이 고른 HS 반영. D2: 조건을 채우면 WMS 자동 등록)
     POST /api/jobs/{id}/approve → {"wms"}              (D3, 사람 승인으로 WMS 등록. 불일치가 남았으면 409)
     POST /api/chat           → ChatResponse            (E5, 현황 조회. 1번 agent.query_agent)
     GET  /api/documents?doc_type=…&cursor=… → DocumentsResponse (G10 #143, 문서 분류 내역. team06-jobs Scan)
@@ -368,11 +368,14 @@ def get_job(job_id: str) -> dict:
 
 def choose_hs(job_id: str, body) -> dict:
     """POST /jobs/{id}/hs. 사람이 고른 HS로 확정하고, 확정 이력에 저장하고, 신고서 초안을 다시 채운다.
+    그다음 자동 등록 조건을 다시 검사해, 다 채우면 바로 가상 WMS에 등록하고(by=auto) 작업을 done으로 끝낸다 (D2).
 
-    언제: 화면에서 '사람 확인 필요' 품목의 HS를 고른 뒤 (agent-design.md 6번). 모델 호출 없음.
+    언제: 화면에서 '사람 확인 필요' 품목의 HS를 고른 뒤 (agent-design.md 6·8번). 모델 호출 없음.
     받는 것: {"choices": [{"line", "hs"}]}. line은 이 작업의 HS 결과에 있는 행, hs는 10자리.
     반환: 200 {"declaration_draft"} / 400 요청 형식 / 404 없는 작업
       / 409 처리 중, 서류 기록이 없음, 수입자를 몰라 확정 이력을 남길 수 없음.
+      WMS 상태는 GET /jobs/{id}의 result.wms로 본다. 등록을 못 해도(조건 미달, B/L 없음, 저장소 오류)
+      HS 선택은 저장하고 200이다. 그때는 승인 대기로 남아 사람이 승인한다 (D3).
     """
     if not JOB_ID.match(job_id):
         return _error(404, "작업을 찾을 수 없습니다")
@@ -411,7 +414,21 @@ def choose_hs(job_id: str, body) -> dict:
     job.steps.append(
         Step(tool="draft_declaration", summary=f"신고서 초안 {len(draft.fields)}칸, 비운 칸 {len(draft.blank_fields)}개", ok=True)
     )
+
+    # HS 선택을 먼저 저장한다. WMS 기록은 같은 멱등 키면 처음 것만 남으므로, 저장된 HS로만 만든다
     save_job(job, keep=item)
+
+    # 자동 등록 재검사 (D2, agent-design.md 8번). 등록 실패는 예외로 오지 않고 (승인 대기, 이유)로 온다
+    before = job.result.wms
+    state, reason = wms.register_if_ready(job_id, docs, job.result, importer)
+    if state.status == "등록됨" and (before is None or before.status != "등록됨"):
+        job.status = "done"  # 사람이 승인할 것이 남지 않았다 (D3 승인과 같다). HS를 다시 고르면 409
+        job.steps.append(Step(tool="push_to_wms", summary=f"WMS 자동 등록: {state.wms_id}", ok=True))
+    elif reason:
+        job.steps.append(Step(tool="push_to_wms", summary=f"WMS 자동 등록 못 함: {reason}", ok=False))
+    if state != before or reason:
+        job.result.wms = state
+        save_job(job, keep=item)
     return _response(200, {"declaration_draft": draft.model_dump(mode="json")})
 
 

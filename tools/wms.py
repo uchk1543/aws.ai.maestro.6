@@ -205,8 +205,69 @@ class ApprovalRefused(Exception):
 
 
 def can_auto_register(result: JobResult) -> bool:
-    """자동 등록 조건: 불일치·확인 필요가 하나도 없고 모든 품목의 HS가 확정됨."""
-    raise NotImplementedError("D2: 자동 등록 조건 (서버 담당)")
+    """자동 등록 조건(agent-design.md 8번)을 코드로 검사한다.
+
+    언제: finish_report 직후, 그리고 사람이 HS를 고른 뒤. register_if_ready가 부른다.
+    받는 것: result(문제 목록, 품목별 HS 결과).
+    반환: 불일치·확인 필요가 하나도 없고(참고는 괜찮다) 모든 품목의 HS가 확정됐으면 True.
+      HS 결과가 하나도 없으면 False (HS를 아직 안 돌렸으면 확정됐다고 볼 수 없다).
+    """
+    if any(issue.grade in ("불일치", "확인 필요") for issue in result.issues):
+        return False
+    if not result.hs:
+        return False
+    return all(r.status in _CONFIRMED and r.hs_code for r in result.hs)
+
+
+def register_if_ready(
+    job_id: str,
+    docs: list[ExtractedDocument],
+    result: JobResult,
+    consignee: str,
+    *,
+    adapter: WmsAdapter | None = None,
+) -> tuple[WmsState, str | None]:
+    """자동 등록 조건을 다 채우면 사람 손 없이 바로 가상 WMS에 등록한다 (by=auto).
+
+    언제: finish_report가 결과를 저장한 직후(처리 Lambda, 후속 이슈), 사람이 HS를 고른 뒤(POST /jobs/{id}/hs).
+      부르는 쪽은 HS 결과를 먼저 저장하고 부른다. 같은 멱등 키는 처음 기록만 남아서, 저장 전 HS로 등록하면 어긋난다.
+    받는 것: job_id, docs(읽은 서류), result(문제·HS·지금 WMS 상태), consignee(수하인 = 수입자),
+      adapter(테스트용. 없으면 가상 WMS dynamo_wms()).
+    반환: (WMS 상태, 못 한 이유).
+      - 등록했으면 (WmsState(등록됨, auto, wms_id), None). 이미 등록된 건은 그 상태를 그대로 돌려준다.
+      - 조건 미달(불일치·확인 필요·HS 대기)이면 (승인 대기, None). 정상 흐름이라 이유를 붙이지 않는다.
+      - 조건은 채웠는데 못 했으면 (승인 대기, 이유): 서류 품목 행에 HS 결과가 없음, 기록을 못 만듦(B/L 번호·수하인 없음),
+        가상 WMS 오류. 부르는 쪽이 이유를 단계 기록에 남겨 사람이 보게 한다.
+      예외는 올리지 않는다. 앞 단계(HS 선택 저장 등)를 막지 않으려고서다. 사람이 승인하면 그때 다시 등록하고(D3),
+      멱등 키라 두 번 들어가지 않는다.
+    """
+    if result.wms is not None and result.wms.status == "등록됨":
+        return result.wms, None
+    waiting = WmsState(status="승인 대기")
+    if not can_auto_register(result):
+        return waiting, None
+    missing = _lines_without_hs(docs, result.hs)
+    if missing:
+        reason = f"{', '.join(f'{n}행' for n in missing)}은 HS 결과가 없습니다"
+        print(f"[wms] 자동 등록 안 함 job={job_id}: {reason}")
+        return waiting, reason
+    try:
+        record = make_record(job_id, docs, result.hs, consignee, "auto")
+    except RecordNotReady as exc:
+        print(f"[wms] 자동 등록 안 함 job={job_id}: {exc}")
+        return waiting, str(exc)
+    try:
+        return push_to_wms(record, adapter=adapter if adapter is not None else dynamo_wms()), None
+    except Exception as exc:  # 저장소 오류뿐 아니라 설정 오류(WMS_TABLE 없음 등)도 승인 대기로 돌린다
+        print(f"[error] WMS 자동 등록 실패 job={job_id} {type(exc).__name__}: {exc}")
+        return waiting, f"가상 WMS 오류({type(exc).__name__}). 승인하면 다시 등록합니다"
+
+
+def _lines_without_hs(docs: list[ExtractedDocument], hs: list[HSResult]) -> list[int]:
+    """서류에는 있는데 HS 결과가 없는 품목 행. 모든 품목에 HS가 있어야 자동 등록한다."""
+    with_hs = {r.line for r in hs}
+    lines = {item.line for doc in docs if doc.doc_type in ITEM_SOURCES for item in doc.items}
+    return sorted(lines - with_hs)
 
 
 def push_to_wms(record: WmsRecord, *, adapter: WmsAdapter) -> WmsState:

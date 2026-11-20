@@ -17,7 +17,7 @@ import tools.extract as extract
 import tools.hs as hs
 import tools.wms as wms
 from tests.unit.fakes import MemoryHSHistory, MemoryWms
-from tools.models import Cell, DeclarationDraft, DeclarationField, ExtractedDocument, Job, RawDocument, WmsState
+from tools.models import Cell, DeclarationDraft, DeclarationField, ExtractedDocument, Issue, Job, RawDocument, WmsState
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "docs" / "examples"
 
@@ -448,7 +448,15 @@ def put_hs_job(table, *, status="waiting_approval", with_docs=True, with_importe
 
 
 @pytest.fixture
-def hs_fakes(fakes, monkeypatch):
+def wms_memory(monkeypatch):
+    """가상 WMS(team06-wms) 대신 메모리판. 승인(D3)과 HS 선택 뒤 자동 등록(D2)이 여기에 쓴다."""
+    memory = MemoryWms()
+    monkeypatch.setattr(wms, "dynamo_wms", lambda: memory)
+    return memory
+
+
+@pytest.fixture
+def hs_fakes(fakes, wms_memory, monkeypatch):
     """C2·C5가 아직 없어서 같은 모양의 가짜를 끼운다. 부른 인자를 calls에 남긴다."""
     history = MemoryHSHistory()
     calls = {"item_key": [], "confirm": [], "draft": []}
@@ -588,10 +596,8 @@ def put_approve_job(
 
 
 @pytest.fixture
-def wms_fakes(fakes, monkeypatch):
-    memory = MemoryWms()
-    monkeypatch.setattr(wms, "dynamo_wms", lambda: memory)
-    return fakes, memory
+def wms_fakes(fakes, wms_memory):
+    return fakes, wms_memory
 
 
 def post_approve(body=None):
@@ -795,3 +801,196 @@ def test_documents_pages_newest_first(fakes, lambda_client, classifier, monkeypa
 @pytest.mark.parametrize(("doc_type", "cursor"), [(None, None), ("invoice", None), ("packing_list", "abc")])
 def test_documents_bad_query_is_400(fakes, doc_type, cursor):
     assert get_documents(doc_type, cursor)[0] == 400
+
+
+# ---------------------------------------------------------------------------
+# POST /jobs/{id}/hs 뒤 자동 등록 재검사 (D2, agent-design.md 8번)
+# ---------------------------------------------------------------------------
+CHOOSE_1 = {"choices": [{"line": 1, "hs": "8507600000"}]}
+
+
+def example_issue(grade: str) -> Issue:
+    """예시 작업의 문제(X-WT-01)를 등급만 바꿔 쓴다."""
+    [issue] = Job.model_validate(example("job_waiting_approval.json")).result.issues
+    return issue.model_copy(update={"grade": grade})
+
+
+def bl_doc() -> ExtractedDocument:
+    return ExtractedDocument(doc_type="bill_of_lading", file="uploads/sample-001/bl.pdf", doc_no=Cell(raw=BL, value=BL))
+
+
+def with_lines(docs: list[ExtractedDocument], lines) -> list[ExtractedDocument]:
+    """예시 서류의 1행을 lines의 행마다 복사한다."""
+    for doc in docs:
+        [first] = doc.items
+        doc.items = [first.model_copy(deep=True, update={"line": n}) for n in lines]
+    return docs
+
+
+def put_ready_job(table, *, lines=(1,), issues=(), docs=None):
+    """lines의 품목이 모두 '사람 확인 필요'이고, 문제는 issues뿐인 작업. docs가 없으면 예시 서류 + 선하증권."""
+    job = Job.model_validate({**example("job_waiting_approval.json"), "job_id": HS_JOB})
+    [waiting] = job.result.hs
+    job.result.issues = list(issues)
+    job.result.hs = [waiting.model_copy(update={"line": n}) for n in lines]
+    if docs is None:
+        docs = with_lines(example_docs(), lines) + [bl_doc()]
+    table.put_item(
+        Item={
+            "job_id": HS_JOB,
+            "data": job.model_dump_json(by_alias=True),
+            "updated_at": 0,
+            "docs": json.dumps([d.model_dump(mode="json") for d in docs], ensure_ascii=False),
+            "importer": IMPORTER,
+        }
+    )
+
+
+def test_hs_choice_registers_to_wms_when_nothing_is_left(hs_fakes, wms_memory):
+    """끝난 기준: '참고'만 남은 작업에서 마지막 품목의 HS를 고르면 승인 없이 바로 등록한다 (by=auto)."""
+    table, _, _ = hs_fakes
+    put_ready_job(table, issues=[example_issue("참고")])
+
+    status, body = call("POST", f"/jobs/{HS_JOB}/hs", CHOOSE_1)
+
+    assert status == 200 and list(body) == ["declaration_draft"]  # 응답 모양은 약속 2 그대로
+    [(wms_id, record)] = wms_memory.records.values()
+    assert (record.idempotency_key, record.by, record.consignee) == (f"{BL}#{HS_JOB}", "auto", IMPORTER)
+    assert [(row["line"], row["hs_code"]) for row in record.items] == [(1, "8507600000")]
+
+    _, job = call("GET", f"/jobs/{HS_JOB}")
+    Job.model_validate(job)
+    assert job["status"] == "done"
+    assert job["result"]["wms"] == {"status": "등록됨", "by": "auto", "wms_id": wms_id}
+    assert job["steps"][-1] == {"tool": "push_to_wms", "summary": f"WMS 자동 등록: {wms_id}", "ok": True}
+    # 등록이 끝난 작업은 HS를 다시 고를 수 없고, 승인을 눌러도 다시 등록하지 않는다 (D3)
+    assert call("POST", f"/jobs/{HS_JOB}/hs", CHOOSE_1)[0] == 409
+    assert call("POST", f"/jobs/{HS_JOB}/approve", {"approver": "김담당"}) == (
+        200, {"wms": {"status": "등록됨", "wms_id": wms_id}},
+    )
+    assert len(wms_memory.records) == 1
+
+
+@pytest.mark.parametrize("grade", ["불일치", "확인 필요"])
+def test_hs_choice_with_problem_left_waits_for_approval(hs_fakes, wms_memory, grade):
+    table, _, _ = hs_fakes
+    put_ready_job(table, issues=[example_issue(grade)])
+
+    assert call("POST", f"/jobs/{HS_JOB}/hs", CHOOSE_1)[0] == 200
+
+    _, job = call("GET", f"/jobs/{HS_JOB}")
+    assert job["status"] == "waiting_approval"
+    assert job["result"]["wms"] == {"status": "승인 대기", "by": None, "wms_id": None}
+    assert job["steps"][-1]["tool"] == "draft_declaration"
+    assert wms_memory.records == {}
+
+
+def test_hs_choice_registers_after_last_line(hs_fakes, wms_memory):
+    """두 품목 중 하나만 고르면 기다리고, 남은 품목까지 고르면 그때 등록한다."""
+    table, _, _ = hs_fakes
+    put_ready_job(table, lines=(1, 2))
+
+    assert call("POST", f"/jobs/{HS_JOB}/hs", CHOOSE_1)[0] == 200
+    _, job = call("GET", f"/jobs/{HS_JOB}")
+    assert (job["status"], job["result"]["wms"]["status"]) == ("waiting_approval", "승인 대기")
+    assert wms_memory.records == {}
+
+    assert call("POST", f"/jobs/{HS_JOB}/hs", {"choices": [{"line": 2, "hs": "8507800000"}]})[0] == 200
+    _, job = call("GET", f"/jobs/{HS_JOB}")
+    assert (job["status"], job["result"]["wms"]["status"], job["result"]["wms"]["by"]) == ("done", "등록됨", "auto")
+    [(_, record)] = wms_memory.records.values()
+    assert [(row["line"], row["hs_code"]) for row in record.items] == [(1, "8507600000"), (2, "8507800000")]
+
+
+def pl_only_line_docs() -> list[ExtractedDocument]:
+    """포장명세서에만 2행이 있다. finish_report는 상업송장 행에만 HS를 돌리므로 2행은 HS 결과가 없다."""
+    pl, ci = example_docs()
+    with_lines([pl], (1, 2))
+    return [pl, ci, bl_doc()]
+
+
+@pytest.mark.parametrize(
+    "docs, words",
+    [(example_docs(), "B/L 번호가 없어"), (pl_only_line_docs(), "2행은 HS 결과가 없습니다")],
+    ids=["no-bl", "pl-only-line"],
+)
+def test_hs_choice_that_cannot_register_says_why(hs_fakes, wms_memory, docs, words):
+    """조건은 채웠는데 등록하지 못하면 이유를 단계 기록에 실패로 남긴다. 승인 대기라 사람이 승인할 수 있다 (D3)."""
+    table, _, _ = hs_fakes
+    put_ready_job(table, docs=docs)
+
+    assert call("POST", f"/jobs/{HS_JOB}/hs", CHOOSE_1)[0] == 200
+
+    _, job = call("GET", f"/jobs/{HS_JOB}")
+    assert (job["status"], job["result"]["wms"]["status"]) == ("waiting_approval", "승인 대기")
+    last = job["steps"][-1]
+    assert (last["tool"], last["ok"]) == ("push_to_wms", False) and words in last["summary"]
+    assert wms_memory.records == {}
+
+
+def test_wms_record_is_built_from_saved_hs(hs_fakes, monkeypatch):
+    """HS 선택을 먼저 저장한 뒤 등록한다. WMS에 쓰는 순간 작업에는 이미 고른 HS가 저장돼 있다."""
+    table, _, _ = hs_fakes
+    seen = []
+
+    class PeekingWms(MemoryWms):
+        def register(self, record):
+            seen.append(handler.load_job(HS_JOB).result.hs[0].hs_code)
+            return super().register(record)
+
+    monkeypatch.setattr(wms, "dynamo_wms", lambda: PeekingWms())
+    put_ready_job(table)
+
+    assert call("POST", f"/jobs/{HS_JOB}/hs", CHOOSE_1)[0] == 200
+    assert seen == ["8507600000"]
+
+
+def test_jobs_save_failure_after_registration_can_be_approved(hs_fakes, wms_memory, monkeypatch):
+    """등록 뒤 작업 저장이 실패해도 HS 선택은 저장돼 있다. 승인하면 같은 기록·같은 wms_id로 끝난다."""
+    table, _, _ = hs_fakes
+    put_ready_job(table)
+    real_put, writes = table.put_item, []
+
+    def flaky_put(Item):
+        writes.append(Item)
+        if len(writes) == 2:  # HS 저장 다음, 등록 결과 저장
+            raise RuntimeError("가짜 jobs 저장 오류")
+        real_put(Item)
+
+    monkeypatch.setattr(table, "put_item", flaky_put)
+
+    assert call("POST", f"/jobs/{HS_JOB}/hs", CHOOSE_1)[0] == 500
+    _, job = call("GET", f"/jobs/{HS_JOB}")
+    assert (job["status"], job["result"]["wms"]["status"]) == ("waiting_approval", "승인 대기")
+    assert job["result"]["hs"][0]["hs_code"] == "8507600000"
+    [(wms_id, record)] = wms_memory.records.values()
+    assert record.items[0]["hs_code"] == "8507600000"
+
+    assert call("POST", f"/jobs/{HS_JOB}/approve", {"approver": "김담당"}) == (
+        200, {"wms": {"status": "등록됨", "wms_id": wms_id}},
+    )
+    assert len(wms_memory.records) == 1
+
+
+def test_wms_failure_still_saves_hs_choice(hs_fakes, monkeypatch):
+    """가상 WMS가 실패해도 HS 선택·이력·초안은 저장하고 200이다. 승인 대기로 남아 사람이 승인한다 (D3)."""
+    table, history, _ = hs_fakes
+
+    class BrokenWms:
+        def register(self, record):
+            raise ClientError({"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "가짜"}}, "PutItem")
+
+    monkeypatch.setattr(wms, "dynamo_wms", lambda: BrokenWms())
+    put_ready_job(table)
+
+    status, body = call("POST", f"/jobs/{HS_JOB}/hs", CHOOSE_1)
+
+    assert status == 200
+    _, job = call("GET", f"/jobs/{HS_JOB}")
+    assert (job["status"], job["result"]["wms"]["status"]) == ("waiting_approval", "승인 대기")
+    assert job["result"]["hs"][0]["status"] == "사람 확정"
+    assert job["result"]["declaration_draft"] == body["declaration_draft"]
+    assert history.rows == {(IMPORTER, "CI-BP-200"): ("8507600000", HS_JOB)}
+    assert job["steps"][-1] == {
+        "tool": "push_to_wms", "summary": "WMS 자동 등록 못 함: 가상 WMS 오류(ClientError). 승인하면 다시 등록합니다", "ok": False,
+    }
