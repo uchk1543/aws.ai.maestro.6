@@ -599,7 +599,7 @@ class RuleCount(_Strict):
     rule_id: str = Field(description="규칙 표의 rule_id. 예: 'X-WT-01'")
     grade: Grade = Field(description="이 규칙으로 가장 많이 나온 등급")
     count: int = Field(description="걸린 문제 수")
-    example: str = Field(description="예시 근거 문장 (가장 최근 작업의 것)")
+    example: str = Field(description="예시 근거 문장 (같은 규칙으로 처음 센 것. 작업 순서는 정해지지 않는다)")
 
 
 class StatsResponse(_Strict):

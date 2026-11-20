@@ -1295,9 +1295,10 @@ def ship(bl_no, status, arrived, job_id=None):
 
 
 def test_stats_after_real_runs(fakes, lambda_client, classifier, shipments):
-    """실제 run_job 결과로 센다: 불일치가 남은 승인 대기 1건, 문제없이 끝난 작업 1건, 분류 못 한 서류 1장."""
-    post_untyped("invoice.pdf", "packing_list.pdf", "memo.pdf")  # 총중량 불일치 → 승인 대기
-    call("POST", "/api/jobs", files("invoice.pdf", "pl_ok.pdf"))  # 일치 → 끝남
+    """실제 run_job 결과로 센다: 승인 대기 2건(그중 불일치가 남은 작업 1건), 분류 못 한 서류 1장.
+    두 작업 모두 선하증권이 없어 빠진 서류 '확인 필요'(DOC-MISSING, #199)로 승인 대기에 남는다."""
+    post_untyped("invoice.pdf", "packing_list.pdf", "memo.pdf")  # 총중량 불일치 + 빠진 서류 → 승인 대기
+    call("POST", "/api/jobs", files("invoice.pdf", "pl_ok.pdf"))  # 서로 맞지만 빠진 서류 → 승인 대기
     process(lambda_client)
     today = TODAY
     shipments.rows.clear()  # 처리 Lambda가 쓴 줄 대신 정해 둔 화물 기록으로 센다
@@ -1313,9 +1314,9 @@ def test_stats_after_real_runs(fakes, lambda_client, classifier, shipments):
     assert status == 200
     res = StatsResponse.model_validate(body)
     assert res.today == today
-    assert (res.todo.waiting_approval, res.todo.mismatch_jobs, res.todo.unclassified) == (1, 1, 1)
-    [mismatch] = [j for j in [handler.load_job(k) for k in fakes.items] if j.status == "waiting_approval"]
-    assert res.todo.hs_pending == sum(1 for h in mismatch.result.hs if h.status == "사람 확인 필요")
+    assert (res.todo.waiting_approval, res.todo.mismatch_jobs, res.todo.unclassified) == (2, 1, 1)
+    waiting = [j for j in [handler.load_job(k) for k in fakes.items] if j.status == "waiting_approval"]
+    assert res.todo.hs_pending == sum(1 for j in waiting for h in j.result.hs if h.status == "사람 확인 필요")
     # 지연: 입항 후 3일 이상 + 수리·반출 아님 (BL-B 5일, BL-C 3일). 오래된 순서
     assert res.todo.delayed == 2 and [(d.bl_no, d.days) for d in res.delayed] == [("BL-B", 5), ("BL-C", 3)]
     assert [(f.status, f.count) for f in res.flow] == [("입항", 1), ("수입신고", 0), ("심사 중", 1), ("검사 중", 1), ("수리", 1), ("반출", 1)]
@@ -1323,6 +1324,7 @@ def test_stats_after_real_runs(fakes, lambda_client, classifier, shipments):
     assert res.auto.finished == 2 and 0 <= res.auto.auto <= 2
     rules = {r.rule_id: r for r in res.top_rules}
     assert (rules["X-WT-01"].grade, rules["X-WT-01"].count) == ("불일치", 1) and "총중량" in rules["X-WT-01"].example
+    assert (rules["DOC-MISSING"].grade, rules["DOC-MISSING"].count) == ("확인 필요", 2)
     assert [r.count for r in res.top_rules] == sorted((r.count for r in res.top_rules), reverse=True)
 
 
@@ -1343,21 +1345,27 @@ def get_filtered(doc_type, **filters):
 
 
 def test_documents_filters_by_job_status_grade_rule_and_hs(fakes, lambda_client, classifier):
+    """두 작업 모두 선하증권이 없어 승인 대기(DOC-MISSING, #199)다. 불일치는 한 작업에만 있다."""
     mismatch = post_untyped("invoice.pdf", "packing_list.pdf")
-    call("POST", "/api/jobs", files("invoice.pdf", "pl_ok.pdf"))
+    _, body = call("POST", "/api/jobs", files("invoice.pdf", "pl_ok.pdf"))
+    ok = body["job_id"]
     process(lambda_client)
 
-    _, everything = get_filtered("commercial_invoice")
-    assert everything["counts"]["commercial_invoice"] == 2
-    for filters in ({"job_status": "waiting_approval"}, {"grade": "불일치"}, {"rule_id": "X-WT-01"}):
+    def ids(**filters):
         status, body = get_filtered("commercial_invoice", **filters)
-        assert status == 200
-        assert [r["job_id"] for r in body["items"]] == [mismatch], filters
-        assert body["counts"]["commercial_invoice"] == 1 and body["counts"]["packing_list"] == 1  # counts 도 거른 안에서
-    assert get_filtered("commercial_invoice", grade="확인 필요")[1]["items"] == []
-    job = handler.load_job(mismatch)
-    pending = any(h.status == "사람 확인 필요" for h in job.result.hs)
-    assert [r["job_id"] for r in get_filtered("commercial_invoice", hs="pending")[1]["items"]] == ([mismatch] if pending else [])
+        assert status == 200, filters
+        return {r["job_id"] for r in body["items"]}, body["counts"]
+
+    assert ids()[1]["commercial_invoice"] == 2
+    for filters in ({"grade": "불일치"}, {"rule_id": "X-WT-01"}, {"job_status": "waiting_approval", "grade": "불일치"}):
+        found, counts = ids(**filters)
+        assert found == {mismatch}, filters
+        assert counts["commercial_invoice"] == 1 and counts["packing_list"] == 1  # counts 도 거른 안에서
+    for filters in ({"job_status": "waiting_approval"}, {"grade": "확인 필요"}, {"rule_id": "DOC-MISSING"}):
+        assert ids(**filters)[0] == {mismatch, ok}, filters
+    assert ids(job_status="done")[0] == set()
+    pending = {j for j in (mismatch, ok) if any(h.status == "사람 확인 필요" for h in handler.load_job(j).result.hs)}
+    assert ids(hs="pending")[0] == pending
 
 
 @pytest.mark.parametrize("filters", [{"job_status": "late"}, {"grade": "높음"}, {"hs": "done"}, {"rule_id": "X" * 41}])
