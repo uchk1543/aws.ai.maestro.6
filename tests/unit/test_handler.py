@@ -241,12 +241,25 @@ def test_bad_post_does_not_invoke_worker(fakes, lambda_client):
         {"files": []},
         {"files": [{"key": "secret/x.pdf", "doc_type": "packing_list"}]},
         {"files": [{"key": "uploads/../x.pdf", "doc_type": "packing_list"}]},
-        {"files": [{"key": "uploads/x.pdf", "doc_type": None}]},
-        {"files": [{"key": "uploads/x.pdf", "doc_type": "bill_of_lading"}]},
+        {"files": [{"key": "uploads/x.pdf", "doc_type": "unknown"}]},
+        {"files": [{"key": "uploads/x.pdf", "doc_type": "invoice"}]},
+        {"files": [{"key": "uploads/x.pdf"}]},  # doc_type 칸 없음 (null과 다르다)
     ],
 )
 def test_bad_requests_are_400(fakes, body):
     assert call("POST", "/jobs", body)[0] == 400
+
+
+@pytest.mark.parametrize(
+    "doc_type", [None, "commercial_invoice", "packing_list", "bill_of_lading", "certificate_of_origin"]
+)
+def test_doc_type_null_or_four_kinds_are_accepted(fakes, lambda_client, doc_type):
+    """화면(G9)은 doc_type을 null로 보내고 run_job이 분류한다. 정해 보내면 약속 1의 4종만 받는다 (#129)."""
+    status, _ = call("POST", "/api/jobs", {"files": [{"key": "uploads/s1/a.pdf", "doc_type": doc_type}]})
+
+    assert status == 200
+    [invoked] = lambda_client.calls
+    assert json.loads(invoked["Payload"])["files"] == [{"key": "uploads/s1/a.pdf", "doc_type": doc_type}]
 
 
 def test_unknown_job_and_path_are_404(fakes):

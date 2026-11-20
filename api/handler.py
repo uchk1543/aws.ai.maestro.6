@@ -30,7 +30,7 @@ from pydantic import TypeAdapter
 from tools import declaration, hs, wms
 from tools.models import ExtractedDocument, Job, Step, WmsState
 
-ALLOWED_DOC_TYPES = {"commercial_invoice", "packing_list"}  # 뼈대 범위 (S2)
+ALLOWED_DOC_TYPES = {"commercial_invoice", "packing_list", "bill_of_lading", "certificate_of_origin"}  # 약속 1의 4종 (#129)
 JOB_ID = re.compile(r"^job-[0-9a-f]{8}$")
 HS_CODE = re.compile(r"^[0-9]{10}$")  # 10자리 HSK
 APPROVER_MAX = 50  # 승인자 이름 길이. 화면 입력칸(WmsPanel maxLength)과 같다
@@ -260,10 +260,12 @@ def _validate_files(body) -> tuple[list[dict] | None, str | None]:
         doc_type = f.get("doc_type") if isinstance(f, dict) else None
         if not isinstance(key, str) or not key.startswith(KEY_PREFIX) or ".." in key:
             return None, f"key는 '{KEY_PREFIX}'로 시작해야 합니다"
-        if doc_type is None:
-            return None, "뼈대에서는 doc_type이 필요합니다 (자동 분류는 Spec 1)"
-        if doc_type not in ALLOWED_DOC_TYPES:
-            return None, f"doc_type은 {sorted(ALLOWED_DOC_TYPES)} 중 하나입니다"
+        # doc_type 칸은 꼭 있어야 하고, 값이 null이면 run_job이 classify_document로 분류한다 (B1·B9).
+        # 화면(G9)은 늘 null을 보낸다 (#129)
+        if "doc_type" not in f:
+            return None, "doc_type 칸이 필요합니다 (모르면 null)"
+        if doc_type is not None and doc_type not in ALLOWED_DOC_TYPES:
+            return None, f"doc_type은 null이거나 {sorted(ALLOWED_DOC_TYPES)} 중 하나입니다"
         clean.append({"key": key, "doc_type": doc_type})
     return clean, None
 
