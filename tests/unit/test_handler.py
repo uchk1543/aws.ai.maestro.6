@@ -41,7 +41,14 @@ def fakes(monkeypatch):
         name = key.rsplit("/", 1)[-1]
         if name == "broken.pdf":
             raise RuntimeError("모델 오류")
-        return RawDocument.model_validate({"total_gross_kg": {"raw": TOTALS[name]}})
+        # 총중량만 서류마다 다르고, 송장 번호와 총수량은 같게 둔다 (빈 칸은 '확인 필요'가 되므로 채워야 한다)
+        return RawDocument.model_validate(
+            {
+                "doc_no": {"raw": "INV-2026-001"},
+                "total_qty": {"raw": "100 PCS"},
+                "total_gross_kg": {"raw": TOTALS[name]},
+            }
+        )
 
     monkeypatch.setattr(extract, "_strands_reader", fake_reader)
     return table
