@@ -94,6 +94,7 @@ class _Read:
     reason: str | None = None  # key가 None일 때 못 구한 이유
     shown: str = ""  # 근거 문장에 쓰는 값
     notation: str | None = None  # 표기 차이를 볼 때 쓰는 값(수량의 단위 표기, 번호의 원래 글자)
+    absent: bool = False  # 그 서류에 이 칸이 없다. 비교에서 빼고 '확인 필요'도 내지 않는다
 
 
 def _total_value(
@@ -151,11 +152,27 @@ def _read_invoice_no(doc: ExtractedDocument) -> _Read:
     return _Read(None, "doc_no", cell.raw, cell.unreadable or "칸 없음")
 
 
+def _read_total_packages(doc: ExtractedDocument) -> _Read:
+    """총포장수(Total Packages, No. of Pkgs). 품목 수량 합계(total_qty)와 다르다.
+
+    포장명세서는 총포장수를 안 찍는 양식도 있어서, 칸이 없으면 비교에서 뺀다(absent). 행을 더해 만들지 않는다.
+    """
+    cell = doc.total_packages
+    if cell is None or (cell.value is None and cell.raw is None and cell.unreadable in (None, "칸 없음")):
+        return _Read(None, "total_packages", None, "칸 없음", absent=True)
+    if isinstance(cell.value, (int, float)):
+        return _Read(float(cell.value), "total_packages", cell.raw, shown=_fmt(float(cell.value)))
+    if cell.unreadable:
+        return _Read(None, "total_packages", cell.raw, cell.unreadable)
+    return _Read(None, "total_packages", cell.raw, "숫자로 풀 수 없음")
+
+
 # 칸 이름(rules.csv target) → (읽는 함수, 숫자인지)
 _READERS: dict[str, tuple[Callable[[ExtractedDocument], _Read], bool]] = {
     "total_gross_kg": (_read_total_gross, True),
     "total_qty": (_read_total_qty, True),
     "invoice_no": (_read_invoice_no, False),
+    "total_packages": (_read_total_packages, True),
 }
 
 
@@ -210,6 +227,8 @@ def _check_rule(rule_id: str, docs: list[ExtractedDocument]) -> list[Issue]:
     readable: list[tuple[ExtractedDocument, _Read, IssueCell]] = []
     for doc in docs:
         read = reader(doc)
+        if read.absent:
+            continue
         cell = IssueCell(doc=doc.doc_type, field=read.field, raw=read.raw)
         if read.key is None:
             text = _rule(rule_id, "확인 필요")["template"].format(doc=DOC_TYPE_KO[doc.doc_type], reason=read.reason)
