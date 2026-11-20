@@ -2,8 +2,9 @@
 # 새 구조(#67) 리소스를 처음 한 번 만든다. 이미 있으면 건너뛴다 (지우거나 바꾸지 않는다). 실행: PM만.
 #   MODEL_ID=<global 추론 프로필 ID> bash infra/create.sh
 # 만드는 것
-#   IAM 역할 team06-api-role, team06-worker-role (인라인 정책만, 필요한 권한만)
-#   DynamoDB team06-jobs, S3 team06-docs-<계정>(서류·배포 zip), team06-web-<계정>(화면, CloudFront만 읽음)
+#   IAM 역할 team06-api-role, team06-worker-role (인라인 정책만, 필요한 권한만. worker에만 Textract)
+#   DynamoDB team06-jobs, team06-hs-history, team06-wms
+#   S3 team06-docs-<계정>(서류·배포 zip), team06-web-<계정>(화면, CloudFront만 읽음)
 #   로그 그룹 2개(보존 7일), Lambda team06-api(30초) · team06-worker(300초), 각각 동시 실행 상한 5
 #   API Gateway HTTP API team06-api (/api, /api/{proxy+}, 요청 제한), CloudFront team06-web (/* → S3, /api/* → API)
 source "$(dirname "$0")/config.sh"
@@ -34,21 +35,27 @@ ensure_role() {
   done
 }
 ensure_role "${ROLE_API}" logs data bedrock invoke-worker
-ensure_role "${ROLE_WORKER}" logs data bedrock
+ensure_role "${ROLE_WORKER}" logs data bedrock textract
 
 # ---------------------------------------------------------------------------
-# 2. DynamoDB 작업 테이블
+# 2. DynamoDB 테이블 (모두 온디맨드, 문자열 키 하나)
 # ---------------------------------------------------------------------------
-if aws dynamodb describe-table --table-name "${TABLE}" >/dev/null 2>&1; then
-  echo "[create] 테이블 ${TABLE} 있음"
-else
-  aws dynamodb create-table --table-name "${TABLE}" \
-    --attribute-definitions AttributeName=job_id,AttributeType=S \
-    --key-schema AttributeName=job_id,KeyType=HASH \
-    --billing-mode PAY_PER_REQUEST >/dev/null
-  aws dynamodb wait table-exists --table-name "${TABLE}"
-  echo "[create] 테이블 ${TABLE} 만듦"
-fi
+ensure_table() {
+  local table="$1" key="$2"
+  if aws dynamodb describe-table --table-name "${table}" >/dev/null 2>&1; then
+    echo "[create] 테이블 ${table} 있음"
+  else
+    aws dynamodb create-table --table-name "${table}" \
+      --attribute-definitions "AttributeName=${key},AttributeType=S" \
+      --key-schema "AttributeName=${key},KeyType=HASH" \
+      --billing-mode PAY_PER_REQUEST >/dev/null
+    aws dynamodb wait table-exists --table-name "${table}"
+    echo "[create] 테이블 ${table} 만듦 (키 ${key})"
+  fi
+}
+ensure_table "${TABLE}" job_id
+ensure_table "${HS_TABLE}" pk
+ensure_table "${WMS_TABLE}" idempotency_key
 
 # ---------------------------------------------------------------------------
 # 3. S3 버킷 두 개 (둘 다 공개 차단)
@@ -104,9 +111,27 @@ ensure_function() {
   fi
   aws lambda put-function-concurrency --function-name "${fn}" --reserved-concurrent-executions 5 >/dev/null
 }
-COMMON_ENV="MODEL_ID=${MODEL_ID},JOBS_TABLE=${TABLE},DOCS_BUCKET=${BUCKET}"
-ensure_function "${FN_WORKER}" "${HANDLER_WORKER}" "${ROLE_WORKER}" 300 1024 "${COMMON_ENV}"
-ensure_function "${FN_API}" "${HANDLER_API}" "${ROLE_API}" 30 512 "${COMMON_ENV},WORKER_FUNCTION=${FN_WORKER}"
+COMMON_ENV="MODEL_ID=${MODEL_ID},JOBS_TABLE=${TABLE},HS_TABLE=${HS_TABLE},WMS_TABLE=${WMS_TABLE},DOCS_BUCKET=${BUCKET}"
+WORKER_ENV="${COMMON_ENV}"
+API_ENV="${COMMON_ENV},WORKER_FUNCTION=${FN_WORKER}"
+ensure_function "${FN_WORKER}" "${HANDLER_WORKER}" "${ROLE_WORKER}" 300 1024 "${WORKER_ENV}"
+ensure_function "${FN_API}" "${HANDLER_API}" "${ROLE_API}" 30 512 "${API_ENV}"
+
+# 환경 변수는 이미 있는 함수도 이 스크립트 값으로 맞춘다 (테이블이 늘면 여기만 고친다).
+# 바뀌는 것: 두 함수의 환경 변수만. 코드·메모리·제한 시간은 그대로.
+sync_env() {
+  local fn="$1" env="$2" current
+  current=$(aws lambda get-function-configuration --function-name "${fn}" --query "Environment.Variables" --output json)
+  if python3 -c 'import json,sys; want=dict(p.split("=",1) for p in sys.argv[1].split(",")); sys.exit(0 if want == (json.loads(sys.argv[2]) or {}) else 1)' "${env}" "${current}"; then
+    echo "[create] ${fn} 환경 변수 그대로"
+  else
+    aws lambda update-function-configuration --function-name "${fn}" --environment "Variables={${env}}" >/dev/null
+    aws lambda wait function-updated-v2 --function-name "${fn}"
+    echo "[create] ${fn} 환경 변수 맞춤"
+  fi
+}
+sync_env "${FN_WORKER}" "${WORKER_ENV}"
+sync_env "${FN_API}" "${API_ENV}"
 
 # ---------------------------------------------------------------------------
 # 6. API Gateway HTTP API (/api, /api/{proxy+} → team06-api)
