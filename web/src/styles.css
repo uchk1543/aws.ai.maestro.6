@@ -1382,6 +1382,8 @@ table.cells tr.suspect td {
 
   table.doc-table .doc-file,
   table.doc-table td:nth-child(2),
+  table.doc-table td:nth-child(3),
+  table.doc-table td:nth-child(4),
   table.doc-table td:nth-child(6),
   table.doc-table td:nth-child(7),
   table.doc-table td:nth-child(8) {
