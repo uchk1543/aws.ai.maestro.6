@@ -12,6 +12,7 @@ CloudFront가 /api/*를 API Gateway로 보내고, rawPath에 /api가 붙어 온�
     GET  /api/documents?doc_type=…&cursor=… → DocumentsResponse (G10 #143, 문서 분류 내역. team06-jobs Scan)
          거르기(F11 #195): job_status · grade · rule_id · hs=pending
     GET  /api/stats           → StatsResponse          (F11 #195, 대시보드 통계. team06-jobs·team06-shipments Scan)
+    GET  /api/jobs?next_action=… → JobListResponse     (#252, 다음 할 일이 같은 작업 목록. team06-jobs Scan)
     GET  /api/jobs/{id}/files → JobFilesResponse        (F7 #156, 서류 보기: 원본 주소 + 읽은 칸)
     GET  /api/jobs/{id}/notice?format=md|html → 파일    (F9 #155, 불일치 통지 문서 내려받기. C7 notice_document)
     GET  /api/chat/{id}      → {"messages"}            (E6 #157, 대화 기록 최근 50줄 오래된 순)
@@ -54,6 +55,8 @@ from tools.models import (
     Job,
     JobFilesResponse,
     JobFileView,
+    JobListResponse,
+    JobSummary,
     AutoRate,
     DelayedShipment,
     FlowStage,
@@ -1006,6 +1009,10 @@ def list_documents(query: dict | None) -> dict:
 FLOW_STATUSES = ("입항", "수입신고", "심사 중", "검사 중", "수리", "반출")  # docs/schema.md 화물 기록 (진행 순서)
 DELAYED_MAX = 10
 TOP_RULES = 5
+# 다음 할 일별 작업 수 (#252). 'none'(끝남)은 세지 않는다
+NEXT_KINDS = ("fix_docs", "choose_hs", "approve", "reupload", "wait")
+AUTO_RULE = "불일치·확인 필요가 없고 모든 품목의 HS가 정해진 작업만 사람 손 없이 WMS에 등록합니다"
+JOB_LIST_MAX = 50
 
 
 def _squash_status(text: str) -> str:
@@ -1041,10 +1048,18 @@ def build_stats(items: list[dict], shipments: list, today) -> StatsResponse:
     rules: dict[str, dict] = {}
     for job in sorted(finished, key=lambda j: j.job_id):  # 같은 순서로 세어 예시 문장이 흔들리지 않게
         for issue in job.result.issues:
+            if issue.grade == "참고":  # 참고는 할 일이 아니라 순위에서 뺀다 (#252)
+                continue
             entry = rules.setdefault(issue.rule_id, {"count": 0, "grades": {}, "example": issue.evidence})
             entry["count"] += 1
             entry["grades"][issue.grade] = entry["grades"].get(issue.grade, 0) + 1
     top = sorted(rules.items(), key=lambda kv: (-kv[1]["count"], kv[0]))[:TOP_RULES]
+    # 다음 할 일별 작업 수 (#252). 작업 하나는 정확히 한 칸 (wms.next_action, GET /jobs/{id}와 같은 규칙)
+    kinds = {k: 0 for k in NEXT_KINDS}
+    for job in jobs:
+        kind = wms.next_action(job).kind
+        if kind in kinds:
+            kinds[kind] += 1
     return StatsResponse(
         today=today,
         todo=TodoCounts(
@@ -1053,6 +1068,7 @@ def build_stats(items: list[dict], shipments: list, today) -> StatsResponse:
             hs_pending=sum(1 for j in waiting for h in j.result.hs if h.status == "사람 확인 필요"),
             unclassified=docs_by_type["unknown"],
             delayed=len(delayed),
+            **kinds,
         ),
         flow=[FlowStage(status=s, count=n) for s, n in flow.items()],
         delayed=[
@@ -1066,13 +1082,72 @@ def build_stats(items: list[dict], shipments: list, today) -> StatsResponse:
         docs_by_type=docs_by_type,
         auto=AutoRate(
             finished=len(finished), auto=sum(1 for j in finished if j.result.wms and j.result.wms.by == "auto"),
+            rule=AUTO_RULE,
         ),
-        top_rules=[
-            RuleCount(rule_id=rule_id, grade=max(e["grades"], key=lambda g: (e["grades"][g], -GRADES.index(g))),
-                      count=e["count"], example=e["example"])
-            for rule_id, e in top
-        ],
+        top_rules=[_rule_count(rule_id, e) for rule_id, e in top],
     )
+
+
+def _rule_count(rule_id: str, e: dict) -> RuleCount:
+    """센 규칙 하나 → RuleCount. 가장 많이 나온 등급의 사람 말 이름(rules.csv description)을 붙인다."""
+    from tools.validate import load_rules
+
+    grade = max(e["grades"], key=lambda g: (e["grades"][g], -GRADES.index(g)))
+    row = load_rules().get((rule_id, grade))
+    return RuleCount(rule_id=rule_id, grade=grade, count=e["count"], example=e["example"], name=row["description"] if row else None)
+
+
+def job_summary(item: dict) -> JobSummary:
+    """작업 한 줄 → 목록 한 줄 (#252). B/L·수입자는 저장된 읽은 서류에서, 다음 할 일은 GET /jobs/{id}와 같은 규칙.
+
+    언제: GET /jobs. 받는 것: team06-jobs의 한 줄. 서류 기록이 없는 작업(처리 중·옛 작업)은 B/L·수입자가 null.
+    """
+    job = Job.model_validate_json(item["data"])
+    loaded = load_job_docs(item)
+    docs, importer = loaded if loaded else ([], None)
+    bl = next((d for d in docs if d.doc_type == "bill_of_lading"), None)
+    invoice = next((d for d in docs if d.doc_type == "commercial_invoice"), None)
+    result = job.result
+    return JobSummary(
+        job_id=job.job_id,
+        status=job.status,
+        bl_no=_raw(bl.doc_no) if bl else None,
+        consignee=importer or (_raw(invoice.consignee_name) if invoice else None),
+        created_at=_kst_minute(int(item.get("created_at") or item.get("updated_at") or 0)),
+        next_action=wms.next_action(job),
+        mismatch=sum(1 for i in result.issues if i.grade == "불일치") if result else 0,
+        hs_pending=sum(1 for h in result.hs if h.status == "사람 확인 필요") if result else 0,
+    )
+
+
+def list_jobs(query) -> dict:
+    """GET /jobs?next_action=<kind>. 다음 할 일이 같은 작업 목록 (#252, 대시보드 카드를 누르면 그 자리에 펼친다).
+
+    받는 것: next_action(fix_docs·choose_hs·approve·reupload·wait 중 하나, 없으면 끝난 작업을 뺀 전부).
+    반환: 200 JobListResponse (최근 작업 먼저, JOB_LIST_MAX건) / 400 next_action 값 / 502 읽기 실패.
+      개수는 GET /stats의 todo 같은 칸과 같은 규칙이다. 깨진 작업 줄은 건너뛴다.
+    """
+    kind = (query or {}).get("next_action")
+    if kind is not None and kind not in NEXT_KINDS:
+        return _error(400, f"next_action은 {', '.join(NEXT_KINDS)} 중 하나입니다")
+    try:
+        items = _scan_jobs()
+    except Exception as exc:
+        print(f"[error] list_jobs {type(exc).__name__}: {exc}")
+        return _error(502, "작업 목록을 읽지 못했습니다")
+    rows: list[tuple[int, JobSummary]] = []
+    for item in items:
+        try:
+            row = job_summary(item)
+        except Exception as exc:  # 깨진 줄 하나 때문에 목록 전체가 실패하지 않게 한다
+            print(f"[warn] list_jobs job={item.get('job_id')} 건너뜀: {type(exc).__name__}: {exc}")
+            continue
+        if row.next_action.kind == "none" or (kind and row.next_action.kind != kind):
+            continue
+        rows.append((int(item.get("created_at") or item.get("updated_at") or 0), row))
+    rows.sort(key=lambda r: (r[0], r[1].job_id), reverse=True)
+    print(f"[api] jobs next_action={kind} {len(rows)}건")
+    return _response(200, JobListResponse(items=[r for _, r in rows[:JOB_LIST_MAX]]).model_dump(mode="json"))
 
 
 def stats() -> dict:
@@ -1283,6 +1358,8 @@ def lambda_handler(event, context):
             return create_uploads(_body(event))
         if method == "POST" and path == "/jobs":
             return create_job(_body(event))
+        if method == "GET" and path == "/jobs":
+            return list_jobs(event.get("queryStringParameters"))
         if method == "GET" and path.startswith("/jobs/") and path.count("/") == 2:
             return get_job(path.split("/")[2])
         parts = path.split("/")
