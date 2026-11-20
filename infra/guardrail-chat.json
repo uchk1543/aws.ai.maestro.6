@@ -1,37 +1,45 @@
 {
   "name": "team06-chat-guard",
-  "description": "team06 현황 조회(AI chat) 입력 검사. 프롬프트 공격과 통관·화물과 무관한 요청을 막는다 (F8 #151)",
-  "crossRegionConfig": { "guardrailProfileIdentifier": "apac.guardrail.v1:0" },
+  "description": "team06 현황 조회(AI chat) 입력 검사. 프롬프트 공격과 유해 표현을 막는다. 무관한 질문 거르기는 코드(E7 #152)가 한다 (F8 #151)",
+  "crossRegionConfig": {
+    "guardrailProfileIdentifier": "apac.guardrail.v1:0"
+  },
   "contentPolicyConfig": {
     "filtersConfig": [
-      { "type": "PROMPT_ATTACK", "inputStrength": "HIGH", "outputStrength": "NONE" },
-      { "type": "HATE", "inputStrength": "MEDIUM", "outputStrength": "MEDIUM" },
-      { "type": "INSULTS", "inputStrength": "MEDIUM", "outputStrength": "MEDIUM" },
-      { "type": "SEXUAL", "inputStrength": "HIGH", "outputStrength": "HIGH" },
-      { "type": "VIOLENCE", "inputStrength": "MEDIUM", "outputStrength": "MEDIUM" },
-      { "type": "MISCONDUCT", "inputStrength": "MEDIUM", "outputStrength": "MEDIUM" }
-    ],
-    "tierConfig": { "tierName": "STANDARD" }
-  },
-  "topicPolicyConfig": {
-    "topicsConfig": [
       {
-        "name": "unrelated_requests",
-        "definition": "Requests unrelated to import shipments, customs clearance status, cargo arrival, or logistics documents, such as writing code, general knowledge, homework, personal advice, or chatting.",
-        "examples": [
-          "파이썬으로 웹 크롤러 코드 짜 줘",
-          "오늘 점심 메뉴 추천해 줘",
-          "대한민국 수도가 어디야?",
-          "Write me a poem about the ocean"
-        ],
-        "type": "DENY",
-        "inputEnabled": true,
-        "inputAction": "BLOCK",
-        "outputEnabled": false,
-        "outputAction": "NONE"
+        "type": "PROMPT_ATTACK",
+        "inputStrength": "HIGH",
+        "outputStrength": "NONE"
+      },
+      {
+        "type": "HATE",
+        "inputStrength": "MEDIUM",
+        "outputStrength": "MEDIUM"
+      },
+      {
+        "type": "INSULTS",
+        "inputStrength": "MEDIUM",
+        "outputStrength": "MEDIUM"
+      },
+      {
+        "type": "SEXUAL",
+        "inputStrength": "HIGH",
+        "outputStrength": "HIGH"
+      },
+      {
+        "type": "VIOLENCE",
+        "inputStrength": "MEDIUM",
+        "outputStrength": "MEDIUM"
+      },
+      {
+        "type": "MISCONDUCT",
+        "inputStrength": "MEDIUM",
+        "outputStrength": "MEDIUM"
       }
     ],
-    "tierConfig": { "tierName": "STANDARD" }
+    "tierConfig": {
+      "tierName": "STANDARD"
+    }
   },
   "blockedInputMessaging": "통관·화물 현황 질문만 답합니다. 예: 이번 주 통관 지연 건 몇 건이야?",
   "blockedOutputsMessaging": "통관·화물 현황 질문만 답합니다."

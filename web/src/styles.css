@@ -1266,73 +1266,12 @@ table.cells tr.suspect td {
   font-size: 14px;
 }
 
-.more {
-  width: 100%;
-  min-height: 52px;
-  margin-top: 8px;
-  font-weight: 600;
-  background: #fff;
-  border: 1.5px solid var(--ink);
-  border-radius: 14px;
-}
-
-/* 서류 표: PC 전까지는 줄마다 카드 (칸 이름은 data-label) */
-@media (max-width: 1199px) {
-  table.doc-table,
-  table.doc-table tbody {
-    display: grid;
-    gap: 8px;
-  }
-
-  table.doc-table thead {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: -1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-  }
-
-  table.doc-table tr {
-    display: block;
-    padding: 6px 18px;
-    background: var(--fill);
-    border-radius: 14px;
-  }
-
-  table.doc-table td {
-    display: grid;
-    grid-template-columns: 76px minmax(0, 1fr);
-    gap: 10px;
-    padding: 7px 0;
-    font-size: 15px;
-    border-bottom: 1px solid #e0e0e0;
-    overflow-wrap: anywhere;
-  }
-
-  table.doc-table td:last-child {
-    border-bottom: 0;
-  }
-
-  table.doc-table td::before {
-    content: attr(data-label);
-    color: var(--muted);
-  }
-
-  table.doc-table .status {
-    justify-self: start;
-  }
-}
-
 @media (min-width: 768px) and (max-width: 1199px) {
   .dochist {
     max-width: 760px;
     margin: 0 auto;
   }
 
-  table.doc-table tbody {
-    grid-template-columns: 1fr 1fr;
-  }
 }
 
 @media (min-width: 1200px) {
@@ -1375,28 +1314,526 @@ table.cells tr.suspect td {
     margin-top: 0;
     font-size: 22px;
   }
+}
 
-  table.doc-table td {
-    vertical-align: top;
+/* ───── 서류 보기 (G11) ─────
+   쪽 그림 위에 서버가 준 bbox 를 % 로 놓는다. 불일치는 빨강, 나머지는 검정. 강조한 박스는 굵게 + 옅게 채움 + 이름표. */
+.viewer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  max-height: 70vh;
+  max-height: 70dvh;
+  padding: 12px;
+  overflow: auto;
+  background: var(--fill);
+  border-radius: 14px;
+}
+
+.viewer-note {
+  padding: 8px 12px;
+  font-size: 14px;
+  background: #fff;
+  border-left: 3px solid var(--ink);
+  border-radius: 4px;
+}
+
+.viewer-page {
+  position: relative;
+  width: 100%;
+  margin: 0;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.viewer-page img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.viewer-page figcaption {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  font-size: 12px;
+}
+
+.mark {
+  position: absolute;
+  padding: 0;
+  background: transparent;
+  border: 1.5px dashed var(--ink);
+  border-radius: 4px;
+  opacity: 0.55;
+}
+
+.mark-mismatch {
+  border-color: var(--red);
+}
+
+.mark-soft {
+  border-color: #9a9a9a;
+}
+
+.mark:hover {
+  opacity: 0.9;
+}
+
+.mark.active {
+  z-index: 2;
+  opacity: 1;
+  border-style: solid;
+  border-width: 3px;
+  background: rgba(20, 20, 20, 0.08);
+  box-shadow: 0 0 0 4px rgba(20, 20, 20, 0.12);
+}
+
+.mark-mismatch.active {
+  background: rgba(214, 64, 42, 0.12);
+  box-shadow: 0 0 0 4px rgba(214, 64, 42, 0.18);
+}
+
+/* 작업 화면: 서류 | 오류 */
+.review-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.doc-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.doc-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 14px;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  background: var(--fill);
+  border: 0;
+  border-radius: 999px;
+}
+
+.doc-tab.active {
+  font-weight: 600;
+  color: #fff;
+  background: var(--ink-2);
+}
+
+.doc-tab-count {
+  min-width: 20px;
+  padding: 0 6px;
+  font-size: 12px;
+  line-height: 20px;
+  text-align: center;
+  color: var(--ink);
+  background: #fff;
+  border-radius: 999px;
+}
+
+/* 서류 탭(.doc-tabs: 높이 40px + 아래 10px)과 같은 자리 */
+.review-side-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  min-height: 40px;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+
+.review-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.review-item {
+  padding: 16px;
+  background: var(--fill-2);
+  border: 1.5px solid transparent;
+  border-radius: 14px;
+}
+
+.review-item.active {
+  background: #fff;
+  border-color: var(--ink);
+}
+
+.value-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.value-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 44px;
+  padding: 12px 14px;
+  text-align: left;
+  background: var(--fill);
+  border: 1.5px solid transparent;
+  border-radius: 12px;
+}
+
+.value-tile.active {
+  color: #fff;
+  background: var(--ink-2);
+}
+
+.value-doc {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.value-tile.active .value-doc,
+.value-tile.active .value-field {
+  color: #c9c9c9;
+}
+
+.value-suspect {
+  font-weight: 600;
+}
+
+.value-raw {
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.value-field {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+@media (min-width: 1200px) {
+  .job {
+    max-width: 1240px;
+    margin: 0 auto;
   }
 
-  table.doc-table .doc-file,
-  table.doc-table td:nth-child(2),
-  table.doc-table td:nth-child(3),
-  table.doc-table td:nth-child(4),
-  table.doc-table td:nth-child(6),
-  table.doc-table td:nth-child(7),
-  table.doc-table td:nth-child(8) {
-    white-space: nowrap;
+  .review-grid {
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 24px;
   }
 
-  table.doc-table .doc-reason {
-    min-width: 200px;
-    color: #444;
+  .review-doc {
+    position: sticky;
+    top: 16px;
   }
 
-  .more {
-    width: auto;
-    padding: 0 32px;
+  .review .viewer {
+    max-height: calc(100vh - 120px);
   }
+}
+
+/* 문서 분류 내역: 서류 카드 (G11). 좌우로 밀어 넘긴다(scroll-snap).
+   모바일·태블릿: 서류 원본 위 · 인식 결과 아래. PC: 서류 원본 | 인식 결과 */
+.deck-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.deck-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.deck-count {
+  min-width: 56px;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.deck-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  color: var(--ink);
+  background: var(--fill);
+  border: 0;
+  border-radius: 999px;
+}
+
+.deck-btn.prev .icon {
+  transform: rotate(180deg);
+}
+
+.deck {
+  display: flex;
+  margin: 0 calc(var(--gutter) * -1);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.deck::-webkit-scrollbar {
+  display: none;
+}
+
+.deck:focus-visible {
+  outline-offset: -2px;
+}
+
+.deck-slide {
+  flex: 0 0 100%;
+  min-width: 0;
+  padding: 0 var(--gutter);
+  scroll-snap-align: center;
+}
+
+.doc-card {
+  padding: 16px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+}
+
+.doc-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.doc-card-head h3 {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-card-body {
+  display: grid;
+  gap: 18px;
+}
+
+.doc-card-missing {
+  padding: 40px 16px;
+  text-align: center;
+  background: var(--fill);
+  border-radius: 14px;
+}
+
+.doc-card-info {
+  display: grid;
+  gap: 18px;
+}
+
+.doc-card-info h4 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.info-list {
+  margin: 0 0 12px;
+  border-top: 1px solid var(--line);
+}
+
+.info-list div {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 0;
+  font-size: 15px;
+  border-bottom: 1px solid var(--line);
+}
+
+.info-list dt {
+  color: var(--muted);
+}
+
+.info-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.mark-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mark-row {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  text-align: left;
+  background: var(--fill);
+  border: 0;
+  border-radius: 12px;
+}
+
+.mark-row.active {
+  color: #fff;
+  background: var(--ink-2);
+}
+
+.mark-row-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.mark-row.active .mark-row-label {
+  color: #c9c9c9;
+}
+
+.mark-row-text {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 1200px) {
+  .deck {
+    margin: 0;
+  }
+
+  .deck-slide {
+    padding: 0;
+  }
+
+  .doc-card {
+    padding: 20px;
+  }
+
+  .doc-card-body {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 24px;
+  }
+
+  .doc-card .viewer {
+    max-height: calc(100vh - 220px);
+  }
+}
+
+/* 박스 팝업 (G11): 박스를 누르면 그 자리에 무엇을 읽었는지 작게 보여 준다 */
+.mark-pop {
+  position: absolute;
+  z-index: 5;
+  width: max-content;
+  max-width: min(280px, 86%);
+  padding: 10px 12px 12px;
+  color: #fff;
+  background: var(--ink);
+  border-radius: 12px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+  animation: pop-in 0.16s ease-out;
+}
+
+.mark-pop-mismatch {
+  background: #b5321f;
+}
+
+.mark-pop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mark-pop-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.mark-pop-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: -6px -6px -6px 0;
+  color: inherit;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+}
+
+.mark-pop-text {
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.mark-pop-detail {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.86);
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mark-pop {
+    animation: none;
+  }
+}
+
+.doc-card-tip {
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+/* 모바일: 긴 근거·읽은 값 목록 대신 서류 위 박스 팝업으로 본다 */
+@media (max-width: 767px) {
+  .doc-card-marks {
+    display: none;
+  }
+}
+
+/* 쪽 그림이 없을 때 원본 그대로 (PDF 는 iframe) */
+.viewer-original {
+  display: block;
+  width: 100%;
+  background: #fff;
+  border: 0;
+}
+
+iframe.viewer-original {
+  height: 70vh;
+  min-height: 420px;
 }

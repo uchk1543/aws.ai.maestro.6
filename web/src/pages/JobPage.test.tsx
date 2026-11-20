@@ -5,11 +5,14 @@ import jobExample from "../../../docs/examples/job_waiting_approval.json";
 import * as api from "../api";
 import { renderWithQuery } from "../test-utils";
 import type { Job } from "../types";
+import { fileViewOf } from "../mockDocs";
+import draft from "../fixtures/documents.draft.json";
+import type { DocumentRecord } from "../types";
 import { JobPage, POLL_MS, pollInterval } from "./JobPage";
 
 vi.mock("../api", async (importOriginal) => {
   const real = await importOriginal<typeof import("../api")>();
-  return { ...real, getJob: vi.fn() };
+  return { ...real, getJob: vi.fn(), getJobFiles: vi.fn() };
 });
 
 const example = jobExample as Job;
@@ -23,6 +26,8 @@ const at = (status: Job["status"], extra: Partial<Job> = {}): Job => ({
 
 beforeEach(() => {
   vi.mocked(api.getJob).mockReset();
+  // 지금 서버에는 서류 보기 경로가 없다 (G11 제안 중) → 글자 오류 목록으로 보여 준다
+  vi.mocked(api.getJobFiles).mockReset().mockRejectedValue(new api.ApiError(404, "없는 경로입니다"));
 });
 
 describe("pollInterval", () => {
@@ -93,5 +98,21 @@ describe("JobPage", () => {
     renderWithQuery(<JobPage jobId="job-ffffffff" />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("작업을 찾을 수 없습니다");
+  });
+  it("서버가 서류 그림을 주면 서류 | 오류 보기를, 못 주면 글자 오류 목록을 보여 준다", async () => {
+    vi.mocked(api.getJob).mockResolvedValue(example);
+    const records = (draft.items as DocumentRecord[]).filter((d) => d.job_id === "job-7c1e");
+    vi.mocked(api.getJobFiles).mockResolvedValue({ files: records.map(fileViewOf) });
+    const { unmount } = renderWithQuery(<JobPage jobId="job-7c1e" />);
+
+    expect(await screen.findByRole("tablist", { name: "서류" })).toBeInTheDocument();
+    expect(screen.getByText("오류 목록 (1)")).toBeInTheDocument();
+    expect(api.getJobFiles).toHaveBeenCalledWith("job-7c1e");
+    unmount();
+
+    vi.mocked(api.getJobFiles).mockRejectedValue(new api.ApiError(404, "없는 경로입니다"));
+    renderWithQuery(<JobPage jobId="job-7c1e" />);
+    expect(await screen.findByText("오류 목록 (1)")).toBeInTheDocument();
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
   });
 });
