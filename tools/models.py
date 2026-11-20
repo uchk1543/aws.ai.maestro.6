@@ -441,6 +441,11 @@ class ChatFilters(_Strict):
     period: Period | None = Field(default=None, description="today · this_week · last_week · range")
     date_from: date | None = Field(default=None, description="period가 range일 때만: 시작일. 모델은 질문에 적힌 날짜만 옮긴다")
     date_to: date | None = Field(default=None, description="period가 range일 때만: 끝일")
+    unsupported: list[str] = Field(
+        default_factory=list,
+        description="질문에 있지만 위 칸으로 나타낼 수 없는 조건을 짧게. 예: '수하인 이그잼플유통', 'B/L 번호 EXSHSZX26003555', "
+        "'상태 둘 이상: 수리, 반출'. 비어 있지 않으면 코드는 조회하지 않고 볼 수 없는 조건이라고 답한다 (#165)",
+    )
 
 
 class PeriodResolved(_Strict):
@@ -459,6 +464,11 @@ class ChatResponse(_Strict):
     filters: ChatFilters = Field(description="쓴 조회 조건")
     period_resolved: PeriodResolved | None = Field(default=None, description="계산한 기간")
     rows: list[Shipment] = Field(default_factory=list, description="조회 결과")
+    blocked: str | None = Field(
+        default=None,
+        description="막았으면 그 이유, 막지 않았으면 null. 가드레일 필터 이름(예: '프롬프트 공격') 또는 '무관한 질문'. "
+        "막으면 모델·조회를 하지 않고 정해 둔 답을 준다 (E7 #152). 채팅 기록(E6 #157)이 이 값을 남긴다",
+    )
 
 
 ClassifiedBy = Literal["model", "user"]

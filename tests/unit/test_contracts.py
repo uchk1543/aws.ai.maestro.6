@@ -85,7 +85,7 @@ PROTOCOLS = {
     "tools.hs:HSHistory": {"get": ("importer", "item_key"), "put": ("importer", "item_key", "hs", "job_id")},
     "tools.hs:HSTable": {"search": ("terms", "limit"), "under": ("prefix6",), "exists": ("hs",)},
     "tools.query:ShipmentStore": {"all": ()},
-    "tools.wms:WmsAdapter": {"register": ("record",)},
+    "tools.wms:WmsAdapter": {"register": ("record",), "registered_jobs": ("bl_no",)},
     "tools.ocr:TextractClient": {"analyze_document": ()},
 }
 

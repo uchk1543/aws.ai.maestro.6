@@ -187,23 +187,27 @@ def test_post_then_worker_shows_mismatch(fakes, lambda_client):
     assert status == 200
     Job.model_validate(job)  # 약속 2 형식
     assert job["status"] == "waiting_approval"
-    # 불일치 칸은 다시 확인한다 (B8): 상업송장·포장명세서 총중량
+    # 선하증권이 없어 먼저 빠진 서류로 남긴다 (#168). 불일치 칸은 다시 확인한다 (B8): 상업송장·포장명세서 총중량
     # 끝나면 화물 기록 한 줄 (E3). 이 서류에는 선하증권이 없어 쓰지 않았다는 줄이다
     assert [s["tool"] for s in job["steps"]] == [
-        "read_document", "read_document", "cross_check", "reread_field", "reread_field", "record_shipment",
+        "check_missing_docs", "read_document", "read_document", "cross_check", "reread_field", "reread_field",
+        "record_shipment",
     ]
     assert "B/L 번호가 없어" in job["steps"][-1]["summary"]
-    [issue] = job["result"]["issues"]
+    issue, missing = job["result"]["issues"]
     assert issue["grade"] == "불일치" and issue["rule_id"] == "X-WT-01"
+    assert (missing["rule_id"], missing["grade"]) == ("DOC-MISSING", "확인 필요")
     # 승인 대기로 끝나면 화면이 승인 입력을 그리도록 wms를 채운다 (#159, 실제 run_job 출력 FB14)
     assert job["result"]["wms"] == {"status": "승인 대기", "by": None, "wms_id": None}
 
 
 def test_matching_docs_are_done(fakes, lambda_client):
+    """서로 맞는 두 장은 불일치가 없다. 선하증권이 없어 빠진 서류 '확인 필요'만 남고 승인 대기다 (#168)."""
     _, body = call("POST", "/api/jobs", files("invoice.pdf", "pl_ok.pdf"))
     process(lambda_client)
     _, job = call("GET", f"/api/jobs/{body['job_id']}")
-    assert job["status"] == "done" and job["result"]["issues"] == []
+    assert job["status"] == "waiting_approval"
+    assert [i["rule_id"] for i in job["result"]["issues"]] == ["DOC-MISSING"]
 
 
 def test_read_failure_is_check_needed(fakes, lambda_client):
@@ -212,7 +216,7 @@ def test_read_failure_is_check_needed(fakes, lambda_client):
     _, job = call("GET", f"/api/jobs/{body['job_id']}")
     assert job["status"] == "waiting_approval"
     assert job["result"]["issues"][0]["rule_id"] == "READ-FAIL"
-    assert job["steps"][1]["ok"] is False
+    assert [s["tool"] for s in job["steps"] if not s["ok"]] == ["read_document"]  # 첫 단계는 빠진 서류 (#168)
 
 
 def test_old_paths_without_api_prefix_still_work(fakes, lambda_client):
@@ -220,7 +224,7 @@ def test_old_paths_without_api_prefix_still_work(fakes, lambda_client):
     _, body = call("POST", "/jobs", files("invoice.pdf", "pl_ok.pdf"))
     process(lambda_client)
     status, job = call("GET", f"/jobs/{body['job_id']}")
-    assert status == 200 and job["status"] == "done"
+    assert status == 200 and job["status"] == "waiting_approval"  # 끝까지 처리됨. 선하증권이 없어 승인 대기 (#168)
 
 
 def test_http_api_v2_events_end_to_end(fakes, lambda_client):
@@ -690,6 +694,33 @@ def test_approve_still_done_when_shipments_store_fails(wms_fakes, monkeypatch):
     assert job["steps"][-1] == {"tool": "mark_registered", "summary": "화물 기록 상태를 고치지 못함: KeyError", "ok": False}
 
 
+def test_approve_same_bl_from_other_job_is_409_and_left_in_steps(wms_fakes):
+    """#176: 같은 B/L이 다른 작업으로 이미 등록됐으면 승인해도 등록하지 않는다. 이유는 409 문장과 단계 기록에 남고,
+    작업은 승인 대기 그대로다. 먼저 들어간 기록은 바뀌지 않는다."""
+    table, memory = wms_fakes
+    first = wms.make_record("job-00000d01", example_docs() + [
+        ExtractedDocument(doc_type="bill_of_lading", file="uploads/old/bl.pdf", doc_no=Cell(raw=BL, value=BL))
+    ], [], IMPORTER, "human")
+    wms.push_to_wms(first, adapter=memory)
+    put_approve_job(table, grade="확인 필요")
+
+    status, body = post_approve()
+
+    assert status == 409 and "이미" in body["error"] and "job-00000d01" in body["error"]
+    assert list(memory.records) == [f"{BL}#job-00000d01"]
+    _, job = call("GET", f"/jobs/{APPROVE_JOB}")
+    assert job["status"] == "waiting_approval" and job["result"]["wms"]["status"] == "승인 대기"
+    last = job["steps"][-1]
+    assert (last["tool"], last["ok"]) == ("push_to_wms", False)
+    assert last["summary"].startswith("사람 승인(김담당) 했지만 WMS에 등록하지 않음: ") and "job-00000d01" in last["summary"]
+
+    # 같은 이유로 다시 눌러도(승인자가 달라도) 409는 그대로이고 단계 기록에는 한 줄만 남는다 (PR #190 리뷰)
+    steps = len(job["steps"])
+    assert post_approve({"approver": "박담당"})[0] == 409
+    _, job = call("GET", f"/jobs/{APPROVE_JOB}")
+    assert len(job["steps"]) == steps
+
+
 def test_approve_with_mismatch_is_409_and_changes_nothing(wms_fakes):
     """끝난 기준: 불일치가 남았으면 409와 {"error"} 문장 (화면이 그대로 보여 준다). 등록도 저장도 하지 않는다."""
     table, memory = wms_fakes
@@ -765,6 +796,9 @@ def test_approve_wms_failure_is_502_and_job_unchanged(wms_fakes, monkeypatch):
     before = dict(table.items[APPROVE_JOB])
 
     class BrokenWms:
+        def registered_jobs(self, bl_no):
+            return {}
+
         def register(self, record):
             raise ClientError({"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "가짜"}}, "PutItem")
 
@@ -1061,6 +1095,9 @@ def test_wms_failure_still_saves_hs_choice(hs_fakes, monkeypatch):
     table, history, _ = hs_fakes
 
     class BrokenWms:
+        def registered_jobs(self, bl_no):
+            return {}
+
         def register(self, record):
             raise ClientError({"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "가짜"}}, "PutItem")
 

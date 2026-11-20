@@ -11,11 +11,12 @@ run_job은 두 길로 돈다. 두 길 모두 같은 도구 묶음(_Run)을 쓰�
 import os
 import threading
 import time
+from pathlib import PurePath
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 
 from agent import today_kst
-from tools.extract import ClassifyReader, ModelReader, ReadError, classify_document, read_document
+from tools.extract import ClassifyReader, ModelReader, ReadError, classify_document, read_document, shrink_image
 from tools.models import (
     DOC_TYPE_KO,
     Classification,
@@ -37,7 +38,10 @@ from tools.reread import apply_rereads, reread_field
 from tools.validate import cross_check
 
 MAX_FILES = 10
-MAX_BYTES = 4_500_000  # Bedrock 문서 블록 한도 (4.5MB)
+MAX_BYTES = 4_500_000  # PDF 한도 = Bedrock 문서 블록 한도 (4.5MB)
+# 이미지(사진) 한도. Bedrock 이미지 한도(3.75MB·8000px)를 넘으면 코드가 줄여 읽는다 (tools.extract.shrink_image, B10 #148).
+# 화면 업로드 한도(G13 #149)와 같은 값이다
+MAX_IMAGE_BYTES = 20_000_000
 # 읽는 종류. 선하증권은 B/L 번호(WMS 등록)와 총중량 3자 대조(X-WT-01)에 쓴다 (#110).
 # 원산지증명서는 원산지 기준·증명서 번호를 신고서 초안에 쓴다 (B2 P1 #11). 그 밖의 종류가 생기면 분류만 하고 '참고'로 알린다
 READ_TYPES = {"commercial_invoice", "packing_list", "bill_of_lading", "certificate_of_origin"}
@@ -56,6 +60,19 @@ HSRecommender = Callable[[list[ExtractedDocument], int], HSResult]  # (읽은 �
 OnDocs = Callable[[list[ExtractedDocument]], None]  # 처리가 끝날 때 읽은 서류(files 순서)를 받는다 (#122)
 
 _CHECKED_BY_KO = {"pdf_text": "PDF 글자", "textract": "Textract", "model_reread": "모델 다시 읽기", "none": "다른 근거"}
+# 읽은 서류가 하나도 없을 때 failed 이유에 파일마다 붙이는 말 (#173). 키는 사람에게 넘긴 문제의 rule_id
+NOTHING_READ = "서류를 하나도 읽지 못했습니다"
+_NOT_READ_KO = {
+    "DOC-UNKNOWN": "종류를 정하지 못함", "CLASSIFY-FAIL": "분류 실패", "READ-FAIL": "읽기 실패", "DOC-LATER": "읽지 않는 종류",
+}
+# 꼭 있어야 하는 서류와 빠졌을 때의 안내 (#168, agent-design.md 1번 '빠진 서류'). 대조 규칙은 두 서류 이상이어야 돌고,
+# WMS 등록에는 B/L 번호가 있어야 한다. 원산지증명서는 FTA 특혜를 받을 때만 내므로 빠져도 묻지 않는다
+_REQUIRED_DOCS: dict[DocType, str] = {
+    "commercial_invoice": "상업송장이 없습니다. 함께 올려 주세요.",
+    "packing_list": "포장명세서가 없습니다. 함께 올려 주세요.",
+    "bill_of_lading": "선하증권(B/L)이 없습니다. WMS 등록에 B/L 번호가 필요합니다. 함께 올려 주세요.",
+}
+MISSING_TOOL = "check_missing_docs"  # 빠진 서류 단계 기록의 이름 (에이전트가 부르는 도구는 아니다. 코드가 남긴다)
 
 
 def _name(key: str) -> str:
@@ -108,6 +125,7 @@ class _Run:
         self.on_step = on_step
         self.handed_over: set[str] = set()  # 분류·읽기에 실패해 사람에게 넘긴 파일
         self.handover: dict[str, Issue] = {}  # 파일별로 사람에게 넘긴 문제 (모름 · 분류 실패 · 읽기 실패)
+        self.missing: list[Issue] | None = None  # 빠진 서류(DOC-MISSING). 분류가 모두 끝난 뒤 한 번 정한다 (#168)
         self.checked: list[Issue] = []  # 마지막 cross_check 결과 (다시 확인 반영 전)
         self.skip = {name for name, tool in (("reread_field", rereader), ("recommend_hs", hs_recommender)) if tool is None}
         self.agent = None  # 에이전트 루프일 때 Strands Agent
@@ -132,10 +150,18 @@ class _Run:
             if key in self._data:
                 return self._data[key]
         data = self.fetch(key)
-        if len(data) > MAX_BYTES:
-            raise ReadError(f"파일이 너무 큽니다 ({len(data):,}바이트, 최대 {MAX_BYTES:,})")
+        limit = MAX_BYTES if PurePath(key).suffix.lower() == ".pdf" else MAX_IMAGE_BYTES
+        if len(data) > limit:
+            raise ReadError(f"파일이 너무 큽니다 ({len(data):,}바이트, 최대 {limit:,})")
+        shrunk = shrink_image(key, data)  # 큰 사진은 줄여 읽는다. 결과를 기억해 두어 분류·읽기가 다시 줄이지 않는다
         with self.lock:
+            first = key not in self._data
             self._data[key] = data
+        if shrunk is not None and first:
+            self.step(
+                "shrink_image",
+                f"{_name(key)} {shrunk.before / 1e6:.1f}MB → {len(shrunk.data) / 1e6:.1f}MB({shrunk.side}px)로 줄여 읽음",
+            )
         return data
 
     def step(self, tool: str, summary: str, ok: bool = True) -> None:
@@ -259,8 +285,32 @@ class _Run:
             return f"{key}: 이미 읽었다 (품목 {len(self.state.docs[key].items)}행)"
         return self._read_record(key, doc_type, self._read_work(key, doc_type))
 
+    # -- 빠진 서류 (#168) ------------------------------------------------------
+    def check_missing(self) -> str | None:
+        """분류가 모두 끝났으면 빠진 서류를 '확인 필요'(DOC-MISSING)로 한 번 남긴다. 있는 서류끼리의 대조는 그대로 한다.
+
+        언제: 고정 순서는 분류 바로 뒤, 에이전트 루프는 분류가 끝난 뒤 처음 cross_check를 부를 때.
+        종류를 아는 서류가 하나도 없으면(모두 unknown·분류 실패) 묻지 않는다. 그 파일들의 문제가 먼저다.
+        반환: 빠진 것이 있으면 단계 요약("빠진 서류: 포장명세서, 선하증권"), 없거나 아직 정할 때가 아니면 None.
+        """
+        with self.lock:
+            if self.missing is not None:
+                return None
+            if any(k not in self.state.doc_types and k not in self.handed_over for k in self.state.files):
+                return None  # 아직 분류하지 않은 파일이 있다
+            have = set(self.state.doc_types.values())
+            gone = [t for t in _REQUIRED_DOCS if t not in have] if have & READ_TYPES else []
+            # 칸은 비운다(REPORT-INCOMPLETE와 같다). 올라온 파일이 없어 화면이 짚을 칸이 없다
+            self.missing = [Issue(rule_id="DOC-MISSING", grade="확인 필요", cells=[], evidence=_REQUIRED_DOCS[t]) for t in gone]
+        if not gone:
+            return None
+        summary = "빠진 서류: " + ", ".join(DOC_TYPE_KO[t] for t in gone)
+        self.step(MISSING_TOOL, summary)
+        return summary
+
     # -- cross_check ---------------------------------------------------------
     def check(self) -> str:
+        note = self.check_missing()  # 에이전트 루프가 부를 때. 고정 순서는 분류 뒤에 이미 정해서 None이다
         with self.lock:
             docs = [self.state.docs[k] for k in self.state.files if k in self.state.docs]
             seq = self.state.read_seq
@@ -278,6 +328,8 @@ class _Run:
         details = [
             f"- {i.grade} {i.rule_id}: " + ", ".join(f"{c.doc}.{c.field}" for c in i.cells) for i in found
         ]
+        if note:  # 에이전트에게 알린다. 요청 문장은 코드가 문제 목록에 남겼다
+            details.append(f"{note} (사람에게 함께 올려 달라고 기록함)")
         return "\n".join([summary, *details])
 
     def _applied(self, issues: list[Issue]) -> list[Issue]:
@@ -341,9 +393,16 @@ class _Run:
         return finish_report(state, handed_over=handed_over, skip=self.skip)
 
     def finish(self) -> Job:
-        """마지막 검사를 하고 Job을 만든다. 조건을 못 채웠으면 '확인 필요'로 남겨 자동 처리되지 않게 한다."""
+        """마지막 검사를 하고 Job을 만든다. 조건을 못 채웠으면 '확인 필요'로 남겨 자동 처리되지 않게 한다.
+
+        읽은 서류가 하나도 없으면 승인할 것이 없으므로 failed로 끝낸다 (승인 대기로 두면 승인이 409로 막힌다, #173).
+        """
+        if not self.state.docs:
+            return self._nothing_read()
         check = self.report()
+        # 화면 문제 목록 순서: 파일 문제(모름·실패) → 대조 결과 → 빠진 서류 (#168)
         issues = [self.handover[k] for k in self.state.files if k in self.handover] + list(self.state.issues)
+        issues += self.missing or []
         if not check.ok:
             self.step("finish_report", "다 못 채움: " + "; ".join(check.missing), ok=False)
             issues.append(
@@ -366,6 +425,20 @@ class _Run:
             result=JobResult(issues=issues, hs=list(self.state.hs), declaration_draft=self.state.declaration_draft),
         )
 
+    def _nothing_read(self) -> Job:
+        """failed Job. error는 '서류를 하나도 읽지 못했습니다: 파일 이유, …'. 파일마다 넘긴 문제는 result.issues에 그대로 두고,
+        빠진 서류(#168)가 있으면 그 뒤에 둔다 (다시 올릴 때 함께 올릴 서류를 알 수 있게)."""
+        issues = [self.handover[k] for k in self.state.files if k in self.handover] + (self.missing or [])
+        reasons = [
+            f"{_name(k)} {_NOT_READ_KO.get(self.handover[k].rule_id, '처리하지 못함') if k in self.handover else '처리하지 못함'}"
+            for k in self.state.files
+        ]
+        error = f"{NOTHING_READ}: " + ", ".join(reasons)
+        print(f"[job] {self.state.job_id} 읽은 서류 없음 → failed ({error})")
+        return Job(
+            job_id=self.state.job_id, status="failed", steps=list(self.state.steps), result=JobResult(issues=issues), error=error
+        )
+
 
 # ---------------------------------------------------------------------------
 # 고정 순서 (코드가 순서를 정한다)
@@ -386,6 +459,8 @@ def _run_fixed(run: _Run) -> None:
     # 1. 분류: 종류가 없는 파일만
     todo = [(k,) for k in state.files if k not in state.doc_types and k not in run.handed_over]
     _in_order(run._classify_work, run._classify_record, todo)
+    # 1-2. 빠진 서류: 분류가 끝나면 한 번 (#168). 있는 서류끼리 읽고 대조하는 것은 그대로 한다
+    run.check_missing()
     # 2. 읽기: 서류마다 따로, 동시에 (다른 서류 값을 프롬프트에 넣지 않는다)
     todo = [
         (k, state.doc_types[k])
@@ -572,6 +647,7 @@ def run_job(
         HS 선택(C3)·승인(D3)에 쓴다 (#122). 실패해도 처리 결과는 그대로 돌려준다
     반환: Job. unknown·분류 실패·읽기 실패는 '확인 필요'(DOC-UNKNOWN · CLASSIFY-FAIL · READ-FAIL)로 남기고
           그 서류는 대조에서 뺀다. finish_report 조건을 못 채우면 REPORT-INCOMPLETE '확인 필요'를 더한다.
+          읽은 서류가 하나도 없으면 failed이고 error는 "서류를 하나도 읽지 못했습니다: 파일 이유, …" (#173).
     """
     if rereader is None:
         def rereader(doc: ExtractedDocument, field: str, data: bytes) -> RereadResult:
