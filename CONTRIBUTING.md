@@ -59,7 +59,8 @@ git fetch && git merge origin/main
 | `web/` | 3번 화면 |
 | `api/`, `tools/ocr.py`, `tools/wms.py` | 4번 서버 |
 | `infra/` | PM (리소스 생성·배포 실행은 PM만. 4번은 PR로 고칠 수 있다) |
-| `data/seed/`, `docs/presentation/` | 5번 발표 |
+| `docs/presentation/` | 5번 발표 (담당 정해질 때까지 PM) |
+| `data/seed/` | 1번 판독 (A5, #79) |
 | `.kiro/`, `docs/schema.md`, `docs/examples/`, `tools/models.py`, `pyproject.toml`, `uv.lock`, `.github/`, `TEAM.md`, `tests/unit/test_contracts.py`, `tests/unit/fakes.py` | 공용 (PM 또는 대리 승인) |
 
 이 표는 `.github/CODEOWNERS`와 같다. 남의 파일을 고쳐야 하면 직접 고치지 말고 담당자에게 요청한다.

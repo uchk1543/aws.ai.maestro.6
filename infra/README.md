@@ -24,14 +24,14 @@ PM과 4번 사이 이름 약속(진입점, 이벤트, 환경 변수)은 이슈 #
 | 정책 | `policy-logs.json` | 두 Lambda의 로그 그룹에 쓰기 |
 | 정책 | `policy-data.json` | `team06-jobs` Get/Put/UpdateItem, 서류 버킷 `uploads/*` Get/PutObject (미리 서명된 URL 포함) |
 | 정책 | `policy-invoke-worker.json` | API Lambda가 `team06-worker`만 호출 |
-| DynamoDB | `team06-jobs`, `team06-hs-history`, `team06-wms` | 온디맨드. 키와 칸은 아래 "테이블" |
+| DynamoDB | `team06-jobs`, `team06-hs-history`, `team06-wms`, `team06-shipments` | 온디맨드. 키와 칸은 아래 "테이블" |
 | 정책 | `policy-textract.json` | worker만: `textract:AnalyzeDocument`, `DetectDocumentText` (서울) |
 | S3 | `team06-docs-<계정ID>` | 공개 차단. `uploads/` 서류, `deploy/` 배포 zip. CORS: 화면 주소에서 PUT만 |
 | S3 | `team06-web-<계정ID>` | 공개 차단. 버킷 정책 `policy-web-bucket.json`: CloudFront 배포 하나만 읽기 |
 | 로그 그룹 | `/aws/lambda/team06-api`, `/aws/lambda/team06-worker` | 보존 7일 |
 | Lambda | `team06-api` | Python 3.13, x86_64, 512MB, 30초, 동시 실행 상한 5. 환경 변수: 공통 + `WORKER_FUNCTION` |
 | Lambda | `team06-worker` | Python 3.13, x86_64, 1024MB, 300초, 동시 실행 상한 5. 환경 변수: 공통 |
-| 공통 환경 변수 | | `MODEL_ID`, `JOBS_TABLE`, `HS_TABLE`, `WMS_TABLE`, `DOCS_BUCKET` (`create.sh`가 이미 있는 함수도 이 값으로 맞춘다) |
+| 공통 환경 변수 | | `MODEL_ID`, `JOBS_TABLE`, `HS_TABLE`, `WMS_TABLE`, `SHIPMENTS_TABLE`, `DOCS_BUCKET` (`create.sh`가 이미 있는 함수도 이 값으로 맞춘다) |
 | API Gateway | `team06-api` (HTTP API) | 경로 `ANY /api`, `ANY /api/{proxy+}` → team06-api (페이로드 2.0, 30초). `$default` 스테이지 자동 배포 |
 | CloudFront | 설명 `team06-web` | 설정 `cloudfront.json`. 기본 → 화면 버킷(캐시), `/api/*` → API Gateway(캐시 안 함, Host 헤더 안 넘김). 기본 주소 사용 |
 | OAC | `team06-web-oac` | CloudFront가 화면 버킷을 서명해서 읽음 |
@@ -44,7 +44,7 @@ PM과 4번 사이 이름 약속(진입점, 이벤트, 환경 변수)은 이슈 #
 | `team06-jobs` | `job_id` | `data`(Job JSON 문자열), `updated_at`(초) | api/, 처리 Lambda |
 | `team06-hs-history` | `pk` = `"<수입자>#<품목 키>"` (품목 키는 `tools.hs.item_key`) | `hs`(10자리), `job_id`, `updated_at` | `HSHistory` 구현 (C2), 사람 확정 (C3) |
 | `team06-wms` | `idempotency_key` = `"<B/L 번호>#<작업 ID>"` | `wms_id`, `record`(WmsRecord JSON 문자열), `registered_at` | `WmsAdapter` 구현 (D1). 같은 키는 조건부 쓰기(`attribute_not_exists`)로 한 번만 |
-| `team06-shipments` | `bl_no` | Shipment 칸 그대로 (날짜는 `YYYY-MM-DD` 문자열, `job_id` 없으면 칸 없음) | `ShipmentStore` 구현 (E2·E3·E4). E2에서 만든다 |
+| `team06-shipments` | `bl_no` | Shipment 칸 그대로 (날짜는 `YYYY-MM-DD` 문자열, `job_id` 없으면 칸 없음) | `ShipmentStore` 구현 (E3·E4). 시드는 `infra/seed_shipments.py` (E2). Lambda 권한에 Scan 포함 |
 
 ## 실행 순서 (PM)
 ```bash
@@ -54,6 +54,10 @@ git switch main && git pull && uv sync && uv run pytest -q
 # 처음 한 번: 리소스 만들기 (있으면 건너뜀, 지우지 않음). CloudFront가 퍼지는 데 5~10분
 MODEL_ID=global.anthropic.claude-sonnet-5-5 bash infra/create.sh
 curl -s https://<CloudFront 주소>/api/            # 4번 F3 전: 핸들러 404 JSON / F3 뒤: {"ok": true}
+
+# 가상 화물 기록 넣기 (E2). 시드 파일이 바뀌면 다시 (같은 bl_no는 덮어씀)
+uv run python infra/seed_shipments.py           # 검사만
+uv run python infra/seed_shipments.py --apply
 
 # 배포 시각(15·18·23·03·07시, 데모 직전)마다: 두 Lambda 코드 갱신
 bash infra/deploy.sh
@@ -83,7 +87,7 @@ curl -s "$URL/api/jobs/<job_id>"                # queued → running → waiting
 - [ ] F1 `create.sh` 실행, CloudFront → API Gateway → Lambda 연결 확인
 - [ ] F3(4번) 합친 뒤 `deploy.sh`, `/api/` → `{"ok": true}`, 끝까지 한 번
 - [x] F4 Textract 권한(worker), team06-hs-history·team06-wms 테이블과 권한, 환경 변수
-- [ ] E2 team06-shipments 테이블과 시드 넣기
+- [x] E2 team06-shipments 테이블과 시드 넣기 (`infra/seed_shipments.py`)
 - [ ] F5 화면 빌드 올리기 (`deploy-web.sh`)
 - [ ] F6 배포 시각마다 배포, `team06-` 아닌 리소스·서울 밖 리소스(CloudFront 제외) 점검
 
