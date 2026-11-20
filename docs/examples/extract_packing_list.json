@@ -1,7 +1,7 @@
 {
   "doc_type": "packing_list",
   "file": "uploads/sample-001/packing_list.pdf",
-  "doc_no": {"raw": "PL-2026-001", "value": "PL-2026-001"},
+  "doc_no": {"raw": "INV-2026-0214", "value": "INV-2026-0214"},
   "items": [
     {
       "line": 1,
