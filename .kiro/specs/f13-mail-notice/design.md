@@ -7,7 +7,7 @@
   run_job → _draft → _register → _record_shipment → _mark_waiting
   → notify.send_notice(job, docs, importer)                      ← 새로
        ├ 보낼 것 고르기: 불일치 / HS 미확정 (없으면 None)
-       ├ 첨부: tools.validate.notice_document → HTML
+       ├ 첨부: tools.validate.notice_document → api.notice_pdf.render_notice_pdf → PDF
        │      tools.hs_request.make_hs_request → PDF
        ├ 메일 만들기: email.message.EmailMessage (제목은 B/L·송장 번호를 정리해서만, 서류 글자는 본문에만)
        └ SES v2 send_email (Raw) ──────────────▶ 담당자 메일함 (NOTIFY_TO)
@@ -20,9 +20,9 @@
 
 | 대안 | 내용 | 판단 |
 |---|---|---|
-| **A (고름)** | 불일치 → 불일치 통지 문서 HTML, HS 미확정 → HS 확인 요청서 PDF, 한 통에 함께 | 이미 있는 문서를 그대로 쓰고 2번·PM 파일을 고치지 않는다 |
+| **A (고름)** | 불일치 → 불일치 통지 문서(PDF, 처음 HTML), HS 미확정 → HS 확인 요청서 PDF, 한 통에 함께 | 이미 있는 문서를 그대로 쓰고 2번·PM 파일을 고치지 않는다 |
 | B | HS 확인 요청서만 붙이고 불일치는 본문에 몇 줄 | 불일치 근거가 본문에만 남는다 |
-| C | 불일치 통지 문서를 PDF로 새로 만듦 | 새 문서 작업이 늘고 2번 영역 문서와 겹친다 |
+| C | 불일치 통지 문서를 PDF로 새로 만듦 | 새 문서 작업이 늘고 2번 영역 문서와 겹친다. 실제로는 HTML 첨부가 걸러져서, 내용은 C7 마크다운 그대로 두고 PDF로 옮기기만 하는 방식으로 A를 고쳤다 |
 
 보내는 자리
 
@@ -47,8 +47,8 @@ SES 호출 방식
 - `notice_targets(job: Job) -> tuple[list[Issue], list[HSResult]]`
   `waiting_approval`이고 결과가 있을 때 (불일치 문제 목록, `hs_request.pending_hs(job)`). 그 밖은 `([], [])`.
 - `build_attachments(job, docs, importer, *, now=None) -> list[tuple[str, str, bytes]]`
-  (파일 이름, MIME 형식, 바이트). 불일치가 있으면 `notice_document(job.job_id, docs, job.result.issues).html`을
-  `handler._notice_name(notice.subject, job.job_id, "html")` 이름, `text/html; charset=utf-8`로.
+  (파일 이름, MIME 형식, 바이트). 불일치가 있으면 `notice_document(job.job_id, docs, job.result.issues)`를 `api/notice_pdf.render_notice_pdf`로 PDF로 옮겨
+  `handler._notice_name(notice.subject, job.job_id, "pdf")` 이름, `application/pdf`로. (처음 설계는 HTML 첨부였다. "실제 발송 시험" 참고)
   HS 미확정이 있으면 `make_hs_request(job, docs, importer=importer, now=now)`를 `hs-request-<작업 ID>.pdf`, `application/pdf`로.
 - `build_message(job, docs, importer, *, sender, to, now=None) -> EmailMessage`
   제목은 `[서류 검증 요청] B/L <번호> / 송장 <번호> - 불일치 N건, HS 확인 M건`이고 번호는 `_subject_no`(첫 낱말, 영문·숫자·/._-, 40자)로 정리한다. 본문은 관리자에게 거래처·관세사 검증 요청을 부탁하는 문장이다 (2026-11-21 사용자 요청). 본문은 일반 텍스트이고, 서류 글자는 `_one_line(text, limit=80)`로 정리해서 넣는다
@@ -95,7 +95,7 @@ if result.status == "waiting_approval" and read:
 ### 보안과 주의
 
 - 서류 글자는 본문에만 넣고, 제목에는 B/L·송장 번호의 첫 낱말에서 영문·숫자·/._- 만 남겨 넣는다. 서류에 `\r\nBcc: …` 같은 글자가 있어도 헤더가 늘지 않는다.
-- 첨부 HTML은 `notice_document`가 이미 이스케이프한다. PDF는 `make_hs_request`가 데이터로만 넣는다.
+- 통지 문서 PDF는 `notice_document`가 이스케이프한 마크다운을 풀어 XML 이스케이프해서 찍는다 (reportlab 마크업으로 쓰이지 않게). PDF는 `make_hs_request`가 데이터로만 넣는다.
 - 메일 주소는 환경 변수로만 받는다. 단계 기록·로그·테스트에 실제 주소가 없다.
 - 받는 주소의 도메인 SPF에 SES가 없으면(DMARC 없음), 같은 주소로 보내고 받을 때 스팸함에 갈 수 있다. 첫 발송 때 확인하고,
   스팸함이면 보내는 주소를 바꿀지 PM과 정한다.
@@ -105,7 +105,7 @@ if result.status == "waiting_approval" and read:
 
 `tests/unit/test_notify.py` (새, 4번)
 - 보낼 것 고르기: 불일치만, HS 미확정만, 둘 다, 확인 필요·참고만(None), `done`(None)
-- 첨부: 이름·MIME 형식·내용 (HTML에 규칙 ID, PDF는 `%PDF`로 시작), 둘 다면 메일 한 통에 첨부 두 개
+- 첨부: 이름·MIME 형식·내용 (둘 다 PDF, `%PDF`로 시작), 둘 다면 메일 한 통에 첨부 두 개
 - 제목: B/L·송장 번호와 건수, 0인 쪽 빠짐, 번호 없으면 작업 ID. 서류 글자에 `\r\nBcc:`가 있어도 헤더 수가 같고 본문은 한 줄
 - 설정 없음: `NOTIFY_TO` 없으면 None이고 보내지 않음
 - 실패: 첨부 실패·SES 실패 → `ok=False`와 오류 종류, 예외 없음. 단계 요약에 `@`가 없음
@@ -122,4 +122,22 @@ if result.status == "waiting_approval" and read:
 1. PR이 합쳐진 뒤 `MODEL_ID=… NOTIFY_FROM=<보내는 주소> NOTIFY_TO=<담당자 주소> bash infra/create.sh`
 2. 두 주소의 메일함에서 SES 인증 링크를 누른다 (`aws sesv2 get-email-identity`로 `VerifiedForSendingStatus: true` 확인)
 3. `bash infra/deploy.sh`
-4. 불일치 세트와 HS 미확정 세트를 하나씩 올려 메일이 오는지, 첨부가 열리는지(HTML 한글, PDF), 스팸함에 가지 않는지 본다
+4. 불일치 세트와 HS 미확정 세트를 하나씩 올려 메일이 오는지, 첨부가 열리는지(PDF 두 개, 한글), 스팸함에 가지 않는지 본다
+
+## 실제 발송 시험 (2026-11-21, 4번이 PM 허락을 받아 로컬에서 실제 SES로)
+
+배포된 파이프라인이 저장해 둔 작업(team06-jobs, 읽기만)으로 `send_notice`를 불러 담당자 주소로 보냈다.
+SES 기록(CloudWatch)은 모두 전달(Delivery), 반송·거부 0건이었는데, 받는 쪽 메일 서버가 일부를 조용히 버렸다 (스팸함에도 없음).
+
+| 메일 | 불일치 | 형식 | 도착 |
+|---|---|---|---|
+| HS 확인만 (옛 문구·새 문구) | 없음 | PDF 첨부 | 도착 |
+| 불일치 (옛 문구 2통, 새 문구 1통) | 있음 | 통지 문서 HTML 첨부 | 안 옴 |
+| 시험 A (옛 문구) | 있음 | 통지 문서 .md 첨부 + PDF | 안 옴 |
+| 시험 B (옛 문구) | 있음 | 통지 문서 HTML 본문, 첨부 없음 | 안 옴 |
+| 시험 3 (새 문구) | 있음 | 통지 문서 HTML 본문, 첨부 없음 | 도착 |
+| 시험 4 (새 문구) | 있음 | 텍스트 본문만 | 도착 |
+| 최종 코드 (불일치+HS, 불일치만) | 있음 | 통지 문서 PDF (+ HS PDF) | 둘 다 도착 |
+
+결론: HTML 첨부는 문구와 상관없이 매번 걸러졌고 PDF 첨부는 매번 통과했다. 그래서 통지 문서를 PDF로 붙인다.
+시험 A·B가 안 온 이유는 확정하지 못했다(옛 문구·.md 첨부). 둘 다 지금 코드에서 쓰지 않는 형식이다. 받는 쪽 서버마다 거르는 기준이 다르므로 담당자 주소를 바꾸면 첫 발송 때 다시 확인한다.

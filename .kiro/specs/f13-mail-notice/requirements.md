@@ -3,7 +3,7 @@
 ## Introduction
 
 처리가 끝난 작업에 불일치나 HS 미확정이 남으면, 지금은 담당자가 화면을 열어 문서를 직접 내려받아야 알 수 있다.
-문서는 이미 코드가 만든다: 불일치 통지 문서(C7 #158, `tools/validate.py`의 `notice_document`, HTML)와
+문서는 이미 코드가 만든다: 불일치 통지 문서(C7 #158, `tools/validate.py`의 `notice_document`, 마크다운·HTML)와
 HS 확인 요청서(X2 #260, `tools/hs_request.py`의 `make_hs_request`, PDF). X2 스펙은 "메일 발송"을 범위 밖으로 남겼다.
 이번 일은 처리 Lambda가 작업을 끝낼 때 그 문서를 첨부해 **담당자에게 확인 요청 메일**을 SES로 보내는 것이다. 이슈: #263
 
@@ -11,7 +11,7 @@ HS 확인 요청서(X2 #260, `tools/hs_request.py`의 `make_hs_request`, PDF). X
 관세사·거래처에게 바로 보내지 않는다.
 
 정한 방향:
-- 첨부 (방향 A): 불일치가 있으면 불일치 통지 문서 HTML, HS 미확정이 있으면 HS 확인 요청서 PDF. 둘 다 있으면 메일 한 통에 둘 다.
+- 첨부 (방향 A): 불일치가 있으면 불일치 통지 문서 PDF(처음엔 HTML이었으나 받는 쪽 서버가 버려서 바꿈, 아래 2.1), HS 미확정이 있으면 HS 확인 요청서 PDF. 둘 다 있으면 메일 한 통에 둘 다.
 - 메일은 코드가 보낸다. 에이전트 도구에 넣지 않는다 (agent-design.md 8번: 외부에 쓰는 일은 AI가 하지 않는다). 모델 호출이 없다.
 - 새 의존성이 없다. 표준 라이브러리 `email`과 이미 쓰는 `boto3`(sesv2)만 쓴다.
 - 보내는 주소와 받는 주소는 저장소(코드·설정·테스트)에 적지 않고, 처리 Lambda 환경 변수 `NOTIFY_FROM`, `NOTIFY_TO`로 받는다.
@@ -42,7 +42,8 @@ HS 확인 요청서(X2 #260, `tools/hs_request.py`의 `make_hs_request`, PDF). X
 
 #### Acceptance Criteria
 
-1. WHEN 불일치가 있으면 THE 메일 SHALL 불일치 통지 문서 HTML을 첨부한다. 파일 이름은 내려받기 API와 같은 `notice-<B/L 번호 또는 작업 ID>.html`이다.
+1. WHEN 불일치가 있으면 THE 메일 SHALL 불일치 통지 문서를 PDF로 첨부한다 (C7 `notice_document`의 마크다운을 `api/notice_pdf.py`가 그대로 옮김). 파일 이름은 내려받기 API와 같은 꼴의 `notice-<B/L 번호 또는 작업 ID>.pdf`이다.
+   HTML 첨부는 쓰지 않는다: 2026-11-21 실제 SES 발송 시험에서 받는 쪽 메일 서버가 HTML 첨부가 붙은 메일을 매번 버렸다 (design.md "실제 발송 시험").
 2. WHEN HS 미확정이 있으면 THE 메일 SHALL HS 확인 요청서 PDF를 첨부한다. 파일 이름은 `hs-request-<작업 ID>.pdf`이다.
 3. THE 제목 SHALL 실무 메일처럼 건과 할 일을 쓴다: `[서류 검증 요청] B/L <번호> / 송장 <번호> - 불일치 N건, HS 확인 M건`. 0인 쪽과 못 읽은 번호는 빼고, 번호가 둘 다 없으면 `작업 <작업 ID>`다.
    제목의 번호는 서류 글자의 첫 낱말에서 영문·숫자·`/._-`만 남기고 40자에서 자른다. 그 밖의 서류 글자는 제목과 헤더에 넣지 않는다. (2026-11-21 사용자 요청으로 바꿈)
@@ -73,4 +74,4 @@ HS 확인 요청서(X2 #260, `tools/hs_request.py`의 `make_hs_request`, PDF). X
 ## 범위 밖
 
 관세사·거래처에게 직접 보내기, 담당자 여러 명·작업별 담당자, 다시 보내기 버튼, 메일 상태 전용 화면(단계 기록으로 대신),
-반송·수신 거부 처리(SNS), SES 프로덕션 접근 신청, 사용자 지정 도메인과 DKIM, HTML 본문, 불일치 통지 문서 PDF.
+반송·수신 거부 처리(SNS), SES 프로덕션 접근 신청, 사용자 지정 도메인과 DKIM, HTML 본문, 통지 문서 HTML·마크다운 첨부(받는 쪽에서 걸러짐).

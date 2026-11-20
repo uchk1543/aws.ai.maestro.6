@@ -55,7 +55,7 @@ flowchart LR
   시험이 바꿔 끼울 수 있게 모듈로 가져와 부른다 (`from tools import hs_request, validate`).
 - 내는 것 (작업 2가 쓴다): `send_notice(job: Job, docs: list[ExtractedDocument], importer: str | None, *, mail: MailSender | None = None, env: Mapping[str, str] | None = None, now: datetime | None = None) -> Step | None`, `ses_sender() -> MailSender`, `NOTIFY_TOOL = "send_notice"`.
 
-- [ ] **1. 실패하는 시험 쓰기** (`tests/unit/test_notify.py`)
+- [x] **1. 실패하는 시험 쓰기** (`tests/unit/test_notify.py`)
 
   준비물: `tests.unit.test_hs_request`의 `docs`, `pending`, `IMPORTER`, `BL`, `NOW`를 가져다 쓴다. `JOB = "job-0000f013"`.
   `MISMATCH = Issue(rule_id="X-WT-01", grade="불일치", cells=[IssueCell(doc="packing_list", field="total_gross_kg", raw="6,520 KGS")], evidence="상업송장 총중량 6,250kg과 포장명세서 6,520kg이 다릅니다.")`,
@@ -118,11 +118,11 @@ flowchart LR
       # send_email(FromEmailAddress="notice@example.com", Destination={"ToAddresses": ["owner@example.com"]}, Content={"Raw": {"Data": b"raw"}})
   ```
 
-- [ ] **2. 시험이 실패하는지 확인**
+- [x] **2. 시험이 실패하는지 확인**
   실행: `uv run pytest tests/unit/test_notify.py -q`
   기대: `ModuleNotFoundError: No module named 'api.notify'`
 
-- [ ] **3. `api/notify.py` 만들기**
+- [x] **3. `api/notify.py` 만들기**
   - `notice_targets(job: Job) -> tuple[list[Issue], list[HSResult]]`
   - `build_attachments(job: Job, docs: list[ExtractedDocument], importer: str | None, *, now: datetime | None = None) -> list[tuple[str, str, bytes]]`
     (파일 이름, MIME 형식, 바이트). HTML은 `text/html`, PDF는 `application/pdf`.
@@ -134,11 +134,11 @@ flowchart LR
   - `send_notice(...)`: 설계의 순서대로 None / 첨부 실패 / SES 실패 / 성공. 예외를 올리지 않는다. `env`가 None이면 `os.environ`, `mail`이 None이면 `ses_sender()`.
   - docstring에 언제·받는 것·반환을 한국어로 적는다.
 
-- [ ] **4. 시험 통과 확인**
+- [x] **4. 시험 통과 확인**
   실행: `uv run pytest tests/unit/test_notify.py -q` → 모두 통과
   실행: `uv run pytest -q` → 기존 시험도 통과
 
-- [ ] **5. 커밋**
+- [x] **5. 커밋**
   ```bash
   git add api/notify.py tests/unit/test_notify.py
   git commit -m "feat(api): F13 확인 요청 메일 만들기와 SES 보내기 (api/notify.py)"
@@ -154,7 +154,7 @@ flowchart LR
 - 쓰는 것: 작업 1의 `notify.send_notice`, `notify.ses_sender`, 이 파일의 `importer_of(docs)`.
 - 내는 것: 마지막 저장의 단계 기록 끝에 `send_notice` 한 줄 (보냈거나 실패했을 때만).
 
-- [ ] **1. 실패하는 시험 쓰기** (`tests/unit/test_worker.py`)
+- [x] **1. 실패하는 시험 쓰기** (`tests/unit/test_worker.py`)
 
   준비물: 기존 `table`, `put_job`, `saved` 픽스처와 `tests.unit.test_notify`의 `FakeMail`, `MISMATCH`, `DOCS = docs()`(test_hs_request). `monkeypatch.setenv("NOTIFY_FROM", "notice@example.com")`, `monkeypatch.setenv("NOTIFY_TO", "owner@example.com")`,
   `monkeypatch.setattr(notify, "ses_sender", lambda: mail)`. 가짜 `run_job`은 `on_docs(DOCS)`를 부르고 `Job(status="waiting_approval", result=JobResult(issues=[MISMATCH]))`를 돌려준다.
@@ -176,18 +176,18 @@ flowchart LR
       assert mail.calls == []
   ```
 
-- [ ] **2. 시험이 실패하는지 확인**
+- [x] **2. 시험이 실패하는지 확인**
   실행: `uv run pytest tests/unit/test_worker.py -q -k "notice or mail"`
   기대: `test_worker_sends_notice_for_mismatch`, `test_worker_mail_failure_keeps_waiting_job` 실패 (메일을 부르지 않음)
 
-- [ ] **3. `api/worker.py` 고치기**
+- [x] **3. `api/worker.py` 고치기**
   `from api import handler, notify`. 설계의 세 줄을 `_mark_waiting(result)` 바로 뒤에 넣는다. 모듈 docstring 환경 변수 목록에 `NOTIFY_FROM`, `NOTIFY_TO`(선택)를,
   처리 순서 설명에 "4. 불일치·HS 미확정이 남은 승인 대기면 담당자에게 확인 요청 메일 (F13)"을 더한다.
 
-- [ ] **4. 시험 통과 확인**
+- [x] **4. 시험 통과 확인**
   실행: `uv run pytest -q` → 모두 통과
 
-- [ ] **5. 커밋**
+- [x] **5. 커밋**
   ```bash
   git add api/worker.py tests/unit/test_worker.py
   git commit -m "feat(worker): F13 승인 대기로 끝난 작업에 확인 요청 메일"
@@ -203,7 +203,7 @@ flowchart LR
 - 쓰는 것: `config.sh`의 `render`, `ROLE_WORKER`, `FN_WORKER`, `WORKER_ENV`.
 - 내는 것: worker 환경 변수 `NOTIFY_FROM`, `NOTIFY_TO` (작업 1·2가 읽는다), 정책 `team06-notify`.
 
-- [ ] **1. `infra/policy-notify.json` 만들기** (내용 그대로)
+- [x] **1. `infra/policy-notify.json` 만들기** (내용 그대로)
   ```json
   {
     "Version": "2012-10-17",
@@ -219,7 +219,7 @@ flowchart LR
   }
   ```
 
-- [ ] **2. `infra/create.sh` 고치기**
+- [x] **2. `infra/create.sh` 고치기**
   - 머리 주석의 실행 예에 `NOTIFY_FROM=<보내는 주소> NOTIFY_TO=<담당자 주소>`(선택)와 "넘기지 않으면 지금 값 유지, 빈 값이면 끔"을 더한다.
   - `ensure_role` 뒤에 값 정하기. 넘겼는지(빈 값 포함)와 안 넘겼는지를 가르는 부분만 아래처럼 쓴다.
     ```bash
@@ -236,19 +236,19 @@ flowchart LR
   - 하나라도 비었으면: `aws iam delete-role-policy --role-name "${ROLE_WORKER}" --policy-name team06-notify 2>/dev/null || true`, `[create] 확인 요청 메일 끔`.
   - `WORKER_ENV` 뒤에: 둘 다 값이 있을 때만 `WORKER_ENV="${WORKER_ENV},NOTIFY_FROM=${NOTIFY_FROM},NOTIFY_TO=${NOTIFY_TO}"`.
 
-- [ ] **3. `infra/README.md` 고치기**
+- [x] **3. `infra/README.md` 고치기**
   리소스 목록에 SES 이메일 ID 두 개와 `policy-notify.json`(worker만) 줄, `team06-worker` 환경 변수에 `NOTIFY_FROM`·`NOTIFY_TO`(선택),
   실행 순서에 켜는 법·끄는 법(`NOTIFY_FROM= NOTIFY_TO= bash infra/create.sh`), 샌드박스 한도(하루 200통, 초당 1통),
   "평가·10회 반복을 배포된 worker로 돌릴 때는 끈다", "첫 발송 때 스팸함 확인".
 
-- [ ] **4. 확인** (AWS는 부르지 않는다)
+- [x] **4. 확인** (AWS는 부르지 않는다)
   실행: `bash -n infra/create.sh` → 출력 없음
   실행: `uv run python -c "import json; json.load(open('infra/policy-notify.json'))"` → 출력 없음
   실행: `git diff --cached | grep -E "AKIA[0-9A-Z]{16}"` → 출력 없음 (키 없음)
   실행: `git diff origin/main -- api infra tests | grep -oE "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-z]{2,}" | grep -v "example\.com"` → 출력 없음 (실제 주소 없음)
   실행: `uv run pytest -q` → 모두 통과
 
-- [ ] **5. 커밋**
+- [x] **5. 커밋**
   ```bash
   git add infra/policy-notify.json infra/create.sh infra/README.md
   git commit -m "chore(infra): F13 SES 이메일 ID와 worker 메일 권한, NOTIFY 환경 변수"
@@ -263,3 +263,5 @@ flowchart LR
 
 - 이번 범위 밖은 requirements.md "범위 밖"과 같다.
 - 이슈: #263. 작업 ID F13은 PM 확인 전 임시다.
+- 실행 뒤 바뀐 것 (2026-11-21): ① SES 재시도를 `total_max_attempts` 2로 (최종 리뷰). ② 제목·본문을 관리자에게 보내는 서류 검증 요청 문구로 (사용자 요청).
+  ③ 실제 발송 시험에서 HTML 첨부가 걸러져 통지 문서를 PDF로 붙인다 (`api/notice_pdf.py`, `tests/unit/test_notice_pdf.py`). 작업 1의 `*_html` 시험 이름은 `test_mismatch_only_attaches_notice_pdf`로 바뀌었다. 결과는 design.md "실제 발송 시험".
