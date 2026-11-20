@@ -132,4 +132,15 @@ describe("describeFilters", () => {
   it("조건이 없으면 빈 목록", () => {
     expect(describeFilters({ ...example, filters: { status: null, period: null }, period_resolved: null })).toEqual([]);
   });
+
+  it("주소로 온 질문(대시보드)을 열릴 때 한 번 보내고, 주소에서 뺀다", async () => {
+    vi.mocked(api.sendChat).mockResolvedValue(example);
+    window.location.hash = "#/chat?q=x";
+    renderWithQuery(<ChatPage ask="지금 통관이 늦어지고 있는 화물 전부 보여줘" />);
+
+    expect(await screen.findByText(example.answer)).toBeInTheDocument();
+    expect(api.sendChat).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(api.sendChat).mock.calls[0][0].message).toBe("지금 통관이 늦어지고 있는 화물 전부 보여줘");
+    expect(window.location.hash).toBe("#/chat");
+  });
 });
