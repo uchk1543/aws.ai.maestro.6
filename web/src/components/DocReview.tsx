@@ -86,7 +86,13 @@ export function DocReview({ issues, files }: { issues: Issue[]; files: JobFileVi
           )}
         </div>
 
-        <ul className="review-list" aria-label="오류">
+        <div className="review-side">
+          {/* 왼쪽 서류 탭과 같은 높이로 두어, 오류 카드 위쪽이 서류 그림 위쪽과 맞게 한다 */}
+          <p className="review-side-head">
+            <strong>오류 {issues.length}건</strong>
+            <span className="hint">값을 누르면 서류에서 위치를 보여 줍니다</span>
+          </p>
+          <ul className="review-list" aria-label="오류">
           {sorted.map((issue, i) => (
             <li key={`${issue.rule_id}-${i}`} className={active.i === i ? "review-item active" : "review-item"}>
               <div className="issue-head">
@@ -120,7 +126,8 @@ export function DocReview({ issues, files }: { issues: Issue[]; files: JobFileVi
               </p>
             </li>
           ))}
-        </ul>
+          </ul>
+        </div>
       </div>
     </div>
   );

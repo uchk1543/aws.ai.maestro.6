@@ -1542,6 +1542,17 @@ table.cells tr.suspect td {
   border-radius: 999px;
 }
 
+/* 서류 탭(.doc-tabs: 높이 40px + 아래 10px)과 같은 자리 */
+.review-side-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  min-height: 40px;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+
 .review-list {
   display: grid;
   gap: 10px;
