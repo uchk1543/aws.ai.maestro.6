@@ -20,9 +20,16 @@ CLASSES = {
     "memo.png": ("unknown", "제목 없음, 칸만으로 종류를 정할 수 없음"),
     "bl.pdf": ("bill_of_lading", "제목 BILL OF LADING, Vessel/Voyage·Freight 칸"),
 }
+# 송장 번호·총수량은 같고 총중량만 다르다 → cross_check(B7)는 X-WT-01 불일치 하나
 RAWS = {
-    "invoice.pdf": {"doc_no": {"raw": "INV-1"}, "items": [{"line": 1}, {"line": 2}], "total_gross_kg": {"raw": "6,250 KGS"}},
-    "packing.pdf": {"doc_no": {"raw": "INV-1"}, "items": [{"line": 1}, {"line": 2}], "total_gross_kg": {"raw": "6,520 KGS"}},
+    "invoice.pdf": {
+        "doc_no": {"raw": "INV-1"}, "items": [{"line": 1}, {"line": 2}],
+        "total_qty": {"raw": "1,000 PCS"}, "total_gross_kg": {"raw": "6,250 KGS"},
+    },
+    "packing.pdf": {
+        "doc_no": {"raw": "INV-1"}, "items": [{"line": 1}, {"line": 2}],
+        "total_qty": {"raw": "1,000 PCS"}, "total_gross_kg": {"raw": "6,520 KGS"},
+    },
 }
 
 
