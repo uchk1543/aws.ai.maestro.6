@@ -123,7 +123,12 @@ function Lens({ src, bbox, ar, label }: { src: string; bbox: Bbox; ar: number; l
   const region = zoomRegion(bbox, ar);
   const { image, mark } = lensLayout(bbox, region);
   return (
-    <div className="lens" style={{ aspectRatio: `${region[2] * ar} / ${region[3]}` }} data-testid="lens">
+    <div
+      className="lens"
+      // --lens-ar: 확대 상자의 가로/세로. 높이 상한(--lens-max-h)이 있는 모바일에서는 그만큼 너비를 줄인다
+      style={{ aspectRatio: `${region[2] * ar} / ${region[3]}`, "--lens-ar": (region[2] * ar) / region[3] } as CSSProperties}
+      data-testid="lens"
+    >
       <img className="lens-img" src={src} alt={`확대: ${label}`} style={image} draggable={false} />
       <span className="lens-mark" style={mark} aria-hidden="true" />
     </div>
