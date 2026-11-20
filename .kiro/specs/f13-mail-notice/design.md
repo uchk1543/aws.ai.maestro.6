@@ -54,7 +54,7 @@ SES 호출 방식
   제목은 작업 ID와 건수만으로 만든다. 본문은 일반 텍스트이고, 서류 글자는 `_one_line(text, limit=80)`로 정리해서 넣는다
   (제어 문자·줄바꿈 → 공백, 공백 하나로, 80자 상한). 첨부는 `add_attachment`.
 - `class MailSender(Protocol)`: `send(self, sender: str, to: str, raw: bytes) -> str` (SES MessageId). `tools/wms.py`의 어댑터와 같은 방식이다.
-- `ses_sender() -> MailSender`: `boto3.client("sesv2", region_name=AWS_REGION 또는 ap-northeast-2, config=Config(connect_timeout=5, read_timeout=5, retries={"max_attempts": 2}))`.
+- `ses_sender() -> MailSender`: `boto3.client("sesv2", region_name=AWS_REGION 또는 ap-northeast-2, config=Config(connect_timeout=5, read_timeout=5, retries={"total_max_attempts": 2, "mode": "standard"}))`.
   `send`는 `send_email(FromEmailAddress=sender, Destination={"ToAddresses": [to]}, Content={"Raw": {"Data": raw}})`.
 - `send_notice(job, docs, importer, *, mail=None, env=None, now=None) -> Step | None`
   - 보낼 것이 없으면 `None`. `NOTIFY_FROM`·`NOTIFY_TO`가 없으면 로그만 남기고 `None`.
@@ -75,7 +75,7 @@ if result.status == "waiting_approval" and read:
 
 모듈 docstring의 환경 변수 목록에 `NOTIFY_FROM`, `NOTIFY_TO`(선택)를 더한다.
 
-- **시간**: 마지막 60초 예산 안에서 돈다. PDF 만들기는 1초 안이고, SES는 최악이면 5초 × 2회 남짓이다.
+- **시간**: 마지막 60초 예산 안에서 돈다. PDF 만들기는 1초 안이고, SES는 최악이면 (5초+5초) × 2회 남짓이다 (total_max_attempts 2).
 - **한 번만 보내기**: worker는 `queued`만 처리한다. 보낸 뒤 저장이 실패해 Lambda가 이벤트를 다시 보내면 상태가 `running`이라
   `failed`로 끝내고 메일은 다시 가지 않는다. 그래서 메일은 많아야 한 번 간다. 보내기 실패는 다시 보내지 않는다 (화면에서 문서를 받을 수 있다).
 - **WMS 오류로 승인 대기가 된 작업**: `_register`가 `done`을 `waiting_approval`로 바꾼 경우는 불일치·HS 미확정이 없으므로 보내지 않는다.
@@ -109,7 +109,7 @@ if result.status == "waiting_approval" and read:
 - 제목: 코드 값만, 0인 쪽 빠짐. 서류 글자에 `\r\nBcc:`가 있어도 헤더 수가 같고 본문은 한 줄
 - 설정 없음: `NOTIFY_TO` 없으면 None이고 보내지 않음
 - 실패: 첨부 실패·SES 실패 → `ok=False`와 오류 종류, 예외 없음. 단계 요약에 `@`가 없음
-- `ses_sender`: 서울 리전, 타임아웃 5초, `max_attempts` 2
+- `ses_sender`: 서울 리전, 타임아웃 5초, `total_max_attempts` 2
 
 `tests/unit/test_worker.py` (4번)
 - 불일치로 승인 대기 → 메일 한 통, 마지막 저장의 단계 기록 끝에 `send_notice` ok

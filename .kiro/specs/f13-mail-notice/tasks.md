@@ -17,7 +17,7 @@ SES 이메일 ID·권한·환경 변수는 `infra/`(PR, PM 실행)로 만든다.
 
 - 단위 테스트는 AWS를 부르지 않는다. SES는 가짜 `MailSender`로 대신한다.
 - 메일 주소를 저장소에 적지 않는다. 테스트 주소는 `notice@example.com`(보내는 쪽), `owner@example.com`(받는 쪽)만 쓴다.
-- SES 호출은 연결·읽기 타임아웃 5초, `retries={"max_attempts": 2}`, 리전 ap-northeast-2.
+- SES 호출은 연결·읽기 타임아웃 5초, `retries={"total_max_attempts": 2, "mode": "standard"}`, 리전 ap-northeast-2.
 - 제목·헤더에는 코드 값(작업 ID, 건수)만 넣는다. 서류 글자는 본문에만, 한 줄·80자 상한.
 - 주석·로그·docstring은 한국어. 도구를 부를 때 `[tool] send_notice job=… 불일치=N HS미확정=M`을 print한다. 주소는 찍지 않는다.
 - 고치는 곳: `api/`, `tests/unit/test_notify.py`, `tests/unit/test_worker.py`(4번), `infra/`(PR만, 실행은 PM).
@@ -113,7 +113,7 @@ flowchart LR
   def test_ses_sender_config(monkeypatch):
       # boto3.client를 가짜로 바꿔 받은 인자를 본다
       assert service == "sesv2" and kwargs["region_name"] == "ap-northeast-2"
-      assert (cfg.connect_timeout, cfg.read_timeout, cfg.retries) == (5, 5, {"max_attempts": 2})
+      assert (cfg.connect_timeout, cfg.read_timeout, cfg.retries) == (5, 5, {"total_max_attempts": 2, "mode": "standard"})
       # sender.send("notice@example.com", "owner@example.com", b"raw") == "msg-1" 이고
       # send_email(FromEmailAddress="notice@example.com", Destination={"ToAddresses": ["owner@example.com"]}, Content={"Raw": {"Data": b"raw"}})
   ```

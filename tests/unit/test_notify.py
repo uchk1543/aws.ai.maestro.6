@@ -184,7 +184,8 @@ def test_ses_sender_config(monkeypatch):
     sender = notify.ses_sender()
     cfg = seen["kwargs"]["config"]
     assert seen["service"] == "sesv2" and seen["kwargs"]["region_name"] == "ap-northeast-2"
-    assert (cfg.connect_timeout, cfg.read_timeout, cfg.retries) == (5, 5, {"max_attempts": 2})
+    assert (cfg.connect_timeout, cfg.read_timeout) == (5, 5)
+    assert cfg.retries == {"total_max_attempts": 2, "mode": "standard"}  # 처음 한 번 + 재시도 1회 (max_attempts는 재시도 횟수라 3번이 된다)
     assert sender.send("notice@example.com", "owner@example.com", b"raw") == "msg-1"
     assert seen["send"] == {
         "FromEmailAddress": "notice@example.com",

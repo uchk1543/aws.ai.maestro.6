@@ -482,7 +482,7 @@ def lambda_handler(event, context):
     if result.status == "waiting_approval" and read:  # 불일치·HS 미확정이 남았으면 담당자에게 확인 요청 메일 (F13 #263)
         if (step := notify.send_notice(result, read, importer_of(read))) is not None:
             result.steps.append(step)
-    columns ={**_docs_columns(read), **_ocr_columns(ocr)}
+    columns = {**_docs_columns(read), **_ocr_columns(ocr)}
     print(f"[worker] job={job_id} 서류 기록 docs={len(read)} importer={'있음' if 'importer' in columns else '없음'}")
     _save(result, {**item, **columns})
     return {"job_id": job_id, "status": result.status}

@@ -54,7 +54,8 @@ class _SesSender:
 
 def ses_sender() -> MailSender:
     """SES v2로 보내는 MailSender. 서울 리전, 연결·읽기 타임아웃 5초, 재시도 1회 (team.md 외부 API)."""
-    config = Config(connect_timeout=5, read_timeout=5, retries={"max_attempts": 2})
+    # total_max_attempts: 처음 한 번 + 재시도 1회. max_attempts는 재시도 횟수라 2로 두면 3번 부른다 (SendEmail은 멱등이 아니다)
+    config = Config(connect_timeout=5, read_timeout=5, retries={"total_max_attempts": 2, "mode": "standard"})
     return _SesSender(boto3.client("sesv2", region_name=os.environ.get("AWS_REGION", "ap-northeast-2"), config=config))
 
 
