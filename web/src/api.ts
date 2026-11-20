@@ -8,10 +8,12 @@ import type {
   ChooseHsResponse,
   CreateJobResponse,
   DocType,
+  DocumentFilters,
   DocumentsResponse,
   HSChoice,
   Job,
   JobFilesResponse,
+  StatsResponse,
   JobFile,
   UploadRequestFile,
   UploadsResponse,
@@ -83,10 +85,21 @@ export function sendChat(req: ChatRequest): Promise<ChatResponse> {
 }
 
 /** 문서 분류 내역: 한 종류의 서류 목록과 종류별 건수 (G10, 서버 약속은 제안 중). cursor 는 앞 응답의 next_cursor. */
-export function getDocuments(docType: DocType, cursor: string | null = null): Promise<DocumentsResponse> {
+export function getDocuments(
+  docType: DocType,
+  cursor: string | null = null,
+  filters: DocumentFilters = {},
+): Promise<DocumentsResponse> {
   const query = new URLSearchParams({ doc_type: docType });
   if (cursor) query.set("cursor", cursor);
+  // 거르기 (F11 #195): 대시보드 통계에서 들어올 때
+  for (const [k, v] of Object.entries(filters)) if (v) query.set(k, v);
   return request("GET", `/api/documents?${query.toString()}`);
+}
+
+/** 대시보드 통계 (F11 #195). 숫자는 서버가 센다. */
+export function getStats(): Promise<StatsResponse> {
+  return request("GET", "/api/stats");
 }
 
 /** 서류 보기: 작업에 올라온 서류의 쪽 그림 주소와 표시 위치 (G11, 서버 약속은 제안 중). */

@@ -221,3 +221,31 @@ export interface JobFileView {
 export interface JobFilesResponse {
   files: JobFileView[];
 }
+
+// 문서 분류 내역 거르기 (F11 #195). 대시보드 통계를 누르면 이 조건으로 연다
+export interface DocumentFilters {
+  job_status?: JobStatus;
+  grade?: Grade;
+  rule_id?: string;
+  hs?: "pending";
+}
+
+// GET /api/stats (대시보드, F11 #195). 숫자는 서버가 센 값 그대로 쓴다
+export interface StatsResponse {
+  today: string;
+  todo: { waiting_approval: number; mismatch_jobs: number; hs_pending: number; unclassified: number; delayed: number };
+  flow: { status: string; count: number }[];
+  delayed: {
+    bl_no: string;
+    consignee: string;
+    item: string;
+    arrived_at: string;
+    customs_status: string;
+    days: number;
+    job_id: string | null;
+  }[];
+  delay_rule: string;
+  docs_by_type: Record<DocType, number>;
+  auto: { finished: number; auto: number };
+  top_rules: { rule_id: string; grade: Grade; count: number; example: string }[];
+}
