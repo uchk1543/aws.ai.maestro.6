@@ -9,14 +9,17 @@
 - `doc_type`: `bill_of_lading` | `commercial_invoice` | `packing_list` | `certificate_of_origin` | `unknown`
 - 예시: `docs/examples/extract_packing_list.json`
 ## 약속 2. 작업 API (화면 ↔ Lambda)
+주소: 화면과 같은 CloudFront 주소의 `/api/…`. CloudFront가 `/api/*`를 API Gateway(HTTP API)로 보낸다. 같은 주소라 CORS 설정이 필요 없다.
+Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 붙어 온다.
+
 | 메서드·경로 | 요청 | 응답 |
 |---|---|---|
-| `POST /uploads` | `{"files":[{"name","content_type"}]}` | `{"uploads":[{"key","url"}]}` (url로 S3에 직접 PUT, 몇 분 뒤 만료) |
-| `POST /jobs` | `{"files":[{"key","doc_type":null}]}` | `{"job_id"}` (doc_type이 null이면 에이전트가 분류. 분류(B1)가 들어가기 전 뼈대에서는 400이므로 doc_type을 넣어 보낸다) |
-| `GET /jobs/{id}` | - | 작업 상태 (`docs/examples/job_waiting_approval.json`) |
-| `POST /jobs/{id}/hs` | `{"choices":[{"line","hs"}]}` | `{"declaration_draft":{...}}` |
-| `POST /jobs/{id}/approve` | `{"approver"}` | `{"wms":{"status","wms_id"}}`, 불일치가 남았으면 409 |
-| `POST /chat` | `{"session_id","message"}` | `docs/examples/chat_response.json` |
+| `POST /api/uploads` | `{"files":[{"name","content_type"}]}` | `{"uploads":[{"key","url"}]}` (url로 S3에 직접 PUT, 몇 분 뒤 만료) |
+| `POST /api/jobs` | `{"files":[{"key","doc_type":null}]}` | `{"job_id"}` 바로 응답 (doc_type이 null이면 에이전트가 분류. 분류(B1)가 들어가기 전 뼈대에서는 400이므로 doc_type을 넣어 보낸다) |
+| `GET /api/jobs/{id}` | - | 작업 상태 (`docs/examples/job_waiting_approval.json`) |
+| `POST /api/jobs/{id}/hs` | `{"choices":[{"line","hs"}]}` | `{"declaration_draft":{...}}` |
+| `POST /api/jobs/{id}/approve` | `{"approver"}` | `{"wms":{"status","wms_id"}}`, 불일치가 남았으면 409 |
+| `POST /api/chat` | `{"session_id","message"}` | `docs/examples/chat_response.json` |
 값 목록
 - `status`: `queued` | `running` | `waiting_approval` | `done` | `failed`
 - `grade`: `불일치` | `확인 필요` | `참고`
@@ -24,7 +27,8 @@
 - `hs[].status`: `자동 확정` | `사람 확인 필요` | `사람 확정`, `hs[].by`: `history` | `auto_match` | `human` | null
 - `wms.status`: `승인 대기` | `등록됨`, `wms.by`: `auto` | `human` | null
 - `suspect`: 서류가 셋 이상일 때 다수결로 고른 서류 종류, 둘뿐이면 null
-화면은 `GET /jobs/{id}`를 2초마다 부른다. 1일차 Function URL에서는 `POST /jobs` 안에서 끝까지 처리해도 되지만, 응답 형식(job_id 반환 → GET으로 조회)은 처음부터 이대로 둔다. 2일차에 비동기로 바꿔도 화면 코드는 그대로다.
+처리 방식: API Gateway는 요청 하나를 30초 안에 끝내야 해서, `POST /api/jobs`는 작업을 `queued`로 저장하고 `job_id`를 바로 돌려준다.
+처리 Lambda가 비동기로 `run_job`을 돌려 `running` → `waiting_approval`·`done`·`failed`로 바꾼다. 화면은 `GET /api/jobs/{id}`를 2초마다 부른다.
 ## 화물 기록 (team06-shipments 한 줄)
 - 예시: `docs/examples/shipment.json`
 - `customs_status` 값 목록과 "통관 지연" 기준(입항 뒤 며칠)은 검증 담당이 정해 여기에 적는다.
