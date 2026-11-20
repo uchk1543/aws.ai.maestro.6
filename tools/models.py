@@ -543,6 +543,67 @@ class JobFilesResponse(_Strict):
 
 
 # ---------------------------------------------------------------------------
+# 대시보드 통계 (F11 #195). 화면(G15 #196)은 서버가 센 값을 그대로 보여 준다
+# ---------------------------------------------------------------------------
+class TodoCounts(_Strict):
+    """지금 할 일 건수."""
+
+    waiting_approval: int = Field(description="승인 대기 작업 수")
+    mismatch_jobs: int = Field(description="불일치가 남은 승인 대기 작업 수")
+    hs_pending: int = Field(description="승인 대기 작업에서 사람이 HS를 골라야 하는 품목 수")
+    unclassified: int = Field(description="분류 못 한 서류 수 (문서 분류 내역의 unknown)")
+    delayed: int = Field(description="통관 지연 화물 수 (docs/schema.md 화물 기록 규칙)")
+
+
+class FlowStage(_Strict):
+    """통관 단계 하나의 화물 수."""
+
+    status: str = Field(description="통관 상태. 입항 · 수입신고 · 심사 중 · 검사 중 · 수리 · 반출")
+    count: int = Field(description="이 상태인 화물 수")
+
+
+class DelayedShipment(_Strict):
+    """통관 지연 화물 한 건."""
+
+    bl_no: str = Field(description="B/L 번호")
+    consignee: str = Field(description="수하인")
+    item: str = Field(description="대표 품명")
+    arrived_at: date = Field(description="입항일")
+    customs_status: str = Field(description="지금 통관 상태")
+    days: int = Field(description="입항 후 지난 날 수 (입항일 당일이 0, 한국 시간)")
+    job_id: str | None = Field(default=None, description="처리한 작업. 미리 넣은 기록이면 null")
+
+
+class AutoRate(_Strict):
+    """자동 처리율의 분자·분모 (화면이 비율을 그린다)."""
+
+    finished: int = Field(description="처리가 끝난 작업 수 (승인 대기 + 끝남)")
+    auto: int = Field(description="그중 사람 손 없이 WMS에 자동 등록된 작업 수")
+
+
+class RuleCount(_Strict):
+    """자주 걸린 오류 규칙 하나."""
+
+    rule_id: str = Field(description="규칙 표의 rule_id. 예: 'X-WT-01'")
+    grade: Grade = Field(description="이 규칙으로 가장 많이 나온 등급")
+    count: int = Field(description="걸린 문제 수")
+    example: str = Field(description="예시 근거 문장 (가장 최근 작업의 것)")
+
+
+class StatsResponse(_Strict):
+    """GET /stats 응답 (대시보드, F11 #195). 모델 호출 없이 team06-jobs·team06-shipments를 센다."""
+
+    today: date = Field(description="한국 시간 오늘")
+    todo: TodoCounts = Field(description="지금 할 일 건수")
+    flow: list[FlowStage] = Field(description="통관 단계별 화물 수 (진행 순서)")
+    delayed: list[DelayedShipment] = Field(default_factory=list, description="통관 지연 화물. 오래된 순서로 10건까지")
+    delay_rule: str = Field(description="통관 지연 기준 문장")
+    docs_by_type: dict[DocType, int] = Field(description="종류별 서류 수 (문서 분류 내역 counts와 같다)")
+    auto: AutoRate = Field(description="자동 처리율")
+    top_rules: list[RuleCount] = Field(default_factory=list, description="자주 걸린 오류 규칙 상위 5개")
+
+
+# ---------------------------------------------------------------------------
 # 역할 사이 약속 (협업 뼈대). 담당끼리 주고받는 모양이다. 바꾸면 단톡에 알린다.
 # ---------------------------------------------------------------------------
 class QueryResult(_Strict):

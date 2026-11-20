@@ -1,6 +1,7 @@
 """api/handler.py 단위 테스트. DynamoDB·S3·Bedrock·Lambda 호출은 가짜로 바꾼다."""
 
 import base64
+from datetime import timedelta
 import json
 import re
 from pathlib import Path
@@ -20,7 +21,7 @@ import tools.wms as wms
 from tests.unit.fakes import MemoryHSHistory, MemoryWms
 from tests.unit.test_report_shipment import TODAY, MemoryWriter
 from tools.models import (
-    Cell, DeclarationDraft, DeclarationField, ExtractedDocument, Issue, Job, RawDocument, Shipment, WmsState,
+    Cell, DeclarationDraft, DeclarationField, ExtractedDocument, Issue, Job, RawDocument, Shipment, StatsResponse, WmsState,
 )
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "docs" / "examples"
@@ -1194,3 +1195,82 @@ def test_presign_view_is_regional_get_with_inline(monkeypatch):
     assert parts.netloc == "team06-docs-test.s3.ap-northeast-2.amazonaws.com"
     assert query["response-content-type"] == ["application/pdf"] and query["response-content-disposition"] == ["inline"]
     assert query["X-Amz-Expires"] == [str(handler.VIEW_SECONDS)]
+
+
+# ---------------------------------------------------------------------------
+# GET /stats 대시보드 통계, GET /documents 거르기 (F11 #195)
+# ---------------------------------------------------------------------------
+def ship(bl_no, status, arrived, job_id=None):
+    return Shipment(bl_no=bl_no, consignee="샘플무역", item="배터리", arrived_at=arrived, customs_status=status,
+                    last_event_at=arrived, job_id=job_id)
+
+
+def test_stats_after_real_runs(fakes, lambda_client, classifier, shipments):
+    """실제 run_job 결과로 센다: 불일치가 남은 승인 대기 1건, 문제없이 끝난 작업 1건, 분류 못 한 서류 1장."""
+    post_untyped("invoice.pdf", "packing_list.pdf", "memo.pdf")  # 총중량 불일치 → 승인 대기
+    call("POST", "/api/jobs", files("invoice.pdf", "pl_ok.pdf"))  # 일치 → 끝남
+    process(lambda_client)
+    today = TODAY
+    shipments.rows.clear()  # 처리 Lambda가 쓴 줄 대신 정해 둔 화물 기록으로 센다
+    for row in [
+        ship("BL-A", "입항", today), ship("BL-B", "심사 중", today - timedelta(days=5)),
+        ship("BL-C", "검사중", today - timedelta(days=3)), ship("BL-D", "수리", today - timedelta(days=9)),
+        ship("BL-E", "반출", today - timedelta(days=4)), ship("BL-F", "모르는 상태", today),
+    ]:
+        shipments.rows[row.bl_no] = row
+
+    status, body = call("GET", "/api/stats")
+
+    assert status == 200
+    res = StatsResponse.model_validate(body)
+    assert res.today == today
+    assert (res.todo.waiting_approval, res.todo.mismatch_jobs, res.todo.unclassified) == (1, 1, 1)
+    [mismatch] = [j for j in [handler.load_job(k) for k in fakes.items] if j.status == "waiting_approval"]
+    assert res.todo.hs_pending == sum(1 for h in mismatch.result.hs if h.status == "사람 확인 필요")
+    # 지연: 입항 후 3일 이상 + 수리·반출 아님 (BL-B 5일, BL-C 3일). 오래된 순서
+    assert res.todo.delayed == 2 and [(d.bl_no, d.days) for d in res.delayed] == [("BL-B", 5), ("BL-C", 3)]
+    assert [(f.status, f.count) for f in res.flow] == [("입항", 1), ("수입신고", 0), ("심사 중", 1), ("검사 중", 1), ("수리", 1), ("반출", 1)]
+    assert res.docs_by_type["commercial_invoice"] == 2 and res.docs_by_type["unknown"] == 1
+    assert res.auto.finished == 2 and 0 <= res.auto.auto <= 2
+    rules = {r.rule_id: r for r in res.top_rules}
+    assert (rules["X-WT-01"].grade, rules["X-WT-01"].count) == ("불일치", 1) and "총중량" in rules["X-WT-01"].example
+    assert [r.count for r in res.top_rules] == sorted((r.count for r in res.top_rules), reverse=True)
+
+
+def test_stats_still_answer_when_shipments_fail(fakes, monkeypatch):
+    def broken():
+        raise RuntimeError("SHIPMENTS_TABLE 없음")
+
+    monkeypatch.setattr(handler, "dynamo_shipments", broken)
+    status, body = call("GET", "/api/stats")
+    assert status == 200 and body["todo"]["delayed"] == 0 and all(f["count"] == 0 for f in body["flow"])
+
+
+def get_filtered(doc_type, **filters):
+    event = {"requestContext": {"http": {"method": "GET"}}, "rawPath": "/api/documents",
+             "queryStringParameters": {"doc_type": doc_type, **filters}}
+    res = handler.lambda_handler(event, None)
+    return res["statusCode"], json.loads(res["body"])
+
+
+def test_documents_filters_by_job_status_grade_rule_and_hs(fakes, lambda_client, classifier):
+    mismatch = post_untyped("invoice.pdf", "packing_list.pdf")
+    call("POST", "/api/jobs", files("invoice.pdf", "pl_ok.pdf"))
+    process(lambda_client)
+
+    _, everything = get_filtered("commercial_invoice")
+    assert everything["counts"]["commercial_invoice"] == 2
+    for filters in ({"job_status": "waiting_approval"}, {"grade": "불일치"}, {"rule_id": "X-WT-01"}):
+        status, body = get_filtered("commercial_invoice", **filters)
+        assert status == 200
+        assert [r["job_id"] for r in body["items"]] == [mismatch], filters
+        assert body["counts"]["commercial_invoice"] == 1 and body["counts"]["packing_list"] == 1  # counts 도 거른 안에서
+    assert get_filtered("commercial_invoice", grade="확인 필요")[1]["items"] == []
+    job = handler.load_job(mismatch)
+    pending = any(h.status == "사람 확인 필요" for h in job.result.hs)
+    assert [r["job_id"] for r in get_filtered("commercial_invoice", hs="pending")[1]["items"]] == ([mismatch] if pending else [])
+
+
+@pytest.mark.parametrize("filters", [{"job_status": "late"}, {"grade": "높음"}, {"hs": "done"}, {"rule_id": "X" * 41}])
+def test_documents_bad_filter_is_400(fakes, filters):
+    assert get_filtered("commercial_invoice", **filters)[0] == 400
