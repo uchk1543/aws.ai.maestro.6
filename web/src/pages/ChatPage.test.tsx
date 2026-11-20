@@ -143,4 +143,10 @@ describe("describeFilters", () => {
     expect(vi.mocked(api.sendChat).mock.calls[0][0].message).toBe("지금 통관이 늦어지고 있는 화물 전부 보여줘");
     expect(window.location.hash).toBe("#/chat");
   });
+
+  it("입력칸 아래에 질문마다 따로 답한다는 안내를 둔다 (서버는 앞 질문을 기억하지 않는다, FB09)", () => {
+    renderWithQuery(<ChatPage />);
+    const note = screen.getByText("질문마다 따로 답합니다. 조건을 한 문장에 모두 적어 주세요");
+    expect(screen.getByRole("textbox", { name: "질문" })).toHaveAccessibleDescription(note.textContent!);
+  });
 });
