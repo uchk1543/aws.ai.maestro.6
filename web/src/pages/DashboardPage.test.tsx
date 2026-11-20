@@ -54,13 +54,21 @@ describe("DashboardPage", () => {
 
     const tiles = within(await screen.findByRole("list", { name: "지금 할 일" })).getAllByRole("button");
     expect(tiles.map((t) => t.getAttribute("aria-label"))).toEqual([
-      "서류 다시 받기 1건 보기",
-      "HS 고르기 1건 보기",
-      "승인하기 1건 보기",
-      "처리 실패 1건 보기",
+      "오류 서류 1건 보기",
+      "HS 미작성 1건 보기",
+      "미승인 서류 1건 보기",
+      "미인식 서류 1건 보기",
       "처리 중 0건 보기",
     ]);
     expect(tiles[0]).toHaveClass("alert"); // 서류를 고쳐야 하는 작업이 있으면 빨강
+    // 이름 아래 설명 (G18 #255)
+    expect(tiles.map((t) => t.querySelector(".todo-hint")?.textContent)).toEqual([
+      "불일치로 인해 서류 재업로드 필요",
+      "작업자가 HS 확인하고 전송 필요",
+      "서류 확인 후 승인 필요",
+      "서류 재촬영 필요",
+      "처리가 끝나지 않은 서류",
+    ]);
     expect(tiles.every((t) => t.getAttribute("aria-expanded") === "false")).toBe(true);
   });
 
@@ -68,13 +76,13 @@ describe("DashboardPage", () => {
     const user = userEvent.setup();
     renderWithQuery(<DashboardPage />);
 
-    const tile = await screen.findByRole("button", { name: "HS 고르기 1건 보기" });
+    const tile = await screen.findByRole("button", { name: "HS 미작성 1건 보기" });
     await user.click(tile);
     expect(tile).toHaveAttribute("aria-expanded", "true");
     expect(hashParams()).toEqual({ path: "/dashboard", params: { open: "choose_hs" } }); // 뒤로 오면 다시 펼친다
     expect(api.getJobs).toHaveBeenCalledWith("choose_hs");
 
-    const panel = await screen.findByRole("region", { name: "HS 고르기 작업 목록" });
+    const panel = await screen.findByRole("region", { name: "HS 미작성 작업 목록" });
     const row = await within(panel).findByRole("button", { name: /B\/L SMLNCAN26003548/ });
     expect(row).toHaveTextContent("샘플트레이딩코리아");
     expect(row).toHaveTextContent("HS 1개를 고르세요");
@@ -87,14 +95,14 @@ describe("DashboardPage", () => {
     const user = userEvent.setup();
     renderWithQuery(<DashboardPage open="fix_docs" />);
 
-    expect(await screen.findByRole("region", { name: "서류 다시 받기 작업 목록" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "오류 서류 작업 목록" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "목록 닫기" }));
     expect(screen.queryByRole("region", { name: /작업 목록/ })).not.toBeInTheDocument();
     expect(hashParams()).toEqual({ path: "/dashboard", params: {} });
 
-    await user.click(screen.getByRole("button", { name: "승인하기 1건 보기" }));
-    expect(await screen.findByRole("region", { name: "승인하기 작업 목록" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "승인하기 1건 보기" }));
+    await user.click(screen.getByRole("button", { name: "미승인 서류 1건 보기" }));
+    expect(await screen.findByRole("region", { name: "미승인 서류 작업 목록" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "미승인 서류 1건 보기" }));
     expect(screen.queryByRole("region", { name: /작업 목록/ })).not.toBeInTheDocument();
   });
 
@@ -116,14 +124,29 @@ describe("DashboardPage", () => {
     expect(screen.getByText("8일째")).toBeInTheDocument();
   });
 
-  it("자동 처리율은 분모를 바로 적고 자동 등록 조건을 붙인다. 오류는 사람 말 이름을 크게", async () => {
+  it("통관 지연 줄은 연결된 작업이 있으면 누르면 그 작업 화면으로 간다 (G18)", async () => {
+    const user = userEvent.setup();
     renderWithQuery(<DashboardPage />);
+
+    await user.click(await screen.findByRole("button", { name: "BL-2026-0001 작업 화면 열기" }));
+    expect(hashParams().path).toBe("/jobs/job-7c1e");
+    // 미리 넣은 가상 기록(작업 없음)은 누르는 줄이 아니다
+    expect(screen.queryByRole("button", { name: "SMLNCAN26003548 작업 화면 열기" })).not.toBeInTheDocument();
+  });
+
+  it("자동 처리율은 종류별 서류 아래에, 분모를 바로 적고 조건을 붙인다. 오류는 짧은 이름을 크게", async () => {
+    renderWithQuery(<DashboardPage />);
+    // 순서: 종류별 서류 → 자동 처리율 → 자주 걸린 오류 (G18 #255)
+    await screen.findByText("종류별 서류");
+    const heads = [...document.querySelectorAll("#docs-title ~ .dash-sub")].map((h) => h.textContent);
+    expect(heads).toEqual(["종류별 서류", "자동 처리율", "자주 걸린 오류"]);
 
     expect(await screen.findByText("처리를 마친 작업 3건(승인 대기 포함) 중 2건이 사람 손 없이 WMS에 등록됐습니다")).toBeInTheDocument();
     expect(screen.getByText("67%")).toBeInTheDocument();
     expect(screen.getByText(/모든 품목의 HS가 정해진 작업만/)).toBeInTheDocument();
-    const rule = screen.getByRole("button", { name: /서류끼리 서류 전체 총중량이 같은지/ });
+    const rule = screen.getByRole("button", { name: /서류 간 총중량 불일치/ });
     expect(rule).toHaveTextContent("X-WT-01");
+    expect(rule).not.toHaveTextContent("서류끼리 서류 전체 총중량이 같은지");
   });
 
   it("옛 서버면 예전 타일을 쓰고, 통관 지연은 AI chat 대신 같은 화면으로, '참고' 규칙은 뺀다", async () => {
@@ -148,14 +171,13 @@ describe("DashboardPage", () => {
     expect(hashParams()).toEqual({ path: "/documents", params: { job_status: "waiting_approval", grade: "불일치" } });
   });
 
-  it("영상 위 '확인할 일'은 할 일 타일의 합이고, 단계 칩은 숫자만 (지금 단계를 짚지 않는다)", async () => {
+  it("영상 위 '확인할 일'은 할 일 타일의 합이고, 통관 단계 칩은 없다 (G18)", async () => {
     window.localStorage.removeItem(FX_KEY);
     renderWithQuery(<DashboardPage />);
 
     expect(await screen.findByText("확인할 일 4건이 들어와 있습니다")).toBeInTheDocument();
-    const stages = screen.getByRole("list", { name: "통관 단계별 화물" });
-    expect(within(stages).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["입항7", "수입신고9", "심사 중4", "검사 중5", "수리22", "반출29"]);
-    expect(within(stages).queryAllByRole("listitem").some((li) => li.hasAttribute("aria-current"))).toBe(false);
+    expect(screen.queryByRole("list", { name: /통관 단계/ })).not.toBeInTheDocument();
+    expect(document.querySelector(".port-stages")).toBeNull();
   });
 
   it("todoTotal · hasNextCounts", () => {
