@@ -1,6 +1,6 @@
 // api.ts: 서버를 부르지 않고 fetch 를 가짜로 바꿔 경로·본문·오류 처리를 본다
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, approveJob, chooseHs, contentTypeOf, createJob, createUploads, putToS3, sendChat } from "./api";
+import { ApiError, approveJob, chooseHs, contentTypeOf, createJob, createUploads, getDocuments, putToS3, sendChat } from "./api";
 
 function reply(status: number, body: unknown) {
   return Promise.resolve(new Response(JSON.stringify(body), { status }));
@@ -105,5 +105,15 @@ describe("api", () => {
   it("type 을 모르는 파일은 application/octet-stream", () => {
     expect(contentTypeOf(new File(["x"], "scan"))).toBe("application/octet-stream");
     expect(contentTypeOf(new File(["x"], "a.png", { type: "image/png" }))).toBe("image/png");
+  });
+  it("GET /api/documents 에 doc_type 과 cursor(있을 때만)를 붙인다", async () => {
+    const fetchMock = vi.fn(() => reply(200, { counts: {}, items: [], next_cursor: null }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getDocuments("packing_list");
+    await getDocuments("unknown", "abc 1");
+
+    const paths = fetchMock.mock.calls.map((c) => (c as unknown as [string])[0]);
+    expect(paths).toEqual(["/api/documents?doc_type=packing_list", "/api/documents?doc_type=unknown&cursor=abc+1"]);
   });
 });

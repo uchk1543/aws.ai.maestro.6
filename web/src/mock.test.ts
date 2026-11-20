@@ -4,7 +4,7 @@ import chatExample from "../../docs/examples/chat_response.json";
 import jobExample from "../../docs/examples/job_waiting_approval.json";
 import { ApiError } from "./api";
 import { clearMockMismatches, mockJobAt, mockRequest, resetMock } from "./mock";
-import type { Job } from "./types";
+import type { DocumentsResponse, Job } from "./types";
 
 describe("mockRequest", () => {
   it("POST /api/uploads 는 파일마다 uploads/ 로 시작하는 key 를 준다", async () => {
@@ -92,5 +92,22 @@ describe("mockRequest", () => {
 
   it("가짜 응답이 없는 경로는 404", async () => {
     await expect(mockRequest("GET", "/api/nothing", undefined)).rejects.toBeInstanceOf(ApiError);
+  });
+  it("GET /api/documents 는 그 종류만 3건씩 주고, 다음 쪽은 next_cursor 로 받는다", async () => {
+    const first = (await mockRequest("GET", "/api/documents?doc_type=commercial_invoice", undefined)) as DocumentsResponse;
+    expect(Object.keys(first.counts).sort()).toEqual(
+      ["bill_of_lading", "certificate_of_origin", "commercial_invoice", "packing_list", "unknown"],
+    );
+    expect(first.items).toHaveLength(3);
+    expect(first.items.every((d) => d.doc_type === "commercial_invoice")).toBe(true);
+    expect(first.next_cursor).toBe("3");
+
+    const second = (await mockRequest("GET", "/api/documents?doc_type=commercial_invoice&cursor=3", undefined)) as DocumentsResponse;
+    expect(second.items).toHaveLength(1);
+    expect(second.next_cursor).toBeNull();
+  });
+
+  it("GET /api/documents 의 doc_type 이 값 목록 밖이면 400", async () => {
+    await expect(mockRequest("GET", "/api/documents?doc_type=memo", undefined)).rejects.toMatchObject({ status: 400 });
   });
 });

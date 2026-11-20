@@ -151,3 +151,29 @@ export interface ChatResponse {
   period_resolved: PeriodResolved | null;
   rows: Shipment[];
 }
+// GET /api/documents (문서 분류 내역, G10)
+// 임시(제안 중): 서버 약속 제안 이슈가 합쳐지기 전 모양이다. 합쳐지면 tools/models.py·docs/examples/documents.json 과 맞춘다.
+export type ClassifiedBy = "model" | "user";
+export const DOC_TYPES: DocType[] = [
+  "commercial_invoice",
+  "packing_list",
+  "bill_of_lading",
+  "certificate_of_origin",
+  "unknown",
+];
+export interface DocumentRecord {
+  job_id: string;
+  file_name: string;
+  doc_type: DocType;
+  classified_by: ClassifiedBy;
+  reason: string;
+  doc_no: string | null;
+  consignee: string | null;
+  job_status: JobStatus;
+  created_at: string;
+}
+export interface DocumentsResponse {
+  counts: Record<DocType, number>;
+  items: DocumentRecord[];
+  next_cursor: string | null;
+}
