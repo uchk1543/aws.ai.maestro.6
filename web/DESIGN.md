@@ -17,17 +17,19 @@ colors:
   red: '#d6402a'
 typography:
   family: Pretendard Variable, Pretendard, system-ui, Apple SD Gothic Neo, Malgun Gothic, sans-serif
-  page-title: { fontSize: 24px, fontWeight: 700, use: 화면 제목 (작업 job-…, 대시보드) }
+  page-title: { fontSize: 26px, fontWeight: 700, use: 화면 제목 (모바일 24px) }
   hero-number: { fontSize: 34px, fontWeight: 700, use: 대시보드 큰 숫자 }
-  section-title: { fontSize: 17px, fontWeight: 700, use: 패널 제목 h2 }
+  section-title: { fontSize: 20px, fontWeight: 700, use: 섹션 카드 제목 h2 }
   body: { fontSize: 15px, fontWeight: 400, lineHeight: 1.5, use: 본문·표 }
   label: { fontSize: 14px, fontWeight: 600, use: 단계 표시줄, 칩, 입력 이름 }
   caption: { fontSize: 13px, fontWeight: 400, use: 힌트, 출처, 도구 이름 }
   micro: { fontSize: 12px, fontWeight: 400, use: 단계 설명, 표 보조. 이보다 작게 쓰지 않는다 }
 rounded:
-  sm: 8px
+  badge: 6px
+  sm: 10px
   md: 12px
-  lg: 16px
+  button: 16px
+  card: 20px
   pill: 999px
 spacing: [4, 8, 12, 16, 20, 32]
 breakpoints:
@@ -122,9 +124,18 @@ gutter: 22px
 - 결과가 나오기 전에는 ① 만 누를 수 있다.
 - ① 처리 과정은 '서류 분류 / 서류 읽기 / 대조와 다시 확인 / HS 코드 / 마무리' 로 묶어 접는다. 실패가 있는 묶음만 펼친다.
 
+### 화면 구성 (Toss 앱 구성 따름)
+
+- **바탕은 회색(`--fill`), 내용은 흰 섹션 카드.** 카드는 20px 모서리, 테두리·그림자 없음, 안쪽 20px(모바일)·28px(태블릿·PC). 카드끼리는 바탕 회색으로 나뉜다.
+- 흰 카드 안의 칸(입력칸, 회색 칸, 후보)은 `--fill`, 회색 바탕에 바로 놓이는 칸(종류 목록, 예시 질문, 단계 표시줄, 상태 배지)은 흰색.
+- **위 막대(태블릿·PC)**: 흰 바탕 64px, 스크롤해도 붙어 있고, 아래 1px `--line`. 왼쪽 앱 이름 17px/700, 메뉴는 글자만 있고 고른 메뉴는 `--fill` 칸 + 굵게.
+  모바일은 위 막대를 붙이지 않는다. 메뉴는 아래 고정 탭이고, 고른 탭은 진한 글자 + 파란 점이다.
+  위 막대에 `backdrop-filter` 를 모바일에서 걸지 않는다 (안의 고정 탭이 막대 기준으로 붙는다).
+- 모바일에서 아래 고정 버튼이나 입력칸이 있는 화면(업로드, AI chat)은 본문을 카드로 감싸지 않는다.
+
 ## 5. 모서리와 깊이
 
-- 모서리: 입력칸·작은 배지 8px, 단계·후보 칸 12px, 패널 16px, 칩 999px. 채운 버튼은 지금 14px 이다 (아래 '알려진 차이').
+- 모서리: 배지 6px, 옅은 버튼·메뉴 10px, 단계·후보 칸 12px, 채운 버튼 16px, 섹션 카드 20px, 칩 999px.
 - 그림자는 쓰지 않는다. 층은 바탕색(`--bg` / `--fill` / `--fill-2`)과 1px 선으로만 나눈다. 아래 시트(모바일 목록)만 예외로 옅은 그림자를 쓴다.
 - 움직임은 0.15~0.2초 안에 끝낸다. 움직임 줄이기 설정이면 끈다.
 
@@ -132,12 +143,14 @@ gutter: 22px
 
 | 이름 | 모양 | 상태 |
 |---|---|---|
-| 채운 버튼 `.primary` | `--primary` 바탕, 흰 글자 16px/600, 14px 모서리, 높이 56px 이상 | 누름 `--primary-strong` + 0.98배, 꺼짐 투명도 0.45 |
-| 테두리 버튼 `.next-go`, `.link` | 흰 바탕, 1px `--border`, `--ink` 글자 | 누름 `--fill` |
+| 채운 버튼 `.primary` (화면마다 하나) | `--primary` 바탕, 흰 글자 17px/600, 16px 모서리, 높이 56px 이상 | 누름 `--primary-strong` + 0.98배, 꺼짐 투명도 0.45 |
+| 옅은 파랑 버튼 `.next-go`, `.chat-new`, `.filter-clear` | `--primary-tint` 바탕, `--primary` 글자 14px/600, 10px 모서리, 높이 40px | 누름 `#d6e8ff`. 옅은 빨강 상자 안에서는 흰 바탕 |
+| 글자 버튼 `button.link` | 바탕 없음, `--primary` 글자 | – |
 | 칩·탭 `.kind`, `.doc-tab`, `.filter-chip` | 고르지 않음 `--fill` 바탕 `--ink-secondary` / 고름 `--primary` 바탕 흰 글자 | `aria-selected` 또는 `.active` |
-| 단계 표시줄 `.stage` | `--fill-2` 바탕, 1.5px `--line`, 12px 모서리. 고름은 흰 바탕 `--ink` 테두리 | 표시 원: 완료 ✔ `--primary`, 할 일 ! 빨강, 대기 … 회색, 실패 ✖ 빨강 |
-| 패널 `.panel` | 흰 바탕, 1px `--line`, 16px 모서리, 안쪽 20px | – |
-| 다음 할 일 `.next-action` | 흰 바탕 1.5px `--ink` 테두리. 불일치·실패면 빨강 테두리 옅은 빨강 바탕, 끝남·대기면 회색 | – |
+| 단계 표시줄 `.stage` | 흰 칸, 테두리 없음, 12px 모서리. 고름은 2px `--ink` 안쪽 테두리 | 표시 원: 완료 ✔ `--primary`, 할 일 ! 빨강, 대기 … 회색, 실패 ✖ 빨강 |
+| 섹션 카드 `.panel`, `.dash-panel`, `.doc-card` | 흰 바탕, 테두리 없음, 20px 모서리, 안쪽 20/28px | – |
+| 다음 할 일 `.next-action` | 흰 카드, 문장 17px/700 `--ink`. 불일치·실패면 옅은 빨강(`#fdf0ee`) 바탕 | 버튼은 옅은 파랑 |
+| 상태·등급 배지 `.status`, `.grade` | 테두리 없는 6px 칸, 13px/600. 기본 `--fill`, 끝남·문제 없음 옅은 파랑, 불일치·실패 빨강 바탕 흰 글자, 확인 필요 흰 바탕 빨강 테두리 | – |
 | 표 (신고서 초안 등) | 머리 `--fill` 바탕 `--ink-secondary` 글자, 본문 흰 바탕 `--ink`, 1px `--line` 가로줄 | – |
 | HS 후보 `.hs-candidate` | `--fill` 칸, 고르면 `--primary` 바탕 흰 글자 | 라디오 `accent-color: --primary` |
 | 판독 오류로 넘기기 `.wms-override` | 빨강 테두리 옅은 빨강 바탕 상자, 체크 + 사유 입력 | 둘 다 채워야 승인 버튼이 켜진다 |
@@ -163,7 +176,7 @@ Toss 공개 화면은 포커스 표시가 없는 곳이 많지만, 우리는 따
 ## 8. 알려진 차이 (다음 정리)
 
 - 글자 크기 11·16·18·22·28px 이 남아 있다. 7단계로 모은다.
-- 모서리 10·14·18px 이 남아 있다. 8·12·16px 로 모은다.
+- 화면별 오래된 규칙의 모서리 14·18px 이 일부 남아 있다. 공통 틀은 `styles.css` 맨 끝 'Toss 화면 구성 층' 이 덮어쓴다. 다음 정리 때 화면별 규칙에 합친다.
 - 대시보드 영상 위 글자(`rgba(255,255,255,…)`)와 영상 그림자(`rgba(0,0,0,…)`)는 토큰 밖이다.
 - 포커스 링이 모든 구성요소에 있는지는 아직 다 확인하지 않았다.
 - 어두운 화면(다크 모드)은 없다.
