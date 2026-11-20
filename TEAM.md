@@ -114,7 +114,9 @@
 ① 이슈 고르기      GitHub Issues → 라벨 "담당:<내 담당>" → 마일스톤 P0부터. 댓글로 "시작"
                    팀 전체로 P0가 먼저다. 내 P0가 없거나 끝났을 때만 P1을 연다
                    이슈 하나 = 브랜치 하나 = PR 하나 (반나절 이하, Kiro 작업 30분 여러 개)
-② 브랜치 만들기    git switch main && git pull && git switch -c feat/b7-weight-check
+② 브랜치 만들기    이슈를 시작할 때 내가 만든다. 이슈 화면 Development → Create a branch (최신 main에서, 이슈와 연결)
+                   또는 git switch main && git pull && git switch -c feat/b7-weight-check
+                   이름: <feat|fix|docs|chore>/<작업ID 또는 이슈 번호>-<짧은-영문-이름> (CONTRIBUTING.md 브랜치 규칙)
 ③ 작업·커밋        자기 파일만 고친다. uv run pytest 통과 → 커밋
 ④ PR 올리기        git push -u origin <브랜치> → PR, 본문 첫 줄에 Closes #<이슈 번호>
 ⑤ 리뷰            CODEOWNERS가 그 파일의 담당자·PM에게 자동으로 리뷰를 요청한다
