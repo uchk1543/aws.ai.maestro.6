@@ -45,7 +45,8 @@ git push -u origin feat/b7-weight-check      # GitHub에서 PR, 본문에 Closes
 # main이 바뀌었으면 PR 화면의 "Update branch" 또는
 git fetch && git merge origin/main
 ```
-- main 직접 push 금지. 인계 때 보호 규칙으로 막는다 (규칙을 걸 수 없는 요금제면 약속으로 지킨다). rebase, force push 금지.
+- main 직접 push 금지 (보호 규칙 `protect-main`·`review-main`으로 막혀 있다. PM도 마찬가지). rebase, force push 금지.
+- 합치기: 팀원 PR은 승인 1명 + CI 통과 뒤 PM이 합친다. PM의 PR은 CI 통과 뒤 PM이 승인 없이 합친다 (`gh pr merge <번호> --squash --admin`).
 - 커밋 전에 `git status`로 AI가 바꾼 파일 목록을 본다. 담당 폴더 밖이 바뀌었으면 `git restore <파일>`로 되돌린다.
 - 푸시 전 키 검사: `git diff --cached | grep -E "AKIA[0-9A-Z]{16}"` (아무것도 안 나와야 정상)
 - 이슈 하나 = 브랜치 하나 = PR 하나. 이슈 안의 Kiro 작업(30분)마다 커밋하고, 보통 2~4개면 PR. 반나절 넘게 들고 있지 않는다.

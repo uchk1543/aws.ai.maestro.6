@@ -1,5 +1,6 @@
 # 파일 → 리뷰를 요청받는 사람. 아래로 갈수록 우선한다. 사람과 담당은 TEAM.md 1번 표.
 # GitHub은 자기 PR을 자기가 승인할 수 없어서, 모든 경로에 PM(@uchk1543)과 대리 승인자(@nnhhlee)를 함께 적는다.
+# PM의 PR은 보호 규칙 review-main의 PM 우회로 승인 없이 합친다 (handover.md 9-2).
 
 # 1번 판독 @nuzz3800
 /agent/                 @nuzz3800 @uchk1543 @nnhhlee

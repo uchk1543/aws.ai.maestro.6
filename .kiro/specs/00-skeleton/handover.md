@@ -12,11 +12,11 @@ KIRO_BOOTSTRAP.md에서 아직 남은 부분(0-1·0-3·0-4, 4장 MCP, 6장 5번,
 | PM (저장소 소유) | `uchk1543` |
 | 1 판독 · 2 검증 · 3 화면 · 4 서버 | `nuzz3800` · `Ladea1224` · `GaMaius` · `nnhhlee` |
 | 5 발표 | 미정 (PM이 이슈 관리) |
-| 대리 승인자 | `nnhhlee` (PM이 올린 PR을 승인) |
+| 대리 승인자 | `nnhhlee` (PM이 자리에 없을 때 팀원 PR을 승인. PM은 자기 PR을 스스로 합친다) |
 
 ## 1. 인계 전과 뒤의 차이
 - **인계 전**: PM 혼자 main에 직접 커밋·push한다. 보호 규칙은 아직 걸지 않는다.
-  보호 규칙의 "승인 1명 필수"는 작성자 본인 승인을 인정하지 않아서, 혼자일 때 걸면 PM의 PR을 아무도 승인할 수 없다.
+  (지금은 PM이 자기 PR을 승인 없이 합칠 수 있게 우회를 두었다. 9-2)
 - **인계 뒤 (아래 5번부터)**: 모두 브랜치 + PR로만 일한다.
 
 ## 2. 지킬 것 (인계 뒤에도 그대로)
@@ -124,16 +124,21 @@ git switch main && git pull
 git tag skeleton-v0 && git push --tags
 ```
 
-### 9-2. main 보호 규칙 (Ruleset)
-규칙 파일: `.kiro/specs/00-skeleton/ruleset-main.json`
-- `deletion`: main 삭제 방지
-- `non_fast_forward`: force push 방지 (남의 커밋 덮어쓰기 방지)
-- `pull_request`: 직접 push 금지, 승인 1명, 공용 파일은 CODEOWNERS 승인, 리뷰 코멘트 해결 필수, squash만
-- `required_status_checks` + `strict`: CI(`test`) 통과 필수, 최신 main을 반영한 상태로만 병합
-- `bypass_actors: []`: 소유자 포함 우회 없음. 긴급 시 Ruleset을 잠깐 disabled로 바꾼다
+### 9-2. main 보호 규칙 (Ruleset 두 개, 적용됨)
+PM이 자기 PR을 승인 없이 합칠 수 있게, 승인 규칙만 따로 떼어 PM에게 PR에서만 우회를 준다. CI와 강제 push 금지는 PM도 지킨다.
+
+| 규칙 | 파일 | 내용 | 우회 |
+|---|---|---|---|
+| `protect-main` | `ruleset-protect-main.json` | `deletion`(main 삭제 금지), `non_fast_forward`(강제 push 금지), `required_status_checks` + `strict`(CI `test` 통과, 최신 main 반영 상태로만 병합) | 없음 |
+| `review-main` | `ruleset-review-main.json` | `pull_request`: 직접 push 금지, 승인 1명, CODEOWNERS 승인, 리뷰 코멘트 해결, squash만 | PM(@uchk1543, 사용자 ID 81173322)만, PR에서만 (`bypass_mode: pull_request`) |
+
+- PM이 자기 PR을 합칠 때: `gh pr merge <번호> --squash --admin` 또는 PR 화면의 "Merge without waiting for requirements to be met (bypass rules)". CI가 실패하면 PM도 못 합친다.
+- PM도 main에 직접 push할 수 없다. 우회는 PR에서만 된다.
+- 다시 만들 때:
 ```bash
-gh api -X POST repos/uchk1543/aws.ai.maestro.6/rulesets --input .kiro/specs/00-skeleton/ruleset-main.json
-gh api repos/uchk1543/aws.ai.maestro.6/rulesets          # protect-main, active 확인
+gh api -X POST repos/uchk1543/aws.ai.maestro.6/rulesets --input .kiro/specs/00-skeleton/ruleset-protect-main.json
+gh api -X POST repos/uchk1543/aws.ai.maestro.6/rulesets --input .kiro/specs/00-skeleton/ruleset-review-main.json
+gh api repos/uchk1543/aws.ai.maestro.6/rulesets          # 둘 다 active 확인
 ```
 - 403 또는 "Upgrade to GitHub Pro or make this repository public": 비공개 저장소 + 무료 요금제에서는 보호 규칙이 걸리지 않는다.
   공개로 바꿀지 요금제를 올릴지 PM이 정한다. 그동안은 "main 직접 push 금지"를 말로 합의한다.

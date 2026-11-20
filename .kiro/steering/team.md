@@ -35,6 +35,7 @@ inclusion: always
 - 공용 파일(.kiro/, docs/schema.md, docs/examples/, tools/models.py, pyproject.toml, uv.lock, .github/, TEAM.md)은 PR에서 따로 표시하고, 바꾸면 단톡에 알린다.
 - 크기: Kiro 작업 하나는 30분, 파일 서너 개 이하이고 끝나면 테스트하고 커밋한다.
   GitHub 이슈 하나는 Kiro 작업 여러 개(반나절 이하)이고, 이슈 하나 = 브랜치 하나 = PR 하나다.
+- 합치기: 모두 PR로만 main에 올린다. 팀원 PR은 승인 1명 + CI, PM의 PR은 CI 통과 뒤 PM이 승인 없이 합친다.
 - 단계: 팀 전체로 P0(agent-design.md 0번)가 끝까지 도는 것을 먼저 한다. P0 몫이 없거나 끝난 사람만 P1을 시작한다.
 - 빈 함수 모양(NotImplementedError)과 이슈는 협업을 위해 미리 만들어 두었다. "미리 만들지 않는다"는 규칙은 몸통(동작)에 적용한다.
 - Spec은 .kiro/specs/<번호>-<기능>/ 안에서만 만든다. 남의 Spec 폴더는 고치지 않는다.
