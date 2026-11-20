@@ -47,6 +47,37 @@ OCR_WORKERS = 4  # 서류 OCR 을 동시에 몇 장까지
 # PDF 쪽 그리기(pypdfium2)는 한 번에 하나만. pdfium은 스레드 안전하지 않아 동시에 부르면 파이썬 오류 없이 프로세스가 죽는다.
 # Textract 호출·S3 저장은 그대로 동시에 돈다
 _PDFIUM_LOCK = threading.Lock()
+# Textract DetectDocumentText는 서울 리전 이 계정 한도가 초당 1건이다 (Service Quotas, 2026-11-20 확인).
+# 서류를 동시에 보내면 ProvisionedThroughputExceededException으로 OCR이 빠지므로, 호출 사이를 이만큼 벌린다 (#39)
+TEXTRACT_INTERVAL = 1.1
+
+
+class _PacedTextract:
+    """Textract 클라이언트를 감싸 detect_document_text 호출 사이를 TEXTRACT_INTERVAL초 넘게 벌린다 (스레드 여럿이 함께 쓴다)."""
+
+    def __init__(self, client):
+        self._client, self._lock, self._last = client, threading.Lock(), 0.0
+
+    def detect_document_text(self, **kwargs) -> dict:
+        with self._lock:
+            wait = self._last + TEXTRACT_INTERVAL - time.monotonic()
+            if wait > 0:
+                time.sleep(wait)
+            try:
+                return self._client.detect_document_text(**kwargs)
+            finally:
+                self._last = time.monotonic()
+
+    def analyze_document(self, **kwargs) -> dict:
+        return self._client.analyze_document(**kwargs)
+
+
+@cache
+def _textract() -> _PacedTextract:
+    """처리 Lambda 실행 환경마다 하나. 실제 클라이언트(타임아웃 5초·재시도 1회)는 tools.ocr가 만든다."""
+    from tools import ocr as ocr_tools
+
+    return _PacedTextract(ocr_tools._client())
 OCR_MAX_LINES = 600  # 서류 한 장에 저장할 OCR 줄 수 상한 (DynamoDB 한 줄 400KB)
 # OCR 을 기다리는 상한(처리 시작부터, 초). 서류 10장 × 5쪽 × Textract(5초 × 2회)가 겹쳐도 Lambda 300초 안에 끝나게 (#194 리뷰)
 OCR_WAIT_SECONDS = 100
@@ -208,7 +239,7 @@ def ocr_one(key: str) -> tuple[OcrResult | None, list[dict]]:
             handler.store_object(page_key(key, 1), upright.data, "image/jpeg")
             pages.append({"key": page_key(key, 1), "width": upright.width, "height": upright.height})
             images = [upright.data]
-        return ocr_document(key, data, pages=images), pages
+        return ocr_document(key, data, pages=images, client=_textract()), pages
     except Exception as exc:  # 깨진 PDF·크기·권한·타임아웃. 작업은 계속한다
         print(f"[warn] ocr key={key} {type(exc).__name__}: {exc}")
         return None, pages

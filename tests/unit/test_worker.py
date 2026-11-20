@@ -878,3 +878,42 @@ def test_pdf_pages_are_rendered_one_at_a_time(monkeypatch):
 
     assert peak[0] == 1
     assert all(ocr is not None and len(pages) == 1 for ocr, pages in results)
+
+
+def test_textract_calls_are_paced_across_threads(monkeypatch):
+    """서울 DetectDocumentText 한도는 초당 1건이다. 서류를 동시에 OCR 해도 Textract 호출 사이가 TEXTRACT_INTERVAL 넘게 벌어진다 (#39)."""
+    import time as _time
+    from concurrent.futures import ThreadPoolExecutor
+
+    calls = []
+
+    class Recorder:
+        def detect_document_text(self, **kwargs):
+            calls.append(_time.monotonic())
+            return {"Blocks": []}
+
+    monkeypatch.setattr(worker, "TEXTRACT_INTERVAL", 0.05)
+    paced = worker._PacedTextract(Recorder())
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        list(pool.map(lambda _: paced.detect_document_text(Document={"Bytes": b"x"}), range(6)))
+
+    gaps = [b - a for a, b in zip(calls, calls[1:])]
+    assert len(calls) == 6 and min(gaps) >= 0.045
+
+
+def test_ocr_one_uses_paced_textract(monkeypatch):
+    seen = {}
+
+    def fake_ocr(key, data, *, client=None, pages=None):
+        seen["client"] = client
+        return OcrResult(file=key, lines=[])
+
+    paced = worker._PacedTextract(object())
+    monkeypatch.setattr(worker, "_textract", lambda: paced)
+    monkeypatch.setattr(worker, "ocr_document", fake_ocr)
+    monkeypatch.setattr(worker, "upright_image", lambda data: None)
+    monkeypatch.setattr(handler, "fetch_object", lambda key: b"png")
+
+    worker.ocr_one("uploads/s1/photo.png")
+
+    assert seen["client"] is paced
