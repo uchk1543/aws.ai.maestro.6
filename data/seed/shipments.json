@@ -1,0 +1,686 @@
+[
+ {
+  "bl_no": "EXSHSZX26003555",
+  "consignee": "이그잼플유통",
+  "item": "운동화",
+  "arrived_at": "2026-10-20",
+  "customs_status": "반출",
+  "last_event_at": "2026-10-21",
+  "job_id": null
+ },
+ {
+  "bl_no": "SMLNCAN26003548",
+  "consignee": "샘플트레이딩코리아",
+  "item": "자기 식기",
+  "arrived_at": "2026-10-20",
+  "customs_status": "수리",
+  "last_event_at": "2026-10-24",
+  "job_id": null
+ },
+ {
+  "bl_no": "SOCLHPH26003563",
+  "consignee": "샘플트레이딩코리아",
+  "item": "남성 셔츠",
+  "arrived_at": "2026-10-20",
+  "customs_status": "검사 중",
+  "last_event_at": "2026-10-29",
+  "job_id": null
+ },
+ {
+  "bl_no": "SMLNSGN26003567",
+  "consignee": "샘플트레이딩코리아",
+  "item": "자기질 바닥 타일",
+  "arrived_at": "2026-10-21",
+  "customs_status": "수입신고",
+  "last_event_at": "2026-10-29",
+  "job_id": null
+ },
+ {
+  "bl_no": "EXSHSHA26003593",
+  "consignee": "샘플트레이딩코리아",
+  "item": "자기 식기",
+  "arrived_at": "2026-10-22",
+  "customs_status": "반출",
+  "last_event_at": "2026-10-24",
+  "job_id": null
+ },
+ {
+  "bl_no": "SMLNSZX26003601",
+  "consignee": "한빛샘플",
+  "item": "남성 셔츠",
+  "arrived_at": "2026-10-22",
+  "customs_status": "반출",
+  "last_event_at": "2026-10-23",
+  "job_id": null
+ },
+ {
+  "bl_no": "SMLNHPH26003523",
+  "consignee": "이그잼플홈리빙",
+  "item": "도기질 벽 타일",
+  "arrived_at": "2026-10-23",
+  "customs_status": "반출",
+  "last_event_at": "2026-10-27",
+  "job_id": null
+ },
+ {
+  "bl_no": "SMLNHPH26003583",
+  "consignee": "샘플푸드코리아",
+  "item": "캐슈너트",
+  "arrived_at": "2026-10-24",
+  "customs_status": "수리",
+  "last_event_at": "2026-10-28",
+  "job_id": null
+ },
+ {
+  "bl_no": "SMLNSZX26003604",
+  "consignee": "샘플트레이딩코리아",
+  "item": "알루미늄 프로파일",
+  "arrived_at": "2026-10-24",
+  "customs_status": "수리",
+  "last_event_at": "2026-10-25",
+  "job_id": null
+ },
+ {
+  "bl_no": "SMLNCAN26003474",
+  "consignee": "샘플트레이딩코리아",
+  "item": "태양광 모듈",
+  "arrived_at": "2026-10-25",
+  "customs_status": "반출",
+  "last_event_at": "2026-10-28",
+  "job_id": null
+ },
+ {
+  "bl_no": "SMLNTAO26003622",
+  "consignee": "샘플푸드코리아",
+  "item": "냉동 새우",
+  "arrived_at": "2026-10-26",
+  "customs_status": "반출",
+  "last_event_at": "2026-10-30",
+  "job_id": null
+ },
+ {
+  "bl_no": "SOCLNGB26003499",
+  "consignee": "샘플트레이딩코리아",
+  "item": "자기질 바닥 타일",
+  "arrived_at": "2026-10-27",
+  "customs_status": "수리",
+  "last_event_at": "2026-10-30",
+  "job_id": null
+ },
+ {
+  "bl_no": "SOCLNGB26003599",
+  "consignee": "이그잼플홈리빙",
+  "item": "플라스틱 수납함",
+  "arrived_at": "2026-10-27",
+  "customs_status": "반출",
+  "last_event_at": "2026-10-31",
+  "job_id": null
+ },
+ {
+  "bl_no": "SMLNSHA26003506",
+  "consignee": "샘플푸드코리아",
+  "item": "캐슈너트",
+  "arrived_at": "2026-10-29",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-02",
+  "job_id": null
+ },
+ {
+  "bl_no": "SOCLSGN26003607",
+  "consignee": "샘플푸드코리아",
+  "item": "커피 생두",
+  "arrived_at": "2026-10-29",
+  "customs_status": "반출",
+  "last_event_at": "2026-10-31",
+  "job_id": null
+ },
+ {
+  "bl_no": "SOCLSHA26003553",
+  "consignee": "샘플푸드코리아",
+  "item": "캐슈너트",
+  "arrived_at": "2026-10-29",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-02",
+  "job_id": null
+ },
+ {
+  "bl_no": "EXSHSHA26003528",
+  "consignee": "이그잼플유통",
+  "item": "운동화",
+  "arrived_at": "2026-10-30",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-01",
+  "job_id": null
+ },
+ {
+  "bl_no": "SMLNSHA26003543",
+  "consignee": "샘플트레이딩코리아",
+  "item": "주방용 칼",
+  "arrived_at": "2026-10-30",
+  "customs_status": "수리",
+  "last_event_at": "2026-11-03",
+  "job_id": null
+ },
+ {
+  "bl_no": "EXSHCAN26003616",
+  "consignee": "이그잼플홈리빙",
+  "item": "자기질 바닥 타일",
+  "arrived_at": "2026-10-31",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-01",
+  "job_id": null
+ },
+ {
+  "bl_no": "SMLNSHA26003585",
+  "consignee": "샘플푸드코리아",
+  "item": "캐슈너트",
+  "arrived_at": "2026-10-31",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-01",
+  "job_id": null
+ },
+ {
+  "bl_no": "EXSHNGB26003482",
+  "consignee": "샘플푸드코리아",
+  "item": "냉동 새우",
+  "arrived_at": "2026-11-01",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-05",
+  "job_id": null
+ },
+ {
+  "bl_no": "SMLNSGN26003629",
+  "consignee": "이그잼플홈리빙",
+  "item": "면 수건",
+  "arrived_at": "2026-11-01",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-05",
+  "job_id": null
+ },
+ {
+  "bl_no": "SOCLSZX26003628",
+  "consignee": "한빛샘플",
+  "item": "리튬이온 배터리팩",
+  "arrived_at": "2026-11-01",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-03",
+  "job_id": null
+ },
+ {
+  "bl_no": "SOCLHPH26003469",
+  "consignee": "한빛샘플",
+  "item": "스테인리스 볼트",
+  "arrived_at": "2026-11-03",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-07",
+  "job_id": null
+ },
+ {
+  "bl_no": "SOCLHPH26003491",
+  "consignee": "한빛샘플",
+  "item": "태양광 모듈",
+  "arrived_at": "2026-11-05",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-06",
+  "job_id": null
+ },
+ {
+  "bl_no": "EXSHHPH26003576",
+  "consignee": "샘플트레이딩코리아",
+  "item": "플라스틱 수납함",
+  "arrived_at": "2026-11-06",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-07",
+  "job_id": null
+ },
+ {
+  "bl_no": "SMLNNGB26003541",
+  "consignee": "이그잼플유통",
+  "item": "재생 타이어",
+  "arrived_at": "2026-11-06",
+  "customs_status": "수리",
+  "last_event_at": "2026-11-10",
+  "job_id": null
+ },
+ {
+  "bl_no": "EXSHNGB26003483",
+  "consignee": "샘플트레이딩코리아",
+  "item": "태양전지",
+  "arrived_at": "2026-11-07",
+  "customs_status": "수리",
+  "last_event_at": "2026-11-08",
+  "job_id": null
+ },
+ {
+  "bl_no": "EXSHSHA26003533",
+  "consignee": "한빛샘플",
+  "item": "면 티셔츠",
+  "arrived_at": "2026-11-08",
+  "customs_status": "수리",
+  "last_event_at": "2026-11-09",
+  "job_id": null
+ },
+ {
+  "bl_no": "SOCLTAO26003515",
+  "consignee": "샘플푸드코리아",
+  "item": "냉동 새우",
+  "arrived_at": "2026-11-08",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-10",
+  "job_id": null
+ },
+ {
+  "bl_no": "EXSHHPH26003661",
+  "consignee": "한빛샘플",
+  "item": "백팩",
+  "arrived_at": "2026-11-09",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-12",
+  "job_id": null
+ },
+ {
+  "bl_no": "SMLNCAN26003696",
+  "consignee": "샘플푸드코리아",
+  "item": "커피 생두",
+  "arrived_at": "2026-11-09",
+  "customs_status": "심사 중",
+  "last_event_at": "2026-11-10",
+  "job_id": null
+ },
+ {
+  "bl_no": "SMLNSGN26003710",
+  "consignee": "이그잼플홈리빙",
+  "item": "주방용 칼",
+  "arrived_at": "2026-11-09",
+  "customs_status": "수입신고",
+  "last_event_at": "2026-11-11",
+  "job_id": null
+ },
+ {
+  "bl_no": "SOCLCAN26003684",
+  "consignee": "샘플트레이딩코리아",
+  "item": "알루미늄 프로파일",
+  "arrived_at": "2026-11-09",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-12",
+  "job_id": null
+ },
+ {
+  "bl_no": "SMLNTAO26003675",
+  "consignee": "샘플푸드코리아",
+  "item": "커피 생두",
+  "arrived_at": "2026-11-10",
+  "customs_status": "수리",
+  "last_event_at": "2026-11-13",
+  "job_id": null
+ },
+ {
+  "bl_no": "EXSHSHA26003732",
+  "consignee": "이그잼플홈리빙",
+  "item": "자기질 바닥 타일",
+  "arrived_at": "2026-11-11",
+  "customs_status": "검사 중",
+  "last_event_at": "2026-11-13",
+  "job_id": null
+ },
+ {
+  "bl_no": "EXSHTAO26003744",
+  "consignee": "이그잼플홈리빙",
+  "item": "면 수건",
+  "arrived_at": "2026-11-11",
+  "customs_status": "수리",
+  "last_event_at": "2026-11-13",
+  "job_id": null
+ },
+ {
+  "bl_no": "SOCLSGN26003752",
+  "consignee": "이그잼플유통",
+  "item": "스테인리스 볼트",
+  "arrived_at": "2026-11-11",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-15",
+  "job_id": null
+ },
+ {
+  "bl_no": "SOCLTAO26003738",
+  "consignee": "이그잼플유통",
+  "item": "면 티셔츠",
+  "arrived_at": "2026-11-11",
+  "customs_status": "심사 중",
+  "last_event_at": "2026-11-20",
+  "job_id": null
+ },
+ {
+  "bl_no": "EXSHNGB26003670",
+  "consignee": "이그잼플유통",
+  "item": "충전 드릴",
+  "arrived_at": "2026-11-12",
+  "customs_status": "검사 중",
+  "last_event_at": "2026-11-21",
+  "job_id": null
+ },
+ {
+  "bl_no": "SMLNNGB26003682",
+  "consignee": "한빛샘플",
+  "item": "스테인리스 볼트",
+  "arrived_at": "2026-11-12",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-14",
+  "job_id": null
+ },
+ {
+  "bl_no": "SMLNTAO26003638",
+  "consignee": "샘플푸드코리아",
+  "item": "커피 생두",
+  "arrived_at": "2026-11-12",
+  "customs_status": "수입신고",
+  "last_event_at": "2026-11-19",
+  "job_id": null
+ },
+ {
+  "bl_no": "EXSHHPH26003656",
+  "consignee": "샘플푸드코리아",
+  "item": "냉동 새우",
+  "arrived_at": "2026-11-13",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-15",
+  "job_id": null
+ },
+ {
+  "bl_no": "EXSHNGB26003648",
+  "consignee": "샘플트레이딩코리아",
+  "item": "자기질 바닥 타일",
+  "arrived_at": "2026-11-13",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-15",
+  "job_id": null
+ },
+ {
+  "bl_no": "SMLNSHA26003715",
+  "consignee": "이그잼플유통",
+  "item": "면 셔츠",
+  "arrived_at": "2026-11-13",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-14",
+  "job_id": null
+ },
+ {
+  "bl_no": "SMLNNGB26003725",
+  "consignee": "샘플트레이딩코리아",
+  "item": "충전 드릴",
+  "arrived_at": "2026-11-14",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-17",
+  "job_id": null
+ },
+ {
+  "bl_no": "SMLNSZX26003692",
+  "consignee": "이그잼플홈리빙",
+  "item": "자기질 바닥 타일",
+  "arrived_at": "2026-11-14",
+  "customs_status": "검사 중",
+  "last_event_at": "2026-11-20",
+  "job_id": null
+ },
+ {
+  "bl_no": "SOCLTAO26003640",
+  "consignee": "샘플트레이딩코리아",
+  "item": "원목 의자",
+  "arrived_at": "2026-11-14",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-17",
+  "job_id": null
+ },
+ {
+  "bl_no": "EXSHCAN26003687",
+  "consignee": "한빛샘플",
+  "item": "면 티셔츠",
+  "arrived_at": "2026-11-15",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-19",
+  "job_id": null
+ },
+ {
+  "bl_no": "SMLNTAO26003746",
+  "consignee": "샘플푸드코리아",
+  "item": "커피 생두",
+  "arrived_at": "2026-11-15",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-16",
+  "job_id": null
+ },
+ {
+  "bl_no": "SOCLNGB26003705",
+  "consignee": "샘플푸드코리아",
+  "item": "냉동 새우",
+  "arrived_at": "2026-11-15",
+  "customs_status": "수리",
+  "last_event_at": "2026-11-18",
+  "job_id": null
+ },
+ {
+  "bl_no": "SOCLSGN26003718",
+  "consignee": "샘플푸드코리아",
+  "item": "캐슈너트",
+  "arrived_at": "2026-11-15",
+  "customs_status": "심사 중",
+  "last_event_at": "2026-11-19",
+  "job_id": null
+ },
+ {
+  "bl_no": "EXSHCAN26003855",
+  "consignee": "이그잼플홈리빙",
+  "item": "플라스틱 수납함",
+  "arrived_at": "2026-11-16",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-20",
+  "job_id": null
+ },
+ {
+  "bl_no": "SOCLCAN26003801",
+  "consignee": "이그잼플유통",
+  "item": "알루미늄 프로파일",
+  "arrived_at": "2026-11-16",
+  "customs_status": "검사 중",
+  "last_event_at": "2026-11-20",
+  "job_id": null
+ },
+ {
+  "bl_no": "SOCLCAN26003811",
+  "consignee": "한빛샘플",
+  "item": "자전거 타이어",
+  "arrived_at": "2026-11-16",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-17",
+  "job_id": null
+ },
+ {
+  "bl_no": "SOCLSHA26003794",
+  "consignee": "샘플푸드코리아",
+  "item": "냉동 새우",
+  "arrived_at": "2026-11-16",
+  "customs_status": "수입신고",
+  "last_event_at": "2026-11-21",
+  "job_id": null
+ },
+ {
+  "bl_no": "EXSHSGN26003829",
+  "consignee": "이그잼플유통",
+  "item": "태양광 모듈",
+  "arrived_at": "2026-11-17",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-19",
+  "job_id": null
+ },
+ {
+  "bl_no": "SMLNSZX26003807",
+  "consignee": "샘플푸드코리아",
+  "item": "커피 생두",
+  "arrived_at": "2026-11-17",
+  "customs_status": "수리",
+  "last_event_at": "2026-11-18",
+  "job_id": null
+ },
+ {
+  "bl_no": "SOCLHPH26003862",
+  "consignee": "샘플트레이딩코리아",
+  "item": "스테인리스 볼트",
+  "arrived_at": "2026-11-17",
+  "customs_status": "검사 중",
+  "last_event_at": "2026-11-21",
+  "job_id": null
+ },
+ {
+  "bl_no": "SMLNNGB26003823",
+  "consignee": "이그잼플홈리빙",
+  "item": "도기질 벽 타일",
+  "arrived_at": "2026-11-18",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-21",
+  "job_id": null
+ },
+ {
+  "bl_no": "SMLNSHA26003815",
+  "consignee": "샘플트레이딩코리아",
+  "item": "백팩",
+  "arrived_at": "2026-11-18",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-19",
+  "job_id": null
+ },
+ {
+  "bl_no": "SOCLSGN26003790",
+  "consignee": "샘플트레이딩코리아",
+  "item": "면 수건",
+  "arrived_at": "2026-11-18",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-20",
+  "job_id": null
+ },
+ {
+  "bl_no": "SOCLTAO26003846",
+  "consignee": "샘플트레이딩코리아",
+  "item": "운동화",
+  "arrived_at": "2026-11-18",
+  "customs_status": "반출",
+  "last_event_at": "2026-11-21",
+  "job_id": null
+ },
+ {
+  "bl_no": "EXSHNGB26003865",
+  "consignee": "샘플푸드코리아",
+  "item": "커피 생두",
+  "arrived_at": "2026-11-19",
+  "customs_status": "검사 중",
+  "last_event_at": "2026-11-19",
+  "job_id": null
+ },
+ {
+  "bl_no": "SOCLHPH26003836",
+  "consignee": "샘플트레이딩코리아",
+  "item": "플라스틱 수납함",
+  "arrived_at": "2026-11-19",
+  "customs_status": "검사 중",
+  "last_event_at": "2026-11-21",
+  "job_id": null
+ },
+ {
+  "bl_no": "EXSHHPH26003769",
+  "consignee": "한빛샘플",
+  "item": "태양광 모듈",
+  "arrived_at": "2026-11-20",
+  "customs_status": "수입신고",
+  "last_event_at": "2026-11-21",
+  "job_id": null
+ },
+ {
+  "bl_no": "SMLNSHA26003777",
+  "consignee": "샘플트레이딩코리아",
+  "item": "자전거 타이어",
+  "arrived_at": "2026-11-20",
+  "customs_status": "수입신고",
+  "last_event_at": "2026-11-20",
+  "job_id": null
+ },
+ {
+  "bl_no": "SOCLSHA26003784",
+  "consignee": "이그잼플유통",
+  "item": "재생 타이어",
+  "arrived_at": "2026-11-20",
+  "customs_status": "검사 중",
+  "last_event_at": "2026-11-20",
+  "job_id": null
+ },
+ {
+  "bl_no": "SOCLTAO26003798",
+  "consignee": "샘플트레이딩코리아",
+  "item": "스테인리스 볼트",
+  "arrived_at": "2026-11-20",
+  "customs_status": "심사 중",
+  "last_event_at": "2026-11-21",
+  "job_id": null
+ },
+ {
+  "bl_no": "EXSHCAN26003767",
+  "consignee": "이그잼플유통",
+  "item": "스테인리스 볼트",
+  "arrived_at": "2026-11-21",
+  "customs_status": "수입신고",
+  "last_event_at": "2026-11-21",
+  "job_id": null
+ },
+ {
+  "bl_no": "EXSHNGB26003754",
+  "consignee": "한빛샘플",
+  "item": "LED 평판 조명",
+  "arrived_at": "2026-11-21",
+  "customs_status": "수입신고",
+  "last_event_at": "2026-11-21",
+  "job_id": null
+ },
+ {
+  "bl_no": "EXSHSHA26003780",
+  "consignee": "샘플트레이딩코리아",
+  "item": "면 셔츠",
+  "arrived_at": "2026-11-21",
+  "customs_status": "수입신고",
+  "last_event_at": "2026-11-21",
+  "job_id": null
+ },
+ {
+  "bl_no": "EXSHSZX26003766",
+  "consignee": "샘플푸드코리아",
+  "item": "캐슈너트",
+  "arrived_at": "2026-11-21",
+  "customs_status": "입항",
+  "last_event_at": "2026-11-21",
+  "job_id": null
+ },
+ {
+  "bl_no": "SMLNNGB26003809",
+  "consignee": "이그잼플유통",
+  "item": "면 티셔츠",
+  "arrived_at": "2026-11-21",
+  "customs_status": "입항",
+  "last_event_at": "2026-11-21",
+  "job_id": null
+ },
+ {
+  "bl_no": "SOCLCAN26003761",
+  "consignee": "샘플푸드코리아",
+  "item": "냉동 새우",
+  "arrived_at": "2026-11-21",
+  "customs_status": "수입신고",
+  "last_event_at": "2026-11-21",
+  "job_id": null
+ },
+ {
+  "bl_no": "SOCLTAO26003844",
+  "consignee": "이그잼플유통",
+  "item": "LED 평판 조명",
+  "arrived_at": "2026-11-21",
+  "customs_status": "입항",
+  "last_event_at": "2026-11-21",
+  "job_id": null
+ }
+]
