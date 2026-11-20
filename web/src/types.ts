@@ -163,6 +163,7 @@ export const DOC_TYPES: DocType[] = [
 ];
 export interface DocumentRecord {
   job_id: string;
+  key: string; // S3 키. 서류 보기(GET /api/jobs/{id}/files)에서 이 파일을 찾는다
   file_name: string;
   doc_type: DocType;
   classified_by: ClassifiedBy;
@@ -176,4 +177,35 @@ export interface DocumentsResponse {
   counts: Record<DocType, number>;
   items: DocumentRecord[];
   next_cursor: string | null;
+}
+
+// GET /api/jobs/{id}/files (서류 보기, G11)
+// 임시(제안 중): 서버 약속 제안 이슈가 합쳐지기 전 모양이다.
+// 서버가 서류를 쪽 그림으로 만들어 주소를 주고, OCR 이 찾은 위치(bbox, 0~1 비율)를 표시(mark)로 준다.
+// 화면은 위치를 계산하지 않고 받은 bbox 를 그대로 그린다.
+export type MarkKind = "title" | "feature" | "field";
+export interface DocMark {
+  kind: MarkKind; // title: 서류 제목, feature: 분류에 쓴 특징 칸, field: 읽은 칸(오류 칸과 field 로 맞춘다)
+  label: string;
+  text: string;
+  field: string | null; // kind=field 일 때 칸 경로. 예: "items[0].gross_kg" (IssueCell.field 와 같은 이름)
+  page: number; // 1부터
+  bbox: [number, number, number, number]; // left, top, width, height (0~1 비율)
+}
+export interface DocPage {
+  url: string;
+  width: number;
+  height: number;
+}
+export interface JobFileView {
+  key: string;
+  file_name: string;
+  doc_type: DocType;
+  classified_by: ClassifiedBy;
+  reason: string;
+  pages: DocPage[];
+  marks: DocMark[];
+}
+export interface JobFilesResponse {
+  files: JobFileView[];
 }
