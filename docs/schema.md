@@ -34,11 +34,20 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 처리 Lambda가 비동기로 `run_job`을 돌려 `running` → `waiting_approval`·`done`·`failed`로 바꾼다. 화면은 `GET /api/jobs/{id}`를 2초마다 부른다.
 ## 화물 기록 (team06-shipments 한 줄)
 - 예시: `docs/examples/shipment.json`
-- `customs_status` 값 목록과 "통관 지연" 기준(입항 뒤 며칠)은 검증 담당이 정해 여기에 적는다.
+- `customs_status` 값은 아래 6개만 쓴다 (진행 순서). 검사 중은 심사 중 뒤에 거치는 선택 단계다.
+  `입항` → `수입신고` → `심사 중` → `검사 중` → `수리` → `반출`
+- 통관이 끝난 상태: `수리`, `반출`.
+- "통관 지연"은 상태 값이 아니다. `customs_status`에 넣지 않고, 아래 규칙으로 코드가 계산한다.
+  - 통관 지연 = (오늘 − `arrived_at`) ≥ **3일** 이고 `customs_status`가 `수리`·`반출`이 아님.
+  - 입항일 당일이 0일이다. 입항일이 11/17이면 11/20부터 지연이다.
+  - 오늘은 한국 시간(Asia/Seoul) 날짜다. 지연 일수 `DELAY_DAYS = 3`은 코드 한 곳에 상수로 둔다.
+  - 3일은 데모용으로 정한 값이다. 법령이나 관세청 기준이 아니다. 바꿀 때는 이 문서와 `DELAY_DAYS`, 현황 질문 정답(`eval/queries.csv`)을 함께 고친다.
+  - 답에는 쓴 규칙을 함께 보여 준다 (`ChatResponse.rule`, 예: "입항 후 3일 지나도 수리·반출 아님").
+- 기간 조건(`today` · `this_week` · `last_week` · `range`)은 `arrived_at`(입항일) 기준이다. 주는 월요일부터 일요일까지이고, 날짜 계산은 코드가 한국 시간으로 한다.
 ## 신고서 초안 칸 (declaration_draft)
 - 간이 양식이다. 코드가 템플릿에 값을 채우고 모델은 쓰지 않는다 (agent-design.md 7번). 초안에는 "사람 검토 전 초안"을 적고 신고 전송은 하지 않는다.
 - `fields[]`: `{"name": 신고서 칸 이름, "value": 채운 값, "source": 출처}`. `source`는 `서류.칸`이고, 품목 칸은 `items[0]`처럼 줄 번호 − 1을 쓴다 (1번 줄 = `items[0]`).
-- `blank_fields[]`: 비워 둔 칸의 경로. 서류 전체 칸은 `total_gross_kg`, 품목 칸은 `items[0].qty`처럼 쓴다 (줄 번호 − 1).
+- `blank_fields[]`: 비워 둔 칸. 아래 표의 `field`(칸 키)로 적는다. 서류 전체 칸은 `total_gross_kg`, 품목 칸은 `items[0].qty`처럼 쓴다 (줄 번호 − 1). 수량과 단위처럼 출처가 같은 칸도 키로 구분한다.
 - 칸 목록은 `eval/declarations.csv`(정답지)의 `field`·`label`·`source`와 같다. 바꾸면 정답지도 함께 바꾼다.
 - "읽기 칸"은 지금 `tools/models.py`의 `ExtractedDocument`에 이 출처가 있는지다. 없음인 칸은 읽기 칸(B2, 1번 담당)이 늘어야 채울 수 있고, 그 전에는 비워 두고 blank_fields에 적는다.
 
