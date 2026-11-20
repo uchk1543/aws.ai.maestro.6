@@ -35,6 +35,7 @@ from tools import declaration, hs, report, wms
 from tools.models import (
     DOC_TYPE_KO,
     Cell,
+    DeclarationDraft,
     DocPage,
     DocType,
     DocumentRecord,
@@ -204,6 +205,7 @@ def _mark_registered(job_id: str, bl_no: str) -> Step:
     """WMS에 등록된 뒤 그 작업의 화물 기록 상태를 '수입신고'로 고치고 단계 한 줄을 돌려준다 (E3, report.mark_registered).
 
     언제: 사람 승인(D3)이나 HS 선택 뒤 자동 등록(D2)으로 push_to_wms가 성공한 뒤, save_job 전.
+      처리 직후 자동 등록(#154)은 화물 기록을 처음부터 '수입신고'로 써서(record_shipment registered) 이 함수를 부르지 않는다.
     반환: Step. 예외를 내지 않는다. 저장소를 못 만들어도(SHIPMENTS_TABLE 없음 등) ok=False 한 줄만 남기고,
       WMS 등록 결과는 그대로 저장한다.
     """
@@ -222,6 +224,22 @@ def _hs_history() -> DynamoHSHistory:
 
     config = Config(connect_timeout=5, read_timeout=5, retries={"max_attempts": 2})
     return DynamoHSHistory(boto3.resource("dynamodb", config=config).Table(os.environ["HS_HISTORY_TABLE"]))
+
+
+@cache
+def _hs_table() -> hs.CsvHSTable:
+    """HS부호 표(data/hs/hs_codes.csv). Lambda 실행 환경마다 처음 한 번만 읽는다 (처리 Lambda와 같은 zip에 들어 있다)."""
+    return hs.load_hs_table()
+
+
+def _hs_known(code: str) -> bool:
+    """사람이 고른 HS가 HS부호 표에 있는 10자리 코드인지 본다 (#181).
+
+    언제: POST /jobs/{id}/hs에서 이력을 쓰기 전. 표에 없는 코드가 신고서 초안과 확정 이력에 들어가지 않게 한다.
+    받는 것: code(10자리 숫자 문자열). 반환: 표에 있으면 True.
+    TODO(#164): 2번이 tools/hs.py에 표 확인 함수를 만들면 그 함수로 바꾼다. 지금은 이미 있는 CsvHSTable.exists를 쓴다.
+    """
+    return _hs_table().exists(code)
 
 
 # ---------------------------------------------------------------------------
@@ -412,8 +430,9 @@ def choose_hs(job_id: str, body) -> dict:
     등록하면 화물 기록 상태도 '수입신고'로 고친다 (E3).
 
     언제: 화면에서 '사람 확인 필요' 품목의 HS를 고른 뒤 (agent-design.md 6·8번). 모델 호출 없음.
-    받는 것: {"choices": [{"line", "hs"}]}. line은 이 작업의 HS 결과에 있는 행, hs는 10자리.
-    반환: 200 {"declaration_draft"} / 400 요청 형식 / 404 없는 작업
+    받는 것: {"choices": [{"line", "hs"}]}. line은 이 작업의 HS 결과에 있는 행, hs는 HS부호 표에 있는 10자리.
+      후보 3개 밖의 코드도 표에 있으면 받고, 단계 기록에 '후보 밖에서 직접 입력'을 남긴다 (#181).
+    반환: 200 {"declaration_draft"} / 400 요청 형식, HS부호 표에 없는 코드 / 404 없는 작업
       / 409 처리 중, 서류 기록이 없음, 수입자를 몰라 확정 이력을 남길 수 없음.
       WMS 상태는 GET /jobs/{id}의 result.wms로 본다. 등록을 못 해도(조건 미달, B/L 없음, 저장소 오류)
       HS 선택은 저장하고 200이다. 그때는 승인 대기로 남아 사람이 승인한다 (D3).
@@ -430,6 +449,9 @@ def choose_hs(job_id: str, body) -> dict:
     picked, problem = _validate_choices(body, set(results))
     if problem:
         return _error(400, problem)
+    unknown = [f"{line}행 {code}" for line, code in picked.items() if not _hs_known(code)]
+    if unknown:  # 표에 없는 코드는 신고서·이력에 넣지 않는다 (#181)
+        return _error(400, f"HS부호 표에 없는 코드입니다: {', '.join(unknown)}. 10자리 HSK를 확인해 주세요")
     context = load_job_docs(item)
     if context is None:
         return _error(409, "이 작업에는 저장된 서류 기록이 없어 신고서 초안을 다시 채울 수 없습니다")
@@ -441,6 +463,9 @@ def choose_hs(job_id: str, body) -> dict:
     if missing:
         return _error(409, f"서류 기록에 {missing}행이 없습니다")
 
+    # 후보 3개 밖에서 직접 넣은 코드는 단계 기록에 남긴다 (#181). 확정하면 후보가 바뀔 수 있어 먼저 본다
+    outside = {line for line, code in picked.items() if code not in {c.hs for c in results[line].candidates}}
+
     # 모두 검사한 뒤에 이력을 쓴다 (요청이 틀렸는데 이력만 남는 일을 막는다)
     history = _hs_history()
     for line, code in picked.items():
@@ -450,28 +475,51 @@ def choose_hs(job_id: str, body) -> dict:
     job.result.hs = [results[r.line] for r in job.result.hs]
     draft = declaration.draft_declaration(docs, job.result.issues, job.result.hs)
     job.result.declaration_draft = draft
-    chosen = ", ".join(f"{line}행 {code}" for line, code in picked.items())
-    job.steps.append(Step(tool="confirm_by_human", summary=f"사람 확정: {chosen}", ok=True))
-    job.steps.append(
-        Step(tool="draft_declaration", summary=f"신고서 초안 {len(draft.fields)}칸, 비운 칸 {len(draft.blank_fields)}개", ok=True)
+    chosen = ", ".join(
+        f"{line}행 {code}" + (" (후보 밖에서 직접 입력)" if line in outside else "") for line, code in picked.items()
     )
+    job.steps.append(Step(tool="confirm_by_human", summary=f"사람 확정: {chosen}", ok=True))
+    job.steps.append(draft_step(draft))
 
     # HS 선택을 먼저 저장한다. WMS 기록은 같은 멱등 키면 처음 것만 남으므로, 저장된 HS로만 만든다
     save_job(job, keep=item)
 
-    # 자동 등록 재검사 (D2, agent-design.md 8번). 등록 실패는 예외로 오지 않고 (승인 대기, 이유)로 온다
+    # 자동 등록 재검사 (D2, agent-design.md 8번). 등록 실패는 예외로 오지 않고 단계 기록에 남는다
+    before = (job.result.wms, len(job.steps))
+    if auto_register(job, docs, importer):
+        job.steps.append(_mark_registered(job_id, wms._bl_no(docs)))  # 등록됐으니 B/L 번호는 하나다
+    if (job.result.wms, len(job.steps)) != before:
+        save_job(job, keep=item)
+    return _response(200, {"declaration_draft": draft.model_dump(mode="json")})
+
+
+def draft_step(draft: DeclarationDraft) -> Step:
+    """신고서 초안을 채운 단계 한 줄. HS 선택(choose_hs)과 처리 Lambda(처리 직후 초안, #154)가 같은 글로 남긴다."""
+    return Step(
+        tool="draft_declaration", summary=f"신고서 초안 {len(draft.fields)}칸, 비운 칸 {len(draft.blank_fields)}개", ok=True
+    )
+
+
+def auto_register(job: Job, docs: list[ExtractedDocument], importer: str | None) -> bool:
+    """자동 등록 조건(D2, agent-design.md 8번)을 검사해, 다 채우면 가상 WMS에 등록하고 그 결과를 job에 넣는다.
+
+    언제: HS 선택을 저장한 뒤(choose_hs), 처리 Lambda가 done으로 끝난 작업을 마지막으로 저장하기 전(#154).
+    받는 것: job(result가 있는 작업. 그 자리에서 고친다), docs(읽은 서류), importer(수입자. 모르면 None).
+    반환: 이번에 새로 등록했으면 True. 화물 기록 상태(E3)는 부르는 쪽이 고친다.
+      고치는 것: result.wms = 등록됨(by=auto) 또는 승인 대기. 새로 등록했으면 status = done과 push_to_wms 한 줄.
+      조건은 채웠는데 못 했으면(B/L·수입자 없음, 가상 WMS 오류 등) push_to_wms ok=False 한 줄로 이유를 남긴다.
+      조건 미달(문제가 남음, HS 대기)은 정상 흐름이라 단계를 더하지 않는다. 예외는 올리지 않는다 (wms.register_if_ready).
+    """
     before = job.result.wms
-    state, reason = wms.register_if_ready(job_id, docs, job.result, importer)
+    state, reason = wms.register_if_ready(job.job_id, docs, job.result, importer or "")
+    job.result.wms = state
     if state.status == "등록됨" and (before is None or before.status != "등록됨"):
         job.status = "done"  # 사람이 승인할 것이 남지 않았다 (D3 승인과 같다). HS를 다시 고르면 409
         job.steps.append(Step(tool="push_to_wms", summary=f"WMS 자동 등록: {state.wms_id}", ok=True))
-        job.steps.append(_mark_registered(job_id, wms._bl_no(docs)))  # 등록됐으니 B/L 번호는 하나다
-    elif reason:
+        return True
+    if reason:
         job.steps.append(Step(tool="push_to_wms", summary=f"WMS 자동 등록 못 함: {reason}", ok=False))
-    if state != before or reason:
-        job.result.wms = state
-        save_job(job, keep=item)
-    return _response(200, {"declaration_draft": draft.model_dump(mode="json")})
+    return False
 
 
 def _wms_body(state: WmsState) -> dict:
@@ -485,7 +533,8 @@ def approve_job(job_id: str, body) -> dict:
     언제: '확인 필요'가 남은 건을 사람이 화면에서 보고 승인할 때 (agent-design.md 8번 예외). 모델 호출 없음.
     받는 것: {"approver"}: 승인자 이름. 공백만이면 안 되고 50자까지. 단계 기록에 남긴다.
     반환: 200 {"wms": {"status", "wms_id"}} / 400 요청 형식 / 404 없는 작업
-      / 409 {"error"}: 불일치가 남음, 승인 대기 중이 아님, 서류 기록이 없음, B/L 번호·수하인이 없어 기록을 못 만듦
+      / 409 {"error"}: 불일치가 남음, 승인 대기 중이 아님, 서류 기록이 없음, B/L 번호·수하인이 없어 기록을 못 만듦,
+        같은 B/L이 다른 작업으로 이미 등록됨(#176. 이때만 단계 기록에 이유를 한 줄 남긴다. 같은 이유면 다시 남기지 않는다)
       / 502 가상 WMS 저장 실패 (작업은 그대로라 다시 승인하면 된다).
     이미 등록된 작업이면 다시 등록하지 않고 그 상태를 돌려준다. WMS 쪽도 멱등 키라 재시도해도 한 번만 들어간다.
     저장: result.wms = {등록됨, human, wms_id}, status = done, steps에 push_to_wms 한 줄과 mark_registered 한 줄(E3).
@@ -520,6 +569,14 @@ def approve_job(job_id: str, body) -> dict:
     print(f"[api] approve job={job_id}")
     try:
         state = wms.push_to_wms(record, adapter=wms.dynamo_wms())
+    except wms.DuplicateBL as exc:  # 같은 B/L이 다른 작업으로 이미 있다 (#176). 작업은 승인 대기 그대로, 이유만 남긴다
+        reason = str(exc)
+        print(f"[api] approve job={job_id} 등록 안 함: {reason}")
+        # 막힌 승인을 다시 눌러도 같은 이유면 단계 기록에는 한 줄만 둔다 (승인자가 달라도). 409는 매번 돌려준다
+        if not any(s.tool == "push_to_wms" and not s.ok and s.summary.endswith(reason) for s in job.steps):
+            job.steps.append(Step(tool="push_to_wms", summary=f"사람 승인({approver}) 했지만 WMS에 등록하지 않음: {reason}", ok=False))
+            save_job(job, keep=item)
+        return _error(409, reason)
     except (BotoCoreError, ClientError) as exc:
         print(f"[error] WMS 등록 실패 job={job_id} {type(exc).__name__}: {exc}")
         return _error(502, "가상 WMS에 등록하지 못했습니다. 잠시 뒤 다시 승인해 주세요 (같은 건은 한 번만 들어갑니다)")

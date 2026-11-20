@@ -60,6 +60,7 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 - `grade`: `불일치` | `확인 필요` | `참고`
 - `checked_by`: `pdf_text` | `textract` | `model_reread` | `none`
 - `hs[].status`: `자동 확정` | `사람 확인 필요` | `사람 확정`, `hs[].by`: `history` | `auto_match` | `human` | null
+- `hs[].item_name`: 그 행의 품명(서류에 적힌 글자, 못 읽었으면 null). `hs[].doc_hs_code`: 서류에 적힌 HS를 적힌 그대로(예: `8507.60`, 없으면 null). 화면이 "1행 · 품명 (서류 HS)"로 보여 준다 (FB07 #164)
 - `wms.status`: `승인 대기` | `등록됨`, `wms.by`: `auto` | `human` | null
 - `suspect`: 서류가 셋 이상일 때 다수결로 고른 서류 종류, 둘뿐이면 null
 처리 방식: API Gateway는 요청 하나를 30초 안에 끝내야 해서, `POST /api/jobs`는 작업을 `queued`로 저장하고 `job_id`를 바로 돌려준다.
@@ -89,6 +90,13 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
   - 3일은 데모용으로 정한 값이다. 법령이나 관세청 기준이 아니다. 바꿀 때는 이 문서와 `DELAY_DAYS`, 현황 질문 정답(`eval/queries.csv`)을 함께 고친다.
   - 답에는 쓴 규칙을 함께 보여 준다 (`ChatResponse.rule`, 예: "입항 후 3일 지나도 수리·반출 아님").
 - 기간 조건(`today` · `this_week` · `last_week` · `range`)은 `arrived_at`(입항일) 기준이다. 주는 월요일부터 일요일까지이고, 날짜 계산은 코드가 한국 시간으로 한다.
+- 현황 조회 조건(`ChatFilters`, `POST /api/chat` 응답의 `filters`)은 상태 하나·기간만 담는다 (#165).
+  - `unsupported`: 모델이 이 칸으로 나타내지 못한 조건 목록 (예: 수하인, B/L 번호, 상태 둘 이상). 비어 있지 않으면 조회하지 않고 "… 조건은 아직 조회할 수 없습니다"로 답한다 (`rows` 빈 목록).
+  - 조건이 하나도 없으면(상태·기간·`unsupported` 모두 비었음) 조회하지 않고 되묻는다. 전체 목록을 답하지 않는다.
+- 가드레일 (E7 #152, `ChatResponse.blocked`): 막으면 조회하지 않고 "통관·화물 현황 질문만 답합니다. 예: …"로 답하고 `blocked`에 이유를 넣는다. 막지 않았으면 `null`.
+  - 질문을 모델에 넣기 전에 Bedrock Guardrail(`GUARDRAIL_ID`·`GUARDRAIL_VERSION`, ApplyGuardrail 입력 검사)로 본다. 이유는 필터 이름(예: `프롬프트 공격`, `모욕`).
+    환경 변수가 없거나 호출이 실패하면 막지 않는다 (로그만).
+  - 모델이 낸 조건이 모두 비었고 질문에 화물·통관 낱말(또는 B/L 번호 모양)이 없으면 `무관한 질문`으로 막는다. 가드레일은 무관한 질문을 막지 않는다 (#151).
 ## 신고서 초안 칸 (declaration_draft)
 - 간이 양식이다. 코드가 템플릿에 값을 채우고 모델은 쓰지 않는다 (agent-design.md 7번). 초안에는 "사람 검토 전 초안"을 적고 신고 전송은 하지 않는다.
 - `fields[]`: `{"name": 신고서 칸 이름, "value": 채운 값, "source": 출처}`. `source`는 `서류.칸`이고, 품목 칸은 `items[0]`처럼 줄 번호 − 1을 쓴다 (1번 줄 = `items[0]`).

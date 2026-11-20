@@ -1,7 +1,8 @@
 // G3 진행 화면: GET /api/jobs/{id} 를 2초마다 불러 단계 기록(steps)을 보여 준다
 import { useQuery } from "@tanstack/react-query";
-import { ApiError, getJob } from "../api";
+import { ApiError, getJob, getJobFiles } from "../api";
 import { DeclarationTable } from "../components/DeclarationTable";
+import { DocReview } from "../components/DocReview";
 import { HsPicker } from "../components/HsPicker";
 import { IssueList } from "../components/IssueList";
 import { WmsPanel } from "../components/WmsPanel";
@@ -31,6 +32,14 @@ export function JobPage({ jobId }: { jobId: string }) {
     refetchInterval: (q) => pollInterval(q.state.data, q.state.error),
   });
   const job = query.data;
+  // G11 서류 보기: 결과가 나온 뒤 쪽 그림과 칸 위치를 받는다. 서버가 아직 주지 않으면(404·501) 글자 오류 목록만 보여 준다
+  const files = useQuery({
+    queryKey: ["job-files", jobId],
+    queryFn: () => getJobFiles(jobId),
+    enabled: Boolean(job?.result),
+    retry: false,
+  });
+  const viewFiles = files.data?.files ?? [];
   const polling = pollInterval(job, query.error) !== false;
 
   return (
@@ -75,7 +84,12 @@ export function JobPage({ jobId }: { jobId: string }) {
             )}
           </div>
 
-          {job.result && <IssueList issues={job.result.issues} />}
+          {job.result &&
+            (job.result.issues.length > 0 && viewFiles.length > 0 ? (
+              <DocReview issues={job.result.issues} files={viewFiles} />
+            ) : (
+              <IssueList issues={job.result.issues} />
+            ))}
           {job.result && <HsPicker jobId={job.job_id} jobStatus={job.status} results={job.result.hs} />}
           {job.result && <DeclarationTable draft={job.result.declaration_draft} />}
           {job.result && <WmsPanel jobId={job.job_id} jobStatus={job.status} wms={job.result.wms} />}
