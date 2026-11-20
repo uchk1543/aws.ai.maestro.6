@@ -2,12 +2,14 @@
 // 조회·집계·기간 계산은 서버 코드가 한다. 화면은 받은 값을 그대로 보여 준다 (agent-design.md 9번).
 // 처음에는 예시 질문 칸을 보여 주고, 누르면 그 질문을 바로 보낸다. PC 는 예시를 왼쪽에 늘 둔다.
 // 서버는 앞 질문을 기억하지 않으므로 입력칸 아래에 "질문마다 따로 답합니다"를 적는다 (FB09 #166).
-import { useMutation } from "@tanstack/react-query";
+// G14: 열 때 서버 기록(GET /api/chat/{session_id}, E6 #157)을 불러와 새로 고쳐도 대화가 남는다.
+//      서버 경로가 없으면(404·501) 이 탭의 메모리(sessionStorage)만 쓴다. "새 대화"는 새 session_id.
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { sendChat } from "../api";
+import { ApiError, getChatHistory, sendChat } from "../api";
 import { Icon } from "../components/Icon";
 import { navigate } from "../route";
-import type { ChatResponse, Period } from "../types";
+import type { ChatHistoryLine, ChatResponse, Period } from "../types";
 
 const SESSION_KEY = "team06-chat-session";
 const MESSAGES_KEY = "team06-chat-messages";
@@ -23,16 +25,48 @@ const PERIOD_KO: Record<Period, string> = {
   range: "기간 지정",
 };
 
-export type ChatMessage = { role: "user"; text: string } | { role: "assistant"; response: ChatResponse };
+/** restored: 서버 기록에서 불러온 답. 기록에는 결과 표(rows)가 없고 건수(count)만 있다 */
+export type ChatMessage =
+  | { role: "user"; text: string }
+  | { role: "assistant"; response: ChatResponse; count?: number | null; restored?: boolean };
+
+function newSessionId(): string {
+  return typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `s-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
 
 /** 탭마다 대화 하나. 새로 고쳐도 같은 session_id 를 쓴다. */
 export function chatSessionId(): string {
   let id = sessionStorage.getItem(SESSION_KEY);
   if (!id) {
-    id = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `s-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    id = newSessionId();
     sessionStorage.setItem(SESSION_KEY, id);
   }
   return id;
+}
+
+/** 서버 기록 줄 → 화면 대화. 막힌 답은 blocked 에 이유를 넣어 안내 모양으로 그린다. */
+export function historyToMessages(lines: ChatHistoryLine[]): ChatMessage[] {
+  return lines.map((line) =>
+    line.role === "user"
+      ? { role: "user", text: line.text }
+      : {
+          role: "assistant",
+          restored: true,
+          count: line.count,
+          response: {
+            answer: line.text,
+            filters: line.filters ?? { status: null, period: null },
+            period_resolved: null,
+            rows: [],
+            blocked: line.blocked ? (line.block_reason ?? "막힌 질문") : null,
+          },
+        },
+  );
+}
+
+/** 서버에 기록 경로가 아직 없으면(404·501) 메모리만 쓴다 */
+function noHistoryRoute(e: unknown): boolean {
+  return e instanceof ApiError && (e.status === 404 || e.status === 501);
 }
 
 function loadMessages(): ChatMessage[] {
@@ -55,8 +89,18 @@ export function describeFilters(r: ChatResponse): string[] {
   return parts;
 }
 
-function Answer({ response }: { response: ChatResponse }) {
+function Answer({ response, count, restored }: { response: ChatResponse; count?: number | null; restored?: boolean }) {
   const conditions = describeFilters(response);
+  // 가드레일로 막힌 답(E7): 조건·표 없이 회색 안내
+  if (response.blocked) {
+    return (
+      <div className="chat-answer blocked">
+        <p className="chat-text">{response.answer}</p>
+        <p className="chat-blocked-reason">안내 · {response.blocked}</p>
+      </div>
+    );
+  }
+  const total = restored ? count : response.rows.length;
   return (
     <div className="chat-answer">
       <p className="chat-text">{response.answer}</p>
@@ -70,8 +114,9 @@ function Answer({ response }: { response: ChatResponse }) {
             </li>
           ))
         )}
-        <li className="tag dark">{response.rows.length}건</li>
+        {total !== null && total !== undefined && <li className="tag dark">{total}건</li>}
       </ul>
+      {restored && !!total && <p className="hint chat-restored">지난 대화라 결과 표는 없습니다. 다시 물으면 표가 보입니다.</p>}
       {response.rows.length > 0 && (
         // 모바일에서는 줄마다 카드, 태블릿·PC 에서는 표 (styles.css table.cards)
         <table className="cells cards">
@@ -118,13 +163,36 @@ function Answer({ response }: { response: ChatResponse }) {
 /** ask: 대시보드 화물 통계를 누르면 주소(#/chat?q=…)로 오는 질문. 열릴 때 한 번 보낸다 (G15). */
 export function ChatPage({ ask: askOnOpen }: { ask?: string } = {}) {
   const [messages, setMessages] = useState<ChatMessage[]>(loadMessages);
+  const [sessionId, setSessionId] = useState(chatSessionId);
   const asked = useRef(false);
+  // 이 화면에서 질문을 보냈으면 늦게 온 서버 기록으로 덮지 않는다
+  const touched = useRef(false);
   const [input, setInput] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
   const mutation = useMutation({
-    mutationFn: (message: string) => sendChat({ session_id: chatSessionId(), message }),
+    mutationFn: (message: string) => sendChat({ session_id: sessionId, message }),
     onSuccess: (response) => setMessages((m) => [...m, { role: "assistant", response }]),
   });
+  const history = useQuery({
+    queryKey: ["chat-history", sessionId],
+    queryFn: () => getChatHistory(sessionId),
+    retry: false,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+  });
+
+  useEffect(() => {
+    if (history.data && !touched.current) setMessages(historyToMessages(history.data.messages));
+  }, [history.data]);
+
+  function newChat() {
+    const id = newSessionId();
+    sessionStorage.setItem(SESSION_KEY, id);
+    touched.current = false;
+    mutation.reset();
+    setMessages([]);
+    setSessionId(id);
+  }
 
   useEffect(() => {
     sessionStorage.setItem(MESSAGES_KEY, JSON.stringify(messages));
@@ -134,6 +202,7 @@ export function ChatPage({ ask: askOnOpen }: { ask?: string } = {}) {
   function ask(raw: string) {
     const text = raw.trim();
     if (!text || mutation.isPending) return;
+    touched.current = true;
     setMessages((m) => [...m, { role: "user", text }]);
     setInput("");
     mutation.mutate(text);
@@ -150,7 +219,15 @@ export function ChatPage({ ask: askOnOpen }: { ask?: string } = {}) {
 
   return (
     <section className={messages.length > 0 ? "chat has-log" : "chat"}>
-      <h1 className="chat-title">AI chat</h1>
+      <div className="chat-head">
+        <h1 className="chat-title">AI chat</h1>
+        {messages.length > 0 && (
+          <button type="button" className="chat-new" disabled={mutation.isPending} onClick={newChat}>
+            <Icon name="plus" size={18} />
+            새 대화
+          </button>
+        )}
+      </div>
 
       <div className="chat-examples">
         <h2>무엇을 찾을까요?</h2>
@@ -176,8 +253,18 @@ export function ChatPage({ ask: askOnOpen }: { ask?: string } = {}) {
                 {m.text}
               </p>
             ) : (
-              <Answer key={i} response={m.response} />
+              <Answer key={i} response={m.response} count={m.count} restored={m.restored} />
             ),
+          )}
+          {history.isLoading && messages.length === 0 && (
+            <p className="chat-pending" role="status">
+              지난 대화를 불러오는 중
+            </p>
+          )}
+          {history.error && !noHistoryRoute(history.error) && (
+            <p className="hint" role="status">
+              지난 대화를 불러오지 못해 이 화면에서 나눈 대화만 보입니다.
+            </p>
           )}
           {mutation.isPending && (
             <p className="chat-pending" role="status">

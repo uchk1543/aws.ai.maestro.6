@@ -3,6 +3,7 @@
 // npm run dev(모드 mock)에서는 mock.ts 가 docs/examples/ 로 대신 답한다. 빌드에는 들어가지 않는다.
 import type {
   ApproveResponse,
+  ChatHistoryResponse,
   ChatRequest,
   ChatResponse,
   ChooseHsResponse,
@@ -110,4 +111,9 @@ export function getJobFiles(jobId: string): Promise<JobFilesResponse> {
 /** 브라우저가 type 을 모르는 파일은 이 값으로 보낸다. */
 export function contentTypeOf(file: File): string {
   return file.type || "application/octet-stream";
+}
+
+/** 현황 채팅 기록 (E6 #157): 그 세션의 최근 질문·답 줄, 오래된 순. 화면을 열 때 불러와 새로 고쳐도 대화가 남게 한다 (G14). */
+export function getChatHistory(sessionId: string): Promise<ChatHistoryResponse> {
+  return request("GET", `/api/chat/${encodeURIComponent(sessionId)}`);
 }

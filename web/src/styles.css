@@ -2767,6 +2767,66 @@ video.port-media.on {
   }
 }
 
+/* G14 AI chat: 새 대화 버튼, 막힌 답(안내), 지난 대화의 답 */
+.chat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chat-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  margin-left: auto;
+  padding: 0 14px 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--fill-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.chat-answer.blocked {
+  align-self: flex-start;
+  max-width: 85%;
+  padding: 12px 16px;
+  color: var(--muted);
+  background: var(--fill-2);
+  border-radius: 14px;
+}
+
+.chat-blocked-reason {
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.chat-restored {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+@media (min-width: 1200px) {
+  /* PC 는 예시 | 대화 두 칸 격자라, 새 대화 버튼은 칸을 차지하지 않게 대화 칸 오른쪽 위에 띄운다 */
+  .chat {
+    position: relative;
+  }
+
+  .chat-head {
+    position: absolute;
+    top: 32px;
+    right: 0;
+  }
+
+  .chat.has-log .chat-main {
+    padding-top: 52px;
+  }
+}
+
+
 /* G16 돋보기: 박스를 누르면 그 부분을 잘라 크게 보인다. 태블릿·PC 는 박스 옆 꼬리 달린 상자, 모바일은 아래 시트 */
 .mark-pop {
   width: min(340px, 92%);
