@@ -1,6 +1,6 @@
 {
   "answer": "이번 주(11/16~11/22) 통관 지연 건은 1건입니다. BL-2026-0001은 입항 후 심사 중입니다.",
-  "filters": {"status": "통관 지연", "period": "this_week"},
+  "filters": {"status": "통관 지연", "period": "this_week", "unsupported": []},
   "period_resolved": {"from": "2026-11-16", "to": "2026-11-22"},
   "rows": [
     {"bl_no": "BL-2026-0001", "consignee": "샘플무역", "item": "리튬이온 배터리팩",
