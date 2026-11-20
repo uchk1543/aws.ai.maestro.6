@@ -188,15 +188,18 @@ def test_post_then_worker_shows_mismatch(fakes, lambda_client):
     Job.model_validate(job)  # 약속 2 형식
     assert job["status"] == "waiting_approval"
     # 선하증권이 없어 먼저 빠진 서류로 남긴다 (#168). 불일치 칸은 다시 확인한다 (B8): 상업송장·포장명세서 총중량
-    # 끝나면 화물 기록 한 줄 (E3). 이 서류에는 선하증권이 없어 쓰지 않았다는 줄이다
+    # 끝나면 신고서 초안(C8 #154)과 화물 기록 한 줄 (E3). 이 서류에는 선하증권이 없어 쓰지 않았다는 줄이다
     assert [s["tool"] for s in job["steps"]] == [
         "check_missing_docs", "read_document", "read_document", "cross_check", "reread_field", "reread_field",
-        "record_shipment",
+        "draft_declaration", "record_shipment",
     ]
     assert "B/L 번호가 없어" in job["steps"][-1]["summary"]
     issue, missing = job["result"]["issues"]
     assert issue["grade"] == "불일치" and issue["rule_id"] == "X-WT-01"
     assert (missing["rule_id"], missing["grade"]) == ("DOC-MISSING", "확인 필요")
+    # 처리 직후 초안이 있다. 불일치가 짚은 포장명세서 총중량은 비운다 (agent-design.md 7번)
+    draft = DeclarationDraft.model_validate(job["result"]["declaration_draft"])
+    assert "total_gross_kg" in draft.blank_fields
     # 승인 대기로 끝나면 화면이 승인 입력을 그리도록 wms를 채운다 (#159, 실제 run_job 출력 FB14)
     assert job["result"]["wms"] == {"status": "승인 대기", "by": None, "wms_id": None}
 

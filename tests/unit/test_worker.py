@@ -11,12 +11,15 @@ import pytest
 import agent.document_agent as document_agent
 import api.handler as handler
 import api.worker as worker
+import tools.declaration as declaration
 import tools.hs as hs
 import tools.report as report
 import tools.wms as wms
 from tests.unit.fakes import MemoryHSHistory, MemoryWms
 from tests.unit.test_report_shipment import TODAY, MemoryWriter
-from tools.models import Cell, ExtractedDocument, Job, JobResult, Shipment, Step, WmsState
+from tools.models import (
+    Cell, DeclarationDraft, ExtractedDocument, HSResult, Issue, Job, JobResult, Shipment, Step, WmsState,
+)
 
 JOB = "job-0000f003"
 FILES = [{"key": "uploads/s1/invoice.pdf", "doc_type": "commercial_invoice"}]
@@ -30,6 +33,14 @@ def shipments(monkeypatch):
     monkeypatch.setattr(handler, "dynamo_shipments", lambda: store)
     monkeypatch.setattr(report, "_today", lambda: TODAY)
     return store
+
+
+@pytest.fixture(autouse=True)
+def wms_memory(monkeypatch):
+    """가상 WMS(team06-wms) 대신 메모리판. 처리 직후 자동 등록(D2, #154)과 승인(D3)이 여기에 쓴다."""
+    memory = MemoryWms()
+    monkeypatch.setattr(wms, "dynamo_wms", lambda: memory)
+    return memory
 
 
 class RecordingTable:
@@ -196,11 +207,10 @@ def fake_run_job_with(docs: list[ExtractedDocument], seen: dict):
 
 
 @pytest.fixture
-def api_fakes(table, monkeypatch):
-    history, memory = MemoryHSHistory(), MemoryWms()
+def api_fakes(table, wms_memory, monkeypatch):
+    history = MemoryHSHistory()
     monkeypatch.setattr(handler, "_hs_history", lambda: history)
-    monkeypatch.setattr(wms, "dynamo_wms", lambda: memory)
-    return table, history, memory
+    return table, history, wms_memory
 
 
 def call(method, path, body):
@@ -242,28 +252,32 @@ def test_docs_and_importer_are_saved_then_hs_and_approve_are_200(api_fakes, monk
 # ---------------------------------------------------------------------------
 # E3 화물 기록 쓰기 (#31)
 # ---------------------------------------------------------------------------
-def run_with(table, monkeypatch, docs, status="waiting_approval"):
-    """on_docs로 docs를 넘기고 status로 끝나는 가짜 run_job으로 처리한다."""
+def run_with(table, monkeypatch, docs, status="waiting_approval", *, hs=(), result=None):
+    """on_docs로 docs를 넘기고 status로 끝나는 가짜 run_job으로 처리한다.
+
+    hs: 품목별 HS 결과 (result를 주지 않을 때). result: run_job이 돌려줄 결과를 통째로 정할 때.
+    """
     put_job(table)
 
     def fake(job_id, files, fetch, *, on_docs=None, **_):
         on_docs(docs)
         steps = [Step(tool="cross_check", summary="문제 없음", ok=True)]
-        return Job(job_id=job_id, status=status, steps=steps, result=JobResult())
+        made = result.model_copy(deep=True) if result is not None else JobResult(hs=list(hs))
+        return Job(job_id=job_id, status=status, steps=steps, result=made)
 
     monkeypatch.setattr(document_agent, "run_job", fake)
     return worker.lambda_handler({"job_id": JOB, "files": FILES}, None)
 
 
-@pytest.mark.parametrize("status", ["waiting_approval", "done"])
-def test_finished_job_writes_shipment_row_as_last_step(table, monkeypatch, shipments, status):
-    """입항일 = 처리한 날(한국 시간), 상태 '입항'. 단계 기록 끝에 record_shipment 한 줄이 마지막 저장에 들어간다."""
-    assert run_with(table, monkeypatch, read_docs(), status)["status"] == status
+def test_finished_job_writes_shipment_row_as_last_step(table, monkeypatch, shipments):
+    """입항일 = 처리한 날(한국 시간), 상태 '입항'. 단계 기록 끝에 record_shipment 한 줄이 마지막 저장에 들어간다.
+    done으로 끝나 자동 등록된 작업은 test_done_job_is_registered_right_away가 본다 ('수입신고')."""
+    assert run_with(table, monkeypatch, read_docs())["status"] == "waiting_approval"
 
     [row] = shipments.rows.values()
     assert (row.bl_no, row.customs_status, row.arrived_at, row.last_event_at, row.job_id) == (BL, "입항", TODAY, TODAY, JOB)
     job = saved(table)
-    assert job.status == status
+    assert job.status == "waiting_approval"
     assert job.steps[-1] == Step(tool="record_shipment", summary=f"화물 기록 B/L {BL}: 입항, 입항일 {TODAY.isoformat()}", ok=True)
 
 
@@ -271,12 +285,6 @@ def test_waiting_approval_saves_wms_pending(table, monkeypatch):
     """#159: 승인 대기로 끝나면 마지막 저장에 result.wms = 승인 대기를 넣는다. 화면은 이 값을 보고 승인 입력을 그린다."""
     assert run_with(table, monkeypatch, read_docs())["status"] == "waiting_approval"
     assert saved(table).result.wms == WmsState(status="승인 대기", by=None, wms_id=None)
-
-
-def test_done_job_wms_is_left_as_run_job_made_it(table, monkeypatch):
-    """done은 승인이 필요 없다. 승인 대기를 넣지 않는다 (처리 직후 자동 등록은 #154)."""
-    assert run_with(table, monkeypatch, read_docs(), "done")["status"] == "done"
-    assert saved(table).result.wms is None
 
 
 def test_wms_already_set_by_run_job_is_kept(table, monkeypatch):
@@ -398,3 +406,158 @@ def test_other_columns_of_the_row_are_kept(table, monkeypatch):
 
     assert (table.items[JOB]["docs"], table.items[JOB]["importer"]) == ("[]", "ACME")
     assert saved(table).status == "done"
+
+
+# ---------------------------------------------------------------------------
+# C8 처리 직후 신고서 초안과 자동 등록 (#154)
+# ---------------------------------------------------------------------------
+CONFIRMED = [HSResult(line=1, status="자동 확정", by="history", hs_code="8507600000")]
+WAITING_HS = [HSResult(line=1, status="사람 확인 필요")]
+
+
+def draft_step(draft: DeclarationDraft) -> Step:
+    return Step(
+        tool="draft_declaration", summary=f"신고서 초안 {len(draft.fields)}칸, 비운 칸 {len(draft.blank_fields)}개", ok=True
+    )
+
+
+def test_finished_job_gets_declaration_draft(table, monkeypatch):
+    """끝난 기준: 처리 직후 신고서 초안이 채워진다. 확정 안 된 HS 칸은 비우고 blank_fields에 적는다 (agent-design.md 7번).
+    초안 단계는 화물 기록 앞에 한 줄 남는다."""
+    assert run_with(table, monkeypatch, read_docs(), hs=WAITING_HS)["status"] == "waiting_approval"
+
+    job = saved(table)
+    draft = job.result.declaration_draft
+    assert draft == declaration.draft_declaration(read_docs(), [], WAITING_HS)
+    assert "items[0].hs_code" in draft.blank_fields
+    assert ("수입자", IMPORTER) in [(f.name, f.value) for f in draft.fields]
+    assert [s.tool for s in job.steps] == ["cross_check", "draft_declaration", "record_shipment"]
+    assert job.steps[1] == draft_step(draft)
+
+
+def test_draft_blanks_cells_flagged_by_issues(table, monkeypatch):
+    """남은 문제(불일치·확인 필요)가 짚은 칸은 비운다. 초안은 run_job이 돌려준 issues로 채운다."""
+    issue = Issue(
+        rule_id="X-WT-01", grade="불일치", evidence="총중량이 다릅니다",
+        cells=[{"doc": "packing_list", "field": "total_gross_kg", "raw": "6,520 KG"}],
+    )
+    run_with(table, monkeypatch, read_docs(), result=JobResult(issues=[issue], hs=CONFIRMED))
+
+    draft = saved(table).result.declaration_draft
+    assert "total_gross_kg" in draft.blank_fields
+    assert ("세번부호", "8507600000") in [(f.name, f.value) for f in draft.fields]
+
+
+def test_draft_made_by_run_job_is_kept(table, monkeypatch):
+    """run_job이 초안을 이미 채웠으면 덮어쓰지 않고 단계도 더하지 않는다."""
+    made = DeclarationDraft(blank_fields=["bl_no"])
+    run_with(table, monkeypatch, read_docs(), result=JobResult(hs=WAITING_HS, declaration_draft=made))
+
+    job = saved(table)
+    assert job.result.declaration_draft == made
+    assert "draft_declaration" not in [s.tool for s in job.steps]
+
+
+def test_draft_failure_does_not_stop_the_job(table, monkeypatch):
+    """초안을 못 만들어도 작업은 끝난 상태로 저장된다. 이유는 단계 기록에 실패로 남는다 (running으로 남지 않게)."""
+
+    def broken(docs, issues, hs_results):
+        raise ValueError("터짐")
+
+    monkeypatch.setattr(declaration, "draft_declaration", broken)
+
+    assert run_with(table, monkeypatch, read_docs(), hs=WAITING_HS)["status"] == "waiting_approval"
+    job = saved(table)
+    assert job.result.declaration_draft is None
+    assert Step(tool="draft_declaration", summary="신고서 초안을 만들지 못함: ValueError", ok=False) in job.steps
+    assert job.steps[-1].tool == "record_shipment"
+
+
+def test_failed_or_unread_job_gets_no_draft(table, monkeypatch, wms_memory):
+    """실패한 작업, 읽은 서류가 없는 작업은 초안을 만들지 않고 WMS에도 올리지 않는다."""
+    assert run_with(table, monkeypatch, read_docs(), "failed", hs=CONFIRMED)["status"] == "failed"
+    assert saved(table).result.declaration_draft is None
+
+    assert run_with(table, monkeypatch, [], "done", hs=CONFIRMED)["status"] == "done"
+    assert saved(table).result.declaration_draft is None
+    assert wms_memory.records == {}
+
+
+def test_done_job_is_registered_right_away(table, monkeypatch, shipments, wms_memory):
+    """끝난 기준: 문제가 없고 모든 품목 HS가 자동 확정이면 처리 직후 사람 손 없이 가상 WMS에 등록한다 (D2, by=auto).
+    화물 기록은 처음부터 '수입신고'로 쓴다 (E3, record_shipment registered).
+    화면은 승인 대기를 받으면 새로 고침을 멈추므로 중간에 승인 대기로 저장하지 않는다."""
+    assert run_with(table, monkeypatch, read_docs(), "done", hs=CONFIRMED)["status"] == "done"
+
+    [(wms_id, record)] = wms_memory.records.values()
+    assert (record.idempotency_key, record.by, record.consignee) == (f"{BL}#{JOB}", "auto", IMPORTER)
+    assert [(row["line"], row["hs_code"]) for row in record.items] == [(1, "8507600000")]
+    job = saved(table)
+    assert (job.status, job.result.wms) == ("done", WmsState(status="등록됨", by="auto", wms_id=wms_id))
+    assert [s.tool for s in job.steps] == ["cross_check", "draft_declaration", "push_to_wms", "record_shipment"]
+    assert job.steps[2] == Step(tool="push_to_wms", summary=f"WMS 자동 등록: {wms_id}", ok=True)
+    assert "items[0].hs_code" not in job.result.declaration_draft.blank_fields
+    row = shipments.rows[BL]
+    assert (row.customs_status, row.arrived_at, row.job_id) == ("수입신고", TODAY, JOB)
+    assert "waiting_approval" not in statuses(table)
+    # 이미 등록된 작업은 승인을 눌러도 다시 등록하지 않는다 (D3)
+    assert call("POST", f"/api/jobs/{JOB}/approve", {"approver": "김담당"}) == (
+        200, {"wms": {"status": "등록됨", "wms_id": wms_id}},
+    )
+    assert len(wms_memory.records) == 1
+
+
+class BrokenWms:
+    """등록할 때 저장소 오류를 낸다. 같은 B/L 찾기(#190 registered_jobs)는 비어 있다고 답해 등록까지 가게 한다."""
+
+    def registered_jobs(self, bl_no):
+        return {}
+
+    def register(self, record):
+        raise RuntimeError("가짜 WMS 오류")
+
+
+@pytest.mark.parametrize(
+    "case, words",
+    [
+        ("no-bl", "B/L 번호가 없어"),
+        ("no-importer", "수하인(수입자)이 비어"),
+        ("no-hs", "자동 등록 조건(남은 문제 없음, 모든 품목 HS 확정)을 채우지 못했습니다"),
+        ("wms-error", "가상 WMS 오류(RuntimeError)"),
+    ],
+)
+def test_done_job_that_cannot_register_waits_for_approval(table, monkeypatch, wms_memory, case, words):
+    """done인데 등록하지 못하면 승인 대기로 바꾼다. 승인(D3)은 승인 대기 작업만 받아서, done으로 두면 아무도 등록할 수 없다.
+    이유는 단계 기록에 실패로 남겨 사람이 본다."""
+    docs = {"no-bl": read_docs()[:2], "no-importer": read_docs(consignee=None)}.get(case, read_docs())
+    if case == "wms-error":
+        monkeypatch.setattr(wms, "dynamo_wms", lambda: BrokenWms())
+
+    assert run_with(table, monkeypatch, docs, "done", hs=[] if case == "no-hs" else CONFIRMED)["status"] == "waiting_approval"
+
+    job = saved(table)
+    assert (job.status, job.result.wms) == ("waiting_approval", WmsState(status="승인 대기"))
+    [push] = [s for s in job.steps if s.tool == "push_to_wms"]
+    assert not push.ok and words in push.summary
+    assert wms_memory.records == {}
+
+
+def test_after_auto_register_failure_human_approval_registers(api_fakes, monkeypatch):
+    """처리 직후 등록이 가상 WMS 오류로 실패한 건은 사람이 승인하면 그때 등록된다 (D3, by=human)."""
+    table, _, memory = api_fakes
+    monkeypatch.setattr(wms, "dynamo_wms", lambda: BrokenWms())
+    assert run_with(table, monkeypatch, read_docs(), "done", hs=CONFIRMED)["status"] == "waiting_approval"
+
+    monkeypatch.setattr(wms, "dynamo_wms", lambda: memory)
+    assert call("POST", f"/api/jobs/{JOB}/approve", {"approver": "김담당"}) == (
+        200, {"wms": {"status": "등록됨", "wms_id": "wms-0001"}},
+    )
+    [(_, record)] = memory.records.values()
+    assert record.by == "human" and saved(table).status == "done"
+
+
+def test_waiting_approval_job_is_not_registered(table, monkeypatch, wms_memory):
+    """승인 대기로 끝난 작업은 처리 Lambda가 등록하지 않는다. HS 선택 뒤 재검사(D2)나 사람 승인(D3)이 한다."""
+    assert run_with(table, monkeypatch, read_docs(), hs=WAITING_HS)["status"] == "waiting_approval"
+    assert wms_memory.records == {}
+    assert "push_to_wms" not in [s.tool for s in saved(table).steps]

@@ -33,6 +33,7 @@ from tools import declaration, hs, report, wms
 from tools.models import (
     DOC_TYPE_KO,
     Cell,
+    DeclarationDraft,
     DocPage,
     DocType,
     DocumentRecord,
@@ -196,6 +197,7 @@ def _mark_registered(job_id: str, bl_no: str) -> Step:
     """WMS에 등록된 뒤 그 작업의 화물 기록 상태를 '수입신고'로 고치고 단계 한 줄을 돌려준다 (E3, report.mark_registered).
 
     언제: 사람 승인(D3)이나 HS 선택 뒤 자동 등록(D2)으로 push_to_wms가 성공한 뒤, save_job 전.
+      처리 직후 자동 등록(#154)은 화물 기록을 처음부터 '수입신고'로 써서(record_shipment registered) 이 함수를 부르지 않는다.
     반환: Step. 예외를 내지 않는다. 저장소를 못 만들어도(SHIPMENTS_TABLE 없음 등) ok=False 한 줄만 남기고,
       WMS 등록 결과는 그대로 저장한다.
     """
@@ -469,26 +471,47 @@ def choose_hs(job_id: str, body) -> dict:
         f"{line}행 {code}" + (" (후보 밖에서 직접 입력)" if line in outside else "") for line, code in picked.items()
     )
     job.steps.append(Step(tool="confirm_by_human", summary=f"사람 확정: {chosen}", ok=True))
-    job.steps.append(
-        Step(tool="draft_declaration", summary=f"신고서 초안 {len(draft.fields)}칸, 비운 칸 {len(draft.blank_fields)}개", ok=True)
-    )
+    job.steps.append(draft_step(draft))
 
     # HS 선택을 먼저 저장한다. WMS 기록은 같은 멱등 키면 처음 것만 남으므로, 저장된 HS로만 만든다
     save_job(job, keep=item)
 
-    # 자동 등록 재검사 (D2, agent-design.md 8번). 등록 실패는 예외로 오지 않고 (승인 대기, 이유)로 온다
+    # 자동 등록 재검사 (D2, agent-design.md 8번). 등록 실패는 예외로 오지 않고 단계 기록에 남는다
+    before = (job.result.wms, len(job.steps))
+    if auto_register(job, docs, importer):
+        job.steps.append(_mark_registered(job_id, wms._bl_no(docs)))  # 등록됐으니 B/L 번호는 하나다
+    if (job.result.wms, len(job.steps)) != before:
+        save_job(job, keep=item)
+    return _response(200, {"declaration_draft": draft.model_dump(mode="json")})
+
+
+def draft_step(draft: DeclarationDraft) -> Step:
+    """신고서 초안을 채운 단계 한 줄. HS 선택(choose_hs)과 처리 Lambda(처리 직후 초안, #154)가 같은 글로 남긴다."""
+    return Step(
+        tool="draft_declaration", summary=f"신고서 초안 {len(draft.fields)}칸, 비운 칸 {len(draft.blank_fields)}개", ok=True
+    )
+
+
+def auto_register(job: Job, docs: list[ExtractedDocument], importer: str | None) -> bool:
+    """자동 등록 조건(D2, agent-design.md 8번)을 검사해, 다 채우면 가상 WMS에 등록하고 그 결과를 job에 넣는다.
+
+    언제: HS 선택을 저장한 뒤(choose_hs), 처리 Lambda가 done으로 끝난 작업을 마지막으로 저장하기 전(#154).
+    받는 것: job(result가 있는 작업. 그 자리에서 고친다), docs(읽은 서류), importer(수입자. 모르면 None).
+    반환: 이번에 새로 등록했으면 True. 화물 기록 상태(E3)는 부르는 쪽이 고친다.
+      고치는 것: result.wms = 등록됨(by=auto) 또는 승인 대기. 새로 등록했으면 status = done과 push_to_wms 한 줄.
+      조건은 채웠는데 못 했으면(B/L·수입자 없음, 가상 WMS 오류 등) push_to_wms ok=False 한 줄로 이유를 남긴다.
+      조건 미달(문제가 남음, HS 대기)은 정상 흐름이라 단계를 더하지 않는다. 예외는 올리지 않는다 (wms.register_if_ready).
+    """
     before = job.result.wms
-    state, reason = wms.register_if_ready(job_id, docs, job.result, importer)
+    state, reason = wms.register_if_ready(job.job_id, docs, job.result, importer or "")
+    job.result.wms = state
     if state.status == "등록됨" and (before is None or before.status != "등록됨"):
         job.status = "done"  # 사람이 승인할 것이 남지 않았다 (D3 승인과 같다). HS를 다시 고르면 409
         job.steps.append(Step(tool="push_to_wms", summary=f"WMS 자동 등록: {state.wms_id}", ok=True))
-        job.steps.append(_mark_registered(job_id, wms._bl_no(docs)))  # 등록됐으니 B/L 번호는 하나다
-    elif reason:
+        return True
+    if reason:
         job.steps.append(Step(tool="push_to_wms", summary=f"WMS 자동 등록 못 함: {reason}", ok=False))
-    if state != before or reason:
-        job.result.wms = state
-        save_job(job, keep=item)
-    return _response(200, {"declaration_draft": draft.model_dump(mode="json")})
+    return False
 
 
 def _wms_body(state: WmsState) -> dict:
