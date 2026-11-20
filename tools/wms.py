@@ -310,6 +310,9 @@ def push_to_wms(record: WmsRecord, *, adapter: WmsAdapter) -> WmsState:
     실패: 멱등 키가 "<B/L 번호>#<작업 ID>"가 아니면 ValueError (재시도해도 한 번만 들어가야 해서).
       같은 B/L이 다른 작업으로 이미 있으면 DuplicateBL (#176. 서류를 고쳐 다시 올린 건이 두 번 들어가지 않게).
       이 작업이 이미 등록돼 있으면 재시도로 보고 막지 않는다. 저장소 오류는 그대로 올린다.
+    남은 틈: 찾기(registered_jobs)와 등록(register) 사이가 원자적이지 않아, 서로 다른 작업이 같은 B/L을
+      정확히 동시에 등록하면 둘 다 들어갈 수 있다. 가상 WMS·데모 규모에서는 두고, 실제 WMS에 붙일 때는
+      어댑터가 B/L 단위 조건부 쓰기(또는 WMS 쪽 중복 거절)로 막는다.
     """
     print(f"[tool] push_to_wms key={record.idempotency_key} by={record.by}")
     expected = idempotency_key(record.bl_no, record.job_id)

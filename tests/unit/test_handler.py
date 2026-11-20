@@ -710,6 +710,12 @@ def test_approve_same_bl_from_other_job_is_409_and_left_in_steps(wms_fakes):
     assert (last["tool"], last["ok"]) == ("push_to_wms", False)
     assert last["summary"].startswith("사람 승인(김담당) 했지만 WMS에 등록하지 않음: ") and "job-00000d01" in last["summary"]
 
+    # 같은 이유로 다시 눌러도(승인자가 달라도) 409는 그대로이고 단계 기록에는 한 줄만 남는다 (PR #190 리뷰)
+    steps = len(job["steps"])
+    assert post_approve({"approver": "박담당"})[0] == 409
+    _, job = call("GET", f"/jobs/{APPROVE_JOB}")
+    assert len(job["steps"]) == steps
+
 
 def test_approve_with_mismatch_is_409_and_changes_nothing(wms_fakes):
     """끝난 기준: 불일치가 남았으면 409와 {"error"} 문장 (화면이 그대로 보여 준다). 등록도 저장도 하지 않는다."""
