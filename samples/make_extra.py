@@ -182,6 +182,7 @@ def resolve(period, date_from=None, date_to=None):
     return None
 
 
+UNTIL_TODAY = "today"  # 끝일이 '오늘'인 질문. 정답지에는 기준일을 적고 date_to_today를 붙인다 (다른 날 다시 계산, #170)
 QUESTIONS = [  # (질문, 상태, 기간, 시작, 끝)
     ("이번 주 통관 지연 건 알려줘", "통관 지연", "this_week", None, None),
     ("지난주에 통관 지연된 화물 있어?", "통관 지연", "last_week", None, None),
@@ -199,10 +200,19 @@ QUESTIONS = [  # (질문, 상태, 기간, 시작, 끝)
     ("10월에 입항한 화물 몇 건이야?", None, "range", "2026-10-01", "2026-10-31"),
     ("오늘 들어온 화물 중 통관 지연 건은?", "통관 지연", "today", None, None),
     ("오늘 입항해서 아직 입항 상태인 화물", "입항", "today", None, None),
-    ("11월 1일부터 오늘까지 입항해서 반출된 화물", "반출", "range", "2026-11-01", "2026-11-21"),
+    ("11월 1일부터 오늘까지 입항해서 반출된 화물", "반출", "range", "2026-11-01", UNTIL_TODAY),
     ("지금 검사 중인 화물 몇 건이야?", "검사 중", None, None, None),
     ("이번 주 입항해서 수입신고 들어간 건", "수입신고", "this_week", None, None),
     ("다음 주(11월 23일~29일) 입항 화물 있어?", None, "range", "2026-11-23", "2026-11-29"),
+]
+# 조회하지 않아야 하는 질문 (#165 FB08). 조회 칸(상태 하나·기간)으로 못 담는 조건은 '안내', 조건이 없으면 '되묻기',
+# 화물 현황과 무관하면 '막힘'(E7 #152).
+# 정답 건수는 0(rows를 돌려주지 않음). unsupported는 모델이 적을 말의 예이고 채점은 비었는지만 본다
+NOT_QUERIED = [  # (질문, unsupported 예, 답 종류)
+    ("이그잼플유통 화물만 보여줘", ["수하인 이그잼플유통"], "안내"),
+    ("EXSHSZX26003555 지금 어디까지 진행됐어?", ["B/L 번호 EXSHSZX26003555"], "안내"),
+    ("오늘 점심 뭐 먹지?", [], "막힘"),  # 화물 현황과 무관한 질문은 코드가 막는다 (E7 #152)
+    ("통관 끝난 화물 몇 건이야?", ["상태 둘 이상: 수리, 반출"], "안내"),
 ]
 
 
@@ -210,6 +220,8 @@ def queries(shipments):
     """질문마다 기대 조건과 기대 건수. 기간은 입항일(arrived_at) 기준, '통관 지연'은 DELAY_DAYS 규칙으로 코드가 센다."""
     rows = []
     for i, (q, status, period, a, b) in enumerate(QUESTIONS, 1):
+        until_today = b == UNTIL_TODAY
+        b = TODAY.isoformat() if until_today else b
         rng = resolve(period, a, b)
         hits = [sh for sh in shipments
                 if (rng is None or rng[0] <= dt.date.fromisoformat(sh["arrived_at"]) <= rng[1])
@@ -217,7 +229,13 @@ def queries(shipments):
         cond = {"status": status, "period": period, "date_from": a, "date_to": b, "today": TODAY.isoformat(),
                 "period_resolved": {"from": rng[0].isoformat(), "to": rng[1].isoformat()} if rng else None,
                 "rule": f"입항 후 {DELAY_DAYS}일 지나도 수리·반출 아님" if status == "통관 지연" else None}
+        if until_today:
+            cond["date_to_today"] = True  # samples/seed_dates.py가 다른 날에는 끝일을 그날로 바꾼다
         rows.append([f"Q{i:02d}", q, json.dumps(cond, ensure_ascii=False), len(hits)])
+    for i, (q, unsupported, expect) in enumerate(NOT_QUERIED, len(QUESTIONS) + 1):
+        cond = {"status": None, "period": None, "date_from": None, "date_to": None, "today": TODAY.isoformat(),
+                "period_resolved": None, "rule": None, "unsupported": unsupported, "expect": expect}
+        rows.append([f"Q{i:02d}", q, json.dumps(cond, ensure_ascii=False), 0])
     return rows
 
 

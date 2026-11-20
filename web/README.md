@@ -22,7 +22,7 @@
 | 주소 | 메뉴 | 화면 | 작업 |
 |---|---|---|---|
 | `#/upload` (첫 화면) | 파일 업로드 | 파일 고르기(끌어다 놓기도 됨) → 선택된 파일 목록(오른쪽 위 X로 빼기) → 업로드. 서류 종류는 고르지 않고 모두 자동 분류 | G2, G9 |
-| `#/jobs/{job_id}` | (업로드가 끝나면 열림) | 진행 단계, 결과(오류 목록 · HS 선택 · 신고서 초안 · WMS 상태·승인) | G3~G7 |
+| `#/jobs/{job_id}` | (업로드가 끝나면 열림) | 진행 단계, 결과(오류 목록 · HS 선택 · 신고서 초안 · WMS 상태·승인). 오류는 왼쪽 서류 그림 \| 오른쪽 오류, 누르면 그 칸에 박스(G11) | G3~G7, G11 |
 | `#/documents` | 문서 분류 내역 | 종류(상업송장 · 포장명세서 · 선하증권 · 원산지증명서 · 분류 못 함)를 고르면 그 종류의 서류 표(모바일·태블릿은 카드). 건수·근거는 서버 값 그대로 | G10 |
 | `#/chat` | AI chat | 예시 질문(누르면 바로 질문), 대화, 입력창. 답마다 조건과 표(모바일은 카드) | G8, G9 |
 
@@ -38,7 +38,9 @@ web/
     mock.ts             docs/examples/*.json으로 답하는 가짜 서버
     types.ts            약속 2의 모양 (tools/models.py와 칸 이름이 같다)
     pages/              UploadPage, JobPage, ChatPage
-    components/         결과 화면의 부분 (오류 목록, HS 선택, 신고서 표, WMS), Icon(인라인 SVG 아이콘)
+    components/         결과 화면의 부분 (오류 목록, HS 선택, 신고서 표, WMS), Icon(인라인 SVG 아이콘),
+                        DocViewer·DocReview·DocDetail(서류 그림 위 박스, G11)
+    fixtures/           서버 약속이 합쳐지기 전 임시 가짜 데이터
     styles.css          스타일 한 파일 (화면 크기별 배치 포함)
     *.test.ts(x)        테스트는 고친 파일 옆에 둔다
 ```
@@ -78,6 +80,7 @@ VITE_API_PROXY=https://<CloudFront 주소> npm run dev:api
 | G6 | 결과: 신고서 초안 | `result.declaration_draft`, "사람 검토 전 초안" 표시 | 같은 파일 |
 | G7 | 결과: WMS 상태·승인 | `result.wms`, `POST /api/jobs/{id}/approve` (409면 안내) | 같은 파일 |
 | G10 | 문서 분류 내역 | `GET /api/documents?doc_type=&cursor=` (서버 약속 제안 중) | `src/fixtures/documents.draft.json` (임시. 약속이 합쳐지면 `docs/examples/documents.json`) |
+| G11 | 서류 보기 (오류 칸·분류 근거를 서류 위에 박스로) | `GET /api/jobs/{id}/files` (서버 약속 제안 중. 쪽 그림 주소와 표시 위치 bbox) | `src/mockDocs.ts` 가 가짜 서류 SVG 와 위치를 만든다 (임시) |
 | G8 | 현황 채팅 | `POST /api/chat` | `docs/examples/chat_response.json` |
 
 ## 규칙

@@ -1,0 +1,105 @@
+// G11 작업 화면 오류 보기: 오류를 누르면 그 서류로 바꾸고 그 칸 박스를 강조한다
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it } from "vitest";
+import jobFilesExample from "../../../docs/examples/job_files.json";
+import jobExample from "../../../docs/examples/job_waiting_approval.json";
+import draft from "../fixtures/documents.draft.json";
+import { fileViewOf } from "../mockDocs";
+import { DOC_TYPE_KO, type DocumentRecord, type Issue, type Job, type JobFilesResponse } from "../types";
+import { DocReview, locate } from "./DocReview";
+import { boxStyle } from "./DocViewer";
+
+const issues = (jobExample as Job).result!.issues;
+const files = (draft.items as DocumentRecord[]).filter((d) => d.job_id === "job-7c1e").map(fileViewOf);
+
+function pressedMark() {
+  return screen.queryAllByRole("button", { pressed: true }).find((b) => b.classList.contains("mark")) ?? null;
+}
+
+describe("DocReview", () => {
+  it("처음에는 첫 오류의 첫 서류(상업송장)를 보여 주고 그 칸을 강조한다", () => {
+    render(<DocReview issues={issues} files={files} />);
+
+    expect(screen.getByRole("tab", { name: /상업송장/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("img", { name: "invoice.pdf 1쪽" })).toBeInTheDocument();
+    const mark = pressedMark();
+    expect(mark).toHaveAccessibleName("불일치 · 1행 총중량: 6,250.00 KGS");
+    expect(mark).toHaveClass("mark-mismatch");
+  });
+
+  it("서류별 값을 누르면 그 서류로 바뀌고 그 칸이 강조된다", async () => {
+    const user = userEvent.setup();
+    render(<DocReview issues={issues} files={files} />);
+
+    await user.click(screen.getByRole("button", { name: /포장명세서.*6,520\.00 KGS/ }));
+
+    expect(screen.getByRole("tab", { name: /포장명세서/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("img", { name: "packing.pdf 1쪽" })).toBeInTheDocument();
+    expect(pressedMark()).toHaveAccessibleName("불일치 · 1행 총중량: 6,520.00 KGS");
+  });
+
+  it("탭으로 오류가 없는 서류를 보면 강조 박스가 없다", async () => {
+    const user = userEvent.setup();
+    render(<DocReview issues={issues} files={files} />);
+
+    await user.click(screen.getByRole("tab", { name: "선하증권" }));
+
+    expect(screen.getByRole("img", { name: "bl.jpg 1쪽" })).toBeInTheDocument();
+    expect(pressedMark()).toBeNull();
+  });
+
+  it("위치를 못 찾은 칸은 알린다", () => {
+    const noMark: Issue = { ...issues[0], cells: [{ doc: "commercial_invoice", field: "items[0].amount", raw: "USD 1.00" }] };
+    render(<DocReview issues={[noMark]} files={files} />);
+
+    expect(screen.getByRole("status")).toHaveTextContent("이 칸(items[0].amount)의 위치를 찾지 못했습니다.");
+  });
+
+  it("등급 글자와 근거 문장, raw 는 서버 값 그대로", () => {
+    render(<DocReview issues={issues} files={files} />);
+    const item = within(screen.getByRole("list", { name: "오류" })).getByRole("listitem");
+
+    expect(within(item).getByText("불일치")).toBeInTheDocument();
+    expect(within(item).getByText("상업송장 1행 총중량 6,250kg과 포장명세서 6,520kg이 다릅니다.")).toBeInTheDocument();
+    expect(item).toHaveTextContent("Textract OCR로 다시 확인");
+  });
+
+  it("locate 는 서류 종류와 칸 이름이 같은 표시를 찾는다", () => {
+    expect(locate(files, { doc: "packing_list", field: "items[0].gross_kg", raw: null }).mark?.text).toBe("6,520.00 KGS");
+    expect(locate(files, { doc: "certificate_of_origin", field: "doc_no", raw: null })).toEqual({ file: null, mark: null });
+  });
+
+  it("boxStyle 은 0~1 비율을 % 로 바꾸고 밖으로 나간 값은 자른다", () => {
+    expect(boxStyle([0.1, 0.2, 0.3, 0.05])).toEqual({ left: "10.000%", top: "20.000%", width: "30.000%", height: "5.000%" });
+    expect(boxStyle([0.9, -0.1, 0.5, 0.2])).toEqual({ left: "90.000%", top: "0.000%", width: "10.000%", height: "20.000%" });
+  });
+
+  it("강조한 박스에는 근거 문장과 서류별 값을 담은 작은 팝업이 뜬다", () => {
+    render(<DocReview issues={issues} files={files} />);
+
+    const pop = screen.getByRole("dialog", { name: "불일치 · 1행 총중량" });
+    expect(pop).toHaveTextContent("6,250.00 KGS");
+    expect(pop).toHaveTextContent("상업송장 1행 총중량 6,250kg과 포장명세서 6,520kg이 다릅니다.");
+    expect(pop).toHaveTextContent("포장명세서 6,520.00 KGS");
+  });
+
+  it("쪽 그림이 없으면 원본 주소를 그대로 띄운다 (PDF 는 iframe, 이미지는 img)", () => {
+    const pdf = { ...files[0], pages: [], marks: [], url: "https://s3.test/inv.pdf", content_type: "application/pdf" };
+    const png = { ...files[1], pages: [], marks: [], url: "https://s3.test/pl.png", content_type: "image/png" };
+    const { unmount } = render(<DocReview issues={issues} files={[pdf, png]} />);
+    expect(screen.getByTitle("invoice.pdf 원본")).toHaveAttribute("src", "https://s3.test/inv.pdf");
+    unmount();
+
+    render(<DocReview issues={[{ ...issues[0], cells: [issues[0].cells[1]] }]} files={[pdf, png]} />);
+    expect(screen.getByRole("img", { name: "packing.pdf 원본" })).toHaveAttribute("src", "https://s3.test/pl.png");
+  });
+
+  it("서버 예시(docs/examples/job_files.json, F7)를 그대로 받아 그린다", () => {
+    const real = (jobFilesExample as unknown as JobFilesResponse).files;
+    render(<DocReview issues={issues} files={real} />);
+    expect(screen.getByRole("tablist", { name: "서류" })).toBeInTheDocument();
+    // 탭 글자 = 서류 종류 + 오류 칸 수(있을 때)
+    expect(screen.getAllByRole("tab").map((t) => t.textContent?.replace(/\d+$/, ""))).toEqual(real.map((f) => DOC_TYPE_KO[f.doc_type]));
+  });
+});

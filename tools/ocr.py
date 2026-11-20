@@ -22,6 +22,7 @@ MAX_PAGES = 5  # PDF는 앞 5쪽만 그리고 OCR 한다 (쪽당 과금, 처리 
 MAX_BYTES = 10_000_000  # Textract 동기 API 한 번에 보낼 수 있는 크기
 TIMEOUT_SECONDS = 5  # team.md: 외부 API 타임아웃 5초, 재시도 1회
 RENDER_DPI = 150  # PDF 쪽 그림 해상도. A4 가 약 1240×1754 px
+MAX_SIDE_PX = 3000  # 쪽 그림 긴 변 상한 (큰 용지 PDF 로 메모리가 바닥나지 않게, #194 리뷰)
 JPEG_QUALITY = 85
 
 
@@ -59,6 +60,16 @@ def is_pdf(file: str) -> bool:
     return PurePath(file).suffix.lower() == ".pdf"
 
 
+def page_scale(width_pt: float, height_pt: float) -> float:
+    """PDF 쪽(포인트 단위)을 그릴 배율. RENDER_DPI 로 그리되 긴 변이 MAX_SIDE_PX 를 넘지 않게 줄인다.
+
+    용지가 아주 큰 PDF(포스터 크기)를 150dpi 로 그리면 픽셀이 수억 개가 되어 Lambda 메모리가 바닥난다 (#194 리뷰).
+    """
+    scale = RENDER_DPI / 72
+    longest = max(width_pt, height_pt, 1.0)
+    return min(scale, MAX_SIDE_PX / longest)
+
+
 def render_pages(data: bytes, *, max_pages: int | None = None) -> list[PageImage]:
     """PDF를 쪽마다 JPEG 그림으로 그린다 (pypdfium2, 모델 호출 없음).
 
@@ -71,13 +82,35 @@ def render_pages(data: bytes, *, max_pages: int | None = None) -> list[PageImage
     try:
         pages = []
         for i in range(min(len(pdf), max_pages or MAX_PAGES)):
-            image = pdf[i].render(scale=RENDER_DPI / 72).to_pil().convert("RGB")
+            page = pdf[i]
+            image = page.render(scale=page_scale(*page.get_size())).to_pil().convert("RGB")
             out = io.BytesIO()
             image.save(out, format="JPEG", quality=JPEG_QUALITY)
             pages.append(PageImage(data=out.getvalue(), width=image.width, height=image.height))
         return pages
     finally:
         pdf.close()
+
+
+def upright_image(data: bytes) -> PageImage | None:
+    """휴대폰 사진처럼 EXIF 회전 표시가 있는 그림을 똑바로 세운 JPEG 를 돌려준다. 회전이 없으면 None.
+
+    브라우저는 EXIF 회전대로 그림을 돌려 그리는데, 칸 위치(bbox)는 OCR 한 그림 기준이다 (#194 리뷰).
+    회전이 있으면 이 그림을 OCR 하고 화면도 이 그림을 띄워 박스와 그림의 방향을 맞춘다. 못 읽는 그림이면 None.
+    """
+    from PIL import Image, ImageOps
+
+    try:
+        with Image.open(io.BytesIO(data)) as img:
+            if img.getexif().get(0x0112, 1) in (1, 0):
+                return None
+            image = ImageOps.exif_transpose(img).convert("RGB")
+    except Exception as exc:  # 그림이 아니거나 깨짐: 원본을 그대로 OCR 한다
+        print(f"[warn] upright_image {type(exc).__name__}: {exc}")
+        return None
+    out = io.BytesIO()
+    image.save(out, format="JPEG", quality=JPEG_QUALITY)
+    return PageImage(data=out.getvalue(), width=image.width, height=image.height)
 
 
 def ocr_document(

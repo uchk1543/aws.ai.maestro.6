@@ -114,6 +114,27 @@ def test_push_to_wms_registers_once():
     assert list(memory.records) == [f"{BL}#{JOB}"]
 
 
+def test_same_bl_from_other_job_is_not_registered():
+    """#176: 같은 B/L이 다른 작업으로 이미 들어가 있으면 등록하지 않는다. 먼저 들어간 작업과 wms_id를 알린다."""
+    memory = MemoryWms()
+    wms.push_to_wms(record(), adapter=memory)
+    with pytest.raises(wms.DuplicateBL, match=f"B/L {BL}.*{JOB}.*wms-0001"):
+        wms.push_to_wms(record(by="human", job_id="job-0000d009"), adapter=memory)
+    assert list(memory.records) == [f"{BL}#{JOB}"]
+
+
+def test_same_job_retry_is_still_registered_once():
+    """같은 작업의 재시도는 지금처럼 같은 wms_id를 돌려준다. 다른 B/L은 막지 않는다."""
+    memory = MemoryWms()
+    other = record(job_id="job-0000d009").model_copy(
+        update={"bl_no": "BL-OTHER", "idempotency_key": wms.idempotency_key("BL-OTHER", "job-0000d009")}
+    )
+    wms.push_to_wms(other, adapter=memory)
+    first = wms.push_to_wms(record(), adapter=memory)
+    assert wms.push_to_wms(record(), adapter=memory) == first
+    assert sorted(memory.records) == [f"{BL}#{JOB}", "BL-OTHER#job-0000d009"]
+
+
 def test_push_to_wms_keeps_by():
     state = wms.push_to_wms(record(by="human"), adapter=MemoryWms())
     assert (state.status, state.by) == ("등록됨", "human")
@@ -151,6 +172,21 @@ class FakeWmsTable:
         item = self.items.get(Key["idempotency_key"])
         return {"Item": item} if item else {}
 
+    def scan(self, FilterExpression, ExpressionAttributeValues, ProjectionExpression, ConsistentRead=False,
+             ExclusiveStartKey=None):
+        """begins_with(idempotency_key, :prefix)만 안다. 한 쪽에 page개씩 돌려줘 이어 읽기(LastEvaluatedKey)를 시험한다."""
+        assert FilterExpression == "begins_with(idempotency_key, :prefix)" and ConsistentRead
+        self.scans = getattr(self, "scans", 0) + 1
+        keys = sorted(self.items)
+        start = keys.index(ExclusiveStartKey["idempotency_key"]) + 1 if ExclusiveStartKey else 0
+        chunk = keys[start:start + self.page]
+        found = [{k: self.items[key][k] for k in ("idempotency_key", "wms_id")}
+                 for key in chunk if key.startswith(ExpressionAttributeValues[":prefix"])]
+        more = start + self.page < len(keys)
+        return {"Items": found, **({"LastEvaluatedKey": {"idempotency_key": chunk[-1]}} if more else {})}
+
+    page = 1
+
 
 def test_dynamo_wms_writes_one_item_per_key():
     table = FakeWmsTable()
@@ -176,6 +212,20 @@ def test_dynamo_wms_other_errors_are_raised():
     store = wms.DynamoWms(FakeWmsTable(fail_code="ProvisionedThroughputExceededException"))
     with pytest.raises(ClientError):
         store.register(record())
+
+
+def test_dynamo_wms_registered_jobs_reads_every_page():
+    """같은 B/L로 등록된 작업을 Scan으로 찾는다. 쪽이 나뉘어도 끝까지 읽고, B/L이 앞부분만 같은 키는 뺀다."""
+    table = FakeWmsTable()
+    store = wms.DynamoWms(table)
+    first = store.register(record())
+    store.register(record(job_id="job-0000d002"))
+    other = record().model_copy(update={"bl_no": f"{BL}X", "idempotency_key": f"{BL}X#job-0000d003"})
+    store.register(other)
+    found = store.registered_jobs(BL)
+    assert found[JOB] == first and sorted(found) == [JOB, "job-0000d002"]
+    assert table.scans == 3  # 한 쪽에 하나씩, 세 줄
+    assert wms.DynamoWms(FakeWmsTable()).registered_jobs(BL) == {}
 
 
 def test_push_to_wms_with_dynamo_wms():

@@ -1,0 +1,46 @@
+{
+  "name": "team06-chat-guard",
+  "description": "team06 현황 조회(AI chat) 입력 검사. 프롬프트 공격과 유해 표현을 막는다. 무관한 질문 거르기는 코드(E7 #152)가 한다 (F8 #151)",
+  "crossRegionConfig": {
+    "guardrailProfileIdentifier": "apac.guardrail.v1:0"
+  },
+  "contentPolicyConfig": {
+    "filtersConfig": [
+      {
+        "type": "PROMPT_ATTACK",
+        "inputStrength": "HIGH",
+        "outputStrength": "NONE"
+      },
+      {
+        "type": "HATE",
+        "inputStrength": "MEDIUM",
+        "outputStrength": "MEDIUM"
+      },
+      {
+        "type": "INSULTS",
+        "inputStrength": "MEDIUM",
+        "outputStrength": "MEDIUM"
+      },
+      {
+        "type": "SEXUAL",
+        "inputStrength": "HIGH",
+        "outputStrength": "HIGH"
+      },
+      {
+        "type": "VIOLENCE",
+        "inputStrength": "MEDIUM",
+        "outputStrength": "MEDIUM"
+      },
+      {
+        "type": "MISCONDUCT",
+        "inputStrength": "MEDIUM",
+        "outputStrength": "MEDIUM"
+      }
+    ],
+    "tierConfig": {
+      "tierName": "STANDARD"
+    }
+  },
+  "blockedInputMessaging": "통관·화물 현황 질문만 답합니다. 예: 이번 주 통관 지연 건 몇 건이야?",
+  "blockedOutputsMessaging": "통관·화물 현황 질문만 답합니다."
+}

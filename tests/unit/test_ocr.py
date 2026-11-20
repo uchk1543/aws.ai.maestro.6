@@ -137,3 +137,42 @@ def test_locate_marks_adds_title_and_feature_from_reason():
         ("field", "doc_no 이름", "INV-2026-0214"),
     ]
     assert marks[0].bbox == pytest.approx([0.25, 0.05, 0.5, 0.04])
+
+
+def test_page_scale_keeps_dpi_but_caps_long_side():
+    """A4 는 RENDER_DPI 그대로, 포스터 크기 PDF 는 긴 변이 MAX_SIDE_PX 가 되게 줄인다 (#194 리뷰)."""
+    assert ocr.page_scale(595, 842) == ocr.RENDER_DPI / 72
+    huge = ocr.page_scale(14400, 7200)  # 200in × 100in
+    assert round(14400 * huge) == ocr.MAX_SIDE_PX
+
+
+def test_huge_pdf_page_is_rendered_within_max_side():
+    writer = PdfWriter()
+    writer.add_blank_page(width=14400, height=7200)
+    out = io.BytesIO()
+    writer.write(out)
+    [page] = ocr.render_pages(out.getvalue())
+    assert max(page.width, page.height) <= ocr.MAX_SIDE_PX
+
+
+def jpeg(size, orientation=None) -> bytes:
+    from PIL import Image
+
+    img = Image.new("RGB", size, "white")
+    out = io.BytesIO()
+    if orientation:
+        exif = Image.Exif()
+        exif[0x0112] = orientation
+        img.save(out, format="JPEG", exif=exif)
+    else:
+        img.save(out, format="JPEG")
+    return out.getvalue()
+
+
+def test_upright_image_turns_rotated_photo_and_skips_others():
+    """EXIF 회전(6: 시계 방향 90도)이 있는 사진은 세운 그림을 준다. 회전이 없거나 그림이 아니면 None."""
+    turned = ocr.upright_image(jpeg((40, 20), orientation=6))
+    assert (turned.width, turned.height) == (20, 40)
+    assert ocr.upright_image(jpeg((40, 20))) is None
+    assert ocr.upright_image(jpeg((40, 20), orientation=1)) is None
+    assert ocr.upright_image(b"not an image") is None
