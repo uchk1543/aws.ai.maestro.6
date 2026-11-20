@@ -688,6 +688,27 @@ def test_approve_still_done_when_shipments_store_fails(wms_fakes, monkeypatch):
     assert job["steps"][-1] == {"tool": "mark_registered", "summary": "화물 기록 상태를 고치지 못함: KeyError", "ok": False}
 
 
+def test_approve_same_bl_from_other_job_is_409_and_left_in_steps(wms_fakes):
+    """#176: 같은 B/L이 다른 작업으로 이미 등록됐으면 승인해도 등록하지 않는다. 이유는 409 문장과 단계 기록에 남고,
+    작업은 승인 대기 그대로다. 먼저 들어간 기록은 바뀌지 않는다."""
+    table, memory = wms_fakes
+    first = wms.make_record("job-00000d01", example_docs() + [
+        ExtractedDocument(doc_type="bill_of_lading", file="uploads/old/bl.pdf", doc_no=Cell(raw=BL, value=BL))
+    ], [], IMPORTER, "human")
+    wms.push_to_wms(first, adapter=memory)
+    put_approve_job(table, grade="확인 필요")
+
+    status, body = post_approve()
+
+    assert status == 409 and "이미" in body["error"] and "job-00000d01" in body["error"]
+    assert list(memory.records) == [f"{BL}#job-00000d01"]
+    _, job = call("GET", f"/jobs/{APPROVE_JOB}")
+    assert job["status"] == "waiting_approval" and job["result"]["wms"]["status"] == "승인 대기"
+    last = job["steps"][-1]
+    assert (last["tool"], last["ok"]) == ("push_to_wms", False)
+    assert last["summary"].startswith("사람 승인(김담당) 했지만 WMS에 등록하지 않음: ") and "job-00000d01" in last["summary"]
+
+
 def test_approve_with_mismatch_is_409_and_changes_nothing(wms_fakes):
     """끝난 기준: 불일치가 남았으면 409와 {"error"} 문장 (화면이 그대로 보여 준다). 등록도 저장도 하지 않는다."""
     table, memory = wms_fakes
@@ -763,6 +784,9 @@ def test_approve_wms_failure_is_502_and_job_unchanged(wms_fakes, monkeypatch):
     before = dict(table.items[APPROVE_JOB])
 
     class BrokenWms:
+        def registered_jobs(self, bl_no):
+            return {}
+
         def register(self, record):
             raise ClientError({"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "가짜"}}, "PutItem")
 
@@ -1059,6 +1083,9 @@ def test_wms_failure_still_saves_hs_choice(hs_fakes, monkeypatch):
     table, history, _ = hs_fakes
 
     class BrokenWms:
+        def registered_jobs(self, bl_no):
+            return {}
+
         def register(self, record):
             raise ClientError({"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "가짜"}}, "PutItem")
 

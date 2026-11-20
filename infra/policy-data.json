@@ -8,13 +8,16 @@
       "Resource": "arn:aws:dynamodb:ap-northeast-2:__ACCOUNT_ID__:table/team06-jobs"
     },
     {
-      "Sid": "HsHistoryAndWms",
+      "Sid": "HsHistory",
       "Effect": "Allow",
       "Action": ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem"],
-      "Resource": [
-        "arn:aws:dynamodb:ap-northeast-2:__ACCOUNT_ID__:table/team06-hs-history",
-        "arn:aws:dynamodb:ap-northeast-2:__ACCOUNT_ID__:table/team06-wms"
-      ]
+      "Resource": "arn:aws:dynamodb:ap-northeast-2:__ACCOUNT_ID__:table/team06-hs-history"
+    },
+    {
+      "Sid": "Wms",
+      "Effect": "Allow",
+      "Action": ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:Scan"],
+      "Resource": "arn:aws:dynamodb:ap-northeast-2:__ACCOUNT_ID__:table/team06-wms"
     },
     {
       "Sid": "Shipments",
