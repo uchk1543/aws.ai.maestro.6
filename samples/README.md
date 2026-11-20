@@ -94,6 +94,8 @@ DS="uv run --with openpyxl --with reportlab --with pillow --with numpy python"
   송장 번호·컨테이너 번호 오류는 신고서 칸이 아니라 비울 칸이 없다.
 - 통관 상태 값과 '통관 지연' 기준(`STATUSES`, `DELAY_DAYS`): 검증 담당 E1(#29). 지금은 상태 `입항 · 수입신고 · 심사 중 · 검사 중 · 수리 · 반출`,
   지연은 "입항 후 3일이 지나도 수리·반출이 아님", 기간 조건은 입항일(`arrived_at`) 기준, 기준일은 2026-11-21(발표일).
+  다른 날 시드를 넣으면 날짜를 그날로 옮기고 정답도 그날 날짜로 다시 계산한다 (`samples/seed_dates.py`, #170).
+  '오늘까지'처럼 끝일이 오늘인 질문은 조건에 `date_to_today: true`를 붙인다.
 
 ## 무엇을 고치나
 
