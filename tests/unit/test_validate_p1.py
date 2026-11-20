@@ -478,3 +478,74 @@ def test_날짜_칸이_없으면_건너뜀():
 def test_발급_기한_규칙은_원산지증명서만_본다():
     other = doc("commercial_invoice", departure_date=date_cell("2026-10-21"), issue_date=date_cell("2026-11-10"))
     assert only([other], "X-RETRO-01") == []
+
+# --- X-HS-01 상업송장 ↔ 원산지증명서 품목 HS -------------------------------------------
+
+
+def hs(text):
+    """적힌 그대로의 HS. value는 숫자만 (read_document가 푸는 방식)."""
+    import re
+
+    return Cell(raw=text, value=re.sub(r"\D", "", text))
+
+
+def hs_docs(inv_codes, co_codes):
+    """줄마다 HS만 적힌 상업송장과 원산지증명서. None인 줄은 HS 칸이 없다."""
+    inv = doc("commercial_invoice", items=[ExtractedItem(line=n, hs_code=hs(c) if c else None) for n, c in enumerate(inv_codes, 1)])
+    co = doc("certificate_of_origin", items=[ExtractedItem(line=n, hs_code=hs(c) if c else None) for n, c in enumerate(co_codes, 1)])
+    return [inv, co]
+
+
+def test_HS가_같으면_문제_없음():
+    assert only(hs_docs(["7604.29"], ["7604.29"]), "X-HS-01") == []
+
+
+def test_HS_자릿수가_다르면_짧은_쪽까지만_비교한다():
+    assert only(hs_docs(["8507.60-0000"], ["8507.60"]), "X-HS-01") == []
+
+
+def test_HS가_앞_6자리에서_다르면_확인_필요와_두_칸():
+    [issue] = only(hs_docs(["7604.21"], ["7604.29"]), "X-HS-01")
+    assert issue.grade == "확인 필요"  # 협정 HS 버전 차이가 있어 불일치로 확정하지 않는다
+    assert [(c.doc, c.field, c.raw) for c in issue.cells] == [
+        ("commercial_invoice", "items[0].hs_code", "7604.21"),
+        ("certificate_of_origin", "items[0].hs_code", "7604.29"),
+    ]
+    assert issue.evidence == "1행 HS를 확인해 주세요(상업송장 7604.21와 원산지증명서 7604.29가 앞 6자리에서 다름)."
+
+
+def test_행_번호로_짝지어_다른_행만_짚는다():
+    [issue] = only(hs_docs(["6302.60", "6402.19"], ["6302.60", "6404.11"]), "X-HS-01")
+    assert {c.field for c in issue.cells} == {"items[1].hs_code"}
+    assert issue.evidence.startswith("2행 ")
+
+
+def test_지금_HS부호_표에_없는_옛_코드는_비교하지_않고_참고():
+    # 한-중 FTA 원산지증명서는 HS2012를 쓴다. 8541.40은 HS2022에서 8541.41~49로 나뉘어 지금 표에 없다
+    [issue] = only(hs_docs(["8541.43-0000"], ["8541.40"]), "X-HS-01")
+    assert issue.grade == "참고"
+    assert [(c.doc, c.field) for c in issue.cells] == [("certificate_of_origin", "items[0].hs_code")]
+    assert "8541.40" in issue.evidence
+
+
+def test_송장에_HS_칸이_없으면_비교하지_않는다():
+    assert only(hs_docs([None], ["6105.10"]), "X-HS-01") == []
+
+
+def test_원산지증명서가_없으면_비교하지_않는다():
+    [inv, _] = hs_docs(["7604.21"], ["7604.29"])
+    assert only([inv, doc("packing_list")], "X-HS-01") == []
+
+
+def test_HS를_못_읽으면_일치로_세지_않고_확인_필요():
+    inv, co = hs_docs(["7604.29"], ["7604.29"])
+    co.items[0].hs_code = Cell(raw=None, value=None, unreadable="흐림")
+    [issue] = only([inv, co], "X-HS-01")
+    assert issue.grade == "확인 필요"
+    assert "원산지증명서 HS 흐림" in issue.evidence
+
+
+def test_HS가_6자리_미만이면_확인_필요():
+    [issue] = only(hs_docs(["7604"], ["7604.29"]), "X-HS-01")
+    assert issue.grade == "확인 필요"
+    assert [c.doc for c in issue.cells] == ["commercial_invoice"]

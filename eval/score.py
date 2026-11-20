@@ -270,6 +270,27 @@ def _sample_incoterms(path: Path = SAMPLE_SETS_CSV) -> dict[str, str]:
         return {}
     with path.open(encoding="utf-8", newline="") as fh:
         return {row["set_id"]: row["incoterms"] for row in csv.DictReader(fh) if row.get("incoterms")}
+SAMPLE_ITEMS_CSV = SAMPLE_SETS_CSV.parent / "items.csv"
+def _sample_invoice_hs(sets_path: Path = SAMPLE_SETS_CSV, items_path: Path = SAMPLE_ITEMS_CSV) -> dict[str, dict[int, str]]:
+    """세트 번호 → {품목 줄(1부터): 상업송장에 찍힌 HS}. fields.csv에 송장 HS가 없어 생성기 입력에서 읽기만 한다 (FB06 X-HS-01).
+    스타일 2 송장만 HS 칸이 있고(samples/RULES.md G8), 심은 HS(CI_hs1~3)가 있으면 그 값이다. 파일이 없으면(발표용) 빈 값."""
+    if not sets_path.exists() or not items_path.exists():
+        return {}
+    with items_path.open(encoding="utf-8", newline="") as fh:
+        printed = {row["item_code"]: row.get("hs_on_invoice", "") for row in csv.DictReader(fh)}
+    out: dict[str, dict[int, str]] = {}
+    with sets_path.open(encoding="utf-8", newline="") as fh:
+        for row in csv.DictReader(fh):
+            if row.get("style") != "2":
+                continue
+            lines = {
+                n: hs
+                for n in (1, 2, 3)
+                if row.get(f"item{n}_code") and (hs := row.get(f"CI_hs{n}") or printed.get(row[f"item{n}_code"], ""))
+            }
+            if lines:
+                out[row["set_id"]] = lines
+    return out
 def oracle_docs(
     fields_csv: Path = EVAL_DIR / "fields.csv",
     split_prefix: str = "D",
@@ -287,6 +308,7 @@ def oracle_docs(
     현장 칸(B13 #229)도 정답 값으로 채운다: 화인(선하증권·포장명세서), 컨테이너 줄 포장 수(선하증권), 품목별 포장 수(포장명세서).
     운임·원산지·소급 발급 칸(FB06 #163)도 채운다: 선하증권 운임 조건, 원산지증명서 출항일·발급일·소급 표시·품목별 HS와 원산지결정기준.
     상업송장 인코텀즈는 fields.csv에 없어 samples/data/sets.csv(읽기만 한다)에서 가져온다. 없으면 X-FRT-01은 건너뛴다.
+    상업송장 품목 HS(X-HS-01)도 fields.csv에 없어 samples/data/sets.csv·items.csv에서 가져온다 (스타일 2 송장만, 없으면 건너뜀).
     """
     wanted = ("commercial_invoice", "packing_list") + (("bill_of_lading", "certificate_of_origin") if with_p1 else ())
     values: dict[tuple[str, str], dict[str, str]] = defaultdict(dict)
@@ -308,6 +330,10 @@ def oracle_docs(
         found = [(int(m.group(1)) + 1, v) for k, v in f.items() if (m := re.fullmatch(re.escape(prefix) + r"\[(\d+)\]\." + attr, k))]
         return sorted(found)
     incoterms = _sample_incoterms()
+    invoice_hs = _sample_invoice_hs() if with_p1 else {}
+
+    def hs_cell(text: str) -> Cell:
+        return Cell(raw=text, value=re.sub(r"\D", "", text))
 
     docs: dict[str, list[ExtractedDocument]] = defaultdict(list)
     for (set_id, doc_type), f in values.items():
@@ -328,13 +354,21 @@ def oracle_docs(
                 "marks": marks_cell(f.get("marks")),
                 "items": [ExtractedItem(line=n, packages=number_cell(v, "CTN")) for n, v in indexed(f, "items")],
             }
-        elif with_p1 and doc_type == "commercial_invoice" and f.get("total_amount"):
-            line = original.get((set_id, doc_type, "total_amount")) or f["total_amount"]
-            extra = {
-                "total_amount": number_cell(f["total_amount"], "USD"),
-                "items": [ExtractedItem(line=1, amount=number_cell(line, "USD"))],
-                "incoterms": text_cell(incoterms.get(set_id)),
-            }
+        elif with_p1 and doc_type == "commercial_invoice" and (f.get("total_amount") or invoice_hs.get(set_id)):
+            hs_lines = invoice_hs.get(set_id, {})
+            amount = original.get((set_id, doc_type, "total_amount")) or f.get("total_amount")
+            items = [
+                ExtractedItem(
+                    line=n,
+                    # 줄 금액은 정답지에 없어 1행에 심기 전 총금액을 두고, HS 때문에 생긴 2행부터는 0으로 둔다 (X-SUM-01 합이 그대로)
+                    amount=number_cell(amount if n == 1 else "0", "USD"),
+                    hs_code=hs_cell(hs_lines[n]) if n in hs_lines else None,
+                )
+                for n in sorted({1} | set(hs_lines))
+            ] if f.get("total_amount") else [ExtractedItem(line=n, hs_code=hs_cell(v)) for n, v in sorted(hs_lines.items())]
+            extra = {"items": items, "incoterms": text_cell(incoterms.get(set_id))}
+            if f.get("total_amount"):
+                extra["total_amount"] = number_cell(f["total_amount"], "USD")
         elif with_p1 and doc_type == "certificate_of_origin":
             criteria = dict(indexed(f, "items", "origin_criterion"))
             hs_codes = dict(indexed(f, "items", "hs_code"))
