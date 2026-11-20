@@ -1,9 +1,11 @@
 """현황 조회 Agent(answer) 단위 테스트. 질문 → 조건 모델은 가짜로 대신한다 (Bedrock·AWS 호출 없음)."""
 
+import csv
 import json
 from datetime import date
 from pathlib import Path
 
+import pytest
 from pydantic import ValidationError
 
 from agent.query_agent import answer, compose_answer, filter_prompt
@@ -77,6 +79,68 @@ def test_compose_answer_whole_period():
 
     result = query_shipments(ChatFilters(status="심사 중"), store=STORE, today=TODAY)
     assert compose_answer(result).startswith("지금까지 '심사 중' 상태 화물은 4건입니다.")
+
+
+# ---------------------------------------------------------------------------
+# 못 담는 조건·조건 없는 질문 (#165 FB08). 질문과 다른 조건으로 전체를 답하지 않는다
+# ---------------------------------------------------------------------------
+QUERIES = [(q["query_id"], q["question"], json.loads(q["expected_conditions"]), q["expected_count"])
+           for q in csv.DictReader((ROOT / "eval/queries.csv").open(encoding="utf-8", newline=""))]
+# 정답지의 조회하지 않아야 하는 질문 (expect: 안내·되묻기). 가짜 모델은 정답 조건을 그대로 낸다. 시드 전체는 76건
+FB08 = [(question, {"unsupported": cond["unsupported"]}, cond["expect"]) for _, question, cond, _ in QUERIES if "expect" in cond]
+KEYED = [(qid, question, cond, int(count)) for qid, question, cond, count in QUERIES if "expect" not in cond]
+
+
+def test_answer_key_has_the_four_fb08_questions():
+    assert [q for q, _, _ in FB08] == [
+        "이그잼플유통 화물만 보여줘", "EXSHSZX26003555 지금 어디까지 진행됐어?", "오늘 점심 뭐 먹지?", "통관 끝난 화물 몇 건이야?",
+    ]
+
+
+@pytest.mark.parametrize("qid,question,cond,count", KEYED, ids=[k[0] for k in KEYED])
+def test_existing_twenty_questions_still_query(qid, question, cond, count):
+    """기존 20문항은 정답 조건이면 지금처럼 조회하고 정답 건수를 답한다 (가짜 모델, 20/20)."""
+    filters = {k: cond[k] for k in ("status", "period", "date_from", "date_to")}
+    res = answer(question, "s1", store=STORE, today=TODAY, parser=parser_of(**filters))
+    assert len(res.rows) == count and f"{count}건입니다." in res.answer
+    assert "조회할 수 없습니다" not in res.answer and "어떤 화물을 찾을지" not in res.answer
+
+
+@pytest.mark.parametrize("question,filters,kind", FB08, ids=[q for q, _, _ in FB08])
+def test_fb08_questions_do_not_answer_everything(question, filters, kind):
+    res = answer(question, "s1", store=STORE, today=TODAY, parser=parser_of(**filters))
+    ChatResponse.model_validate(res.model_dump(mode="json", by_alias=True))  # 약속 2 형식
+    assert res.rows == [] and res.period_resolved is None and "76" not in res.answer
+    heads = {"안내": "아직 조회할 수 없습니다", "되묻기": "어떤 화물을 찾을지 알려 주세요", "막힘": "통관·화물 현황 질문만 답합니다"}
+    assert heads[kind] in res.answer
+    assert res.blocked == ("무관한 질문" if kind == "막힘" else None)  # 화물 현황과 무관한 질문은 막는다 (E7 #152)
+    assert res.filters.unsupported == filters.get("unsupported", [])
+
+
+def test_unsupported_names_the_condition_and_what_works():
+    res = answer("이그잼플유통 화물만 보여줘", "s1", store=STORE, today=TODAY,
+                 parser=parser_of(unsupported=["수하인 이그잼플유통"]))
+    assert res.answer.startswith("'수하인 이그잼플유통' 조건은 아직 조회할 수 없습니다.")
+    assert "통관 지연" in res.answer and "이번 주" in res.answer  # 볼 수 있는 조건을 알려 준다
+
+
+def test_unsupported_is_not_queried_even_with_other_conditions():
+    """'이번 주 이그잼플유통 화물'을 이번 주 전체로 답하지 않는다."""
+    res = answer("이번 주 이그잼플유통 화물", "s1", store=STORE, today=TODAY,
+                 parser=parser_of(period="this_week", unsupported=["수하인 이그잼플유통"]))
+    assert res.rows == [] and "아직 조회할 수 없습니다" in res.answer
+
+
+def test_unsupported_text_is_short():
+    long = "수하인 " + "가" * 100
+    res = answer("질문", "s1", store=STORE, today=TODAY, parser=parser_of(unsupported=[long, "B/L 번호 X", "품명 Y", "넷째"]))
+    assert "넷째" not in res.answer and "가" * 41 not in res.answer  # 셋까지, 하나에 40자까지
+
+
+def test_prompt_explains_unsupported_and_off_topic():
+    prompt = filter_prompt(TODAY)
+    for word in ("unsupported", "수하인", "B/L 번호", "둘 이상", "통관 끝난", "화물 현황을 묻는 질문이 아니면"):
+        assert word in prompt
 
 
 # ---------------------------------------------------------------------------

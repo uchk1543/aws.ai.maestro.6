@@ -10,6 +10,7 @@ CloudFront가 /api/*를 API Gateway로 보내고, rawPath에 /api가 붙어 온�
     POST /api/jobs/{id}/approve → {"wms"}              (D3, 사람 승인으로 WMS 등록. 불일치가 남았으면 409)
     POST /api/chat           → ChatResponse            (E5, 현황 조회. 1번 agent.query_agent)
     GET  /api/documents?doc_type=…&cursor=… → DocumentsResponse (G10 #143, 문서 분류 내역. team06-jobs Scan)
+    GET  /api/jobs/{id}/files → JobFilesResponse        (F7 #156, 서류 보기: 원본 주소 + 읽은 칸)
 서류 처리(run_job)는 처리 Lambda team06-worker(api/worker.py)가 한다. API Gateway는 요청 하나를 30초 안에 끝내야 한다.
 
 환경 변수: JOBS_TABLE(team06-jobs), DOCS_BUCKET(team06-docs-...), MODEL_ID, HS_HISTORY_TABLE(team06-hs-history),
@@ -29,7 +30,22 @@ from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import TypeAdapter
 
 from tools import declaration, hs, report, wms
-from tools.models import DOC_TYPE_KO, DocType, DocumentRecord, DocumentsResponse, ExtractedDocument, Job, Step, WmsState
+from tools.models import (
+    DOC_TYPE_KO,
+    Cell,
+    DocPage,
+    DocType,
+    DocumentRecord,
+    DocumentsResponse,
+    ExtractedDocument,
+    ExtractedItem,
+    Job,
+    JobFilesResponse,
+    JobFileView,
+    ReadField,
+    Step,
+    WmsState,
+)
 from tools.query import dynamo_shipments
 
 ALLOWED_DOC_TYPES = {"commercial_invoice", "packing_list", "bill_of_lading", "certificate_of_origin"}  # 약속 1의 4종 (#129)
@@ -486,7 +502,8 @@ def approve_job(job_id: str, body) -> dict:
     언제: '확인 필요'가 남은 건을 사람이 화면에서 보고 승인할 때 (agent-design.md 8번 예외). 모델 호출 없음.
     받는 것: {"approver"}: 승인자 이름. 공백만이면 안 되고 50자까지. 단계 기록에 남긴다.
     반환: 200 {"wms": {"status", "wms_id"}} / 400 요청 형식 / 404 없는 작업
-      / 409 {"error"}: 불일치가 남음, 승인 대기 중이 아님, 서류 기록이 없음, B/L 번호·수하인이 없어 기록을 못 만듦
+      / 409 {"error"}: 불일치가 남음, 승인 대기 중이 아님, 서류 기록이 없음, B/L 번호·수하인이 없어 기록을 못 만듦,
+        같은 B/L이 다른 작업으로 이미 등록됨(#176. 이때만 단계 기록에 이유를 한 줄 남긴다. 같은 이유면 다시 남기지 않는다)
       / 502 가상 WMS 저장 실패 (작업은 그대로라 다시 승인하면 된다).
     이미 등록된 작업이면 다시 등록하지 않고 그 상태를 돌려준다. WMS 쪽도 멱등 키라 재시도해도 한 번만 들어간다.
     저장: result.wms = {등록됨, human, wms_id}, status = done, steps에 push_to_wms 한 줄과 mark_registered 한 줄(E3).
@@ -521,6 +538,14 @@ def approve_job(job_id: str, body) -> dict:
     print(f"[api] approve job={job_id}")
     try:
         state = wms.push_to_wms(record, adapter=wms.dynamo_wms())
+    except wms.DuplicateBL as exc:  # 같은 B/L이 다른 작업으로 이미 있다 (#176). 작업은 승인 대기 그대로, 이유만 남긴다
+        reason = str(exc)
+        print(f"[api] approve job={job_id} 등록 안 함: {reason}")
+        # 막힌 승인을 다시 눌러도 같은 이유면 단계 기록에는 한 줄만 둔다 (승인자가 달라도). 409는 매번 돌려준다
+        if not any(s.tool == "push_to_wms" and not s.ok and s.summary.endswith(reason) for s in job.steps):
+            job.steps.append(Step(tool="push_to_wms", summary=f"사람 승인({approver}) 했지만 WMS에 등록하지 않음: {reason}", ok=False))
+            save_job(job, keep=item)
+        return _error(409, reason)
     except (BotoCoreError, ClientError) as exc:
         print(f"[error] WMS 등록 실패 job={job_id} {type(exc).__name__}: {exc}")
         return _error(502, "가상 WMS에 등록하지 못했습니다. 잠시 뒤 다시 승인해 주세요 (같은 건은 한 번만 들어갑니다)")
@@ -670,6 +695,94 @@ def list_documents(query: dict | None) -> dict:
     return _response(200, body.model_dump(mode="json"))
 
 
+# ---------------------------------------------------------------------------
+# 서류 보기 (F7 #156): 원본 주소 + 읽은 칸. 위변조 확인 화면(G12 #150) 왼쪽 원본 | 오른쪽 OCR 결과
+# ---------------------------------------------------------------------------
+VIEW_SECONDS = 300  # 원본 보기 주소 유효 시간
+IMAGE_HEAD_BYTES = 262_144  # 이미지 크기(px)를 알려고 앞부분만 받는다
+_LABELS = {
+    "doc_no": "서류 번호", "total_gross_kg": "총중량", "total_qty": "총수량", "consignee_name": "수하인",
+    "exporter_name": "수출자", "shipper_name": "송하인", "notify_name": "통지처", "total_amount": "합계 금액",
+    "incoterms": "인도 조건", "payment_term": "결제 조건", "origin": "원산지", "total_packages": "총포장 수",
+    "total_cbm": "용적(CBM)", "vessel_voyage": "선명·항차", "port_loading": "선적항", "port_discharge": "양륙항",
+    "onboard_date": "본선 적재일", "container_no": "컨테이너 번호", "freight_term": "운임 조건", "co_no": "증명서 번호",
+    "issue_date": "발급일", "departure_date": "출항일", "invoice_date": "송장 날짜", "issued_retroactively": "소급 발급",
+    "item_code": "품목 코드", "name": "품명", "hs_code": "HS 코드", "qty": "수량", "gross_kg": "총중량",
+    "net_kg": "순중량", "unit_price": "단가", "amount": "금액", "origin_criterion": "원산지 기준",
+}
+
+
+def presign_view(key: str, content_type: str) -> str:
+    """DOCS_BUCKET의 key를 볼 미리 서명된 GET 주소. 형식을 정해 브라우저가 내려받지 않고 띄우게 한다. 주소는 로그에 남기지 않는다."""
+    print(f"[tool] s3_presign_get key={key}")
+    return _s3().generate_presigned_url(
+        "get_object",
+        Params={"Bucket": os.environ["DOCS_BUCKET"], "Key": key, "ResponseContentType": content_type,
+                "ResponseContentDisposition": "inline"},
+        ExpiresIn=VIEW_SECONDS,
+    )
+
+
+def image_size(key: str) -> tuple[int, int] | None:
+    """이미지 앞부분만 받아 가로·세로 px를 읽는다. 못 읽으면 None (그때는 쪽 그림 없이 원본 주소만 준다)."""
+    try:
+        from io import BytesIO
+
+        from PIL import Image
+
+        head = _s3().get_object(Bucket=os.environ["DOCS_BUCKET"], Key=key, Range=f"bytes=0-{IMAGE_HEAD_BYTES - 1}")["Body"].read()
+        with Image.open(BytesIO(head)) as img:
+            return img.size
+    except Exception as exc:  # 깨진 그림, 앞부분에 크기가 없음 등
+        print(f"[warn] image_size key={key} {type(exc).__name__}: {exc}")
+        return None
+
+
+def read_fields(doc: ExtractedDocument | None) -> list[ReadField]:
+    """읽은 서류를 칸 한 줄씩 펼친다. 칸 경로는 IssueCell.field와 같아 화면이 불일치 칸을 바로 짚는다. 비어 있는 칸은 뺀다."""
+    if doc is None:
+        return []
+    out: list[ReadField] = []
+
+    def add(path: str, label: str, cell) -> None:
+        if isinstance(cell, Cell) and (cell.raw is not None or cell.unreadable is not None):
+            out.append(ReadField(field=path, label=label, raw=cell.raw, value=cell.value, unit=cell.unit, unreadable=cell.unreadable))
+
+    for name in ExtractedDocument.model_fields:
+        add(name, _LABELS.get(name, name), getattr(doc, name))
+    for i, item in enumerate(doc.items):
+        for name in ExtractedItem.model_fields:
+            add(f"items[{i}].{name}", f"{item.line}행 {_LABELS.get(name, name)}", getattr(item, name))
+    return out
+
+
+def job_files(job_id: str) -> dict:
+    """GET /jobs/{id}/files. 작업에 올라온 서류마다 원본 주소와 읽은 칸을 준다 (F7 #156). 모델 호출 없음.
+
+    반환: 200 JobFilesResponse (올린 순서, 아직 분류 전 서류는 뺀다) / 404 없는 작업.
+    PDF는 쪽 그림을 만들지 않고(pages 빈 목록) 원본 주소를 iframe으로 띄운다. marks(칸 위치)는 OCR 좌표가 생기기 전까지 빈 목록.
+    """
+    if not JOB_ID.match(job_id):
+        return _error(404, "작업을 찾을 수 없습니다")
+    item = _load_item(job_id)
+    if item is None:
+        return _error(404, "작업을 찾을 수 없습니다")
+    docs = {d.file: d for d in (_DOCS.validate_json(item["docs"]) if item.get("docs") else [])}
+    views = []
+    for rec in job_documents(item):
+        content_type = UPLOAD_TYPES.get(os.path.splitext(rec.key)[1].lower(), UNKNOWN_TYPE)
+        url = presign_view(rec.key, content_type)
+        size = image_size(rec.key) if content_type.startswith("image/") else None
+        views.append(JobFileView(
+            key=rec.key, file_name=rec.file_name, doc_type=rec.doc_type, classified_by=rec.classified_by,
+            reason=rec.reason, url=url, content_type=content_type,
+            pages=[DocPage(url=url, width=size[0], height=size[1])] if size else [],
+            fields=read_fields(docs.get(rec.key)),
+        ))
+    print(f"[api] job_files job={job_id} files={len(views)}")
+    return _response(200, JobFilesResponse(files=views).model_dump(mode="json"))
+
+
 # 약속 2에 있지만 아직 없는 경로 → 작업 ID (e2e-plan.md). 만들면 여기서 지운다.
 _PLANNED: dict[tuple[str, str], str] = {}
 
@@ -707,6 +820,8 @@ def lambda_handler(event, context):
         if method == "GET" and path.startswith("/jobs/") and path.count("/") == 2:
             return get_job(path.split("/")[2])
         parts = path.split("/")
+        if method == "GET" and len(parts) == 4 and parts[1] == "jobs" and parts[3] == "files":
+            return job_files(parts[2])
         if method == "POST" and len(parts) == 4 and parts[1] == "jobs" and parts[3] == "hs":
             return choose_hs(parts[2], _body(event))
         if method == "POST" and len(parts) == 4 and parts[1] == "jobs" and parts[3] == "approve":

@@ -16,7 +16,7 @@ import tools.report as report
 import tools.wms as wms
 from tests.unit.fakes import MemoryHSHistory, MemoryWms
 from tests.unit.test_report_shipment import TODAY, MemoryWriter
-from tools.models import Cell, ExtractedDocument, Job, JobResult, Shipment, Step
+from tools.models import Cell, ExtractedDocument, Job, JobResult, Shipment, Step, WmsState
 
 JOB = "job-0000f003"
 FILES = [{"key": "uploads/s1/invoice.pdf", "doc_type": "commercial_invoice"}]
@@ -265,6 +265,31 @@ def test_finished_job_writes_shipment_row_as_last_step(table, monkeypatch, shipm
     job = saved(table)
     assert job.status == status
     assert job.steps[-1] == Step(tool="record_shipment", summary=f"화물 기록 B/L {BL}: 입항, 입항일 {TODAY.isoformat()}", ok=True)
+
+
+def test_waiting_approval_saves_wms_pending(table, monkeypatch):
+    """#159: 승인 대기로 끝나면 마지막 저장에 result.wms = 승인 대기를 넣는다. 화면은 이 값을 보고 승인 입력을 그린다."""
+    assert run_with(table, monkeypatch, read_docs())["status"] == "waiting_approval"
+    assert saved(table).result.wms == WmsState(status="승인 대기", by=None, wms_id=None)
+
+
+def test_done_job_wms_is_left_as_run_job_made_it(table, monkeypatch):
+    """done은 승인이 필요 없다. 승인 대기를 넣지 않는다 (처리 직후 자동 등록은 #154)."""
+    assert run_with(table, monkeypatch, read_docs(), "done")["status"] == "done"
+    assert saved(table).result.wms is None
+
+
+def test_wms_already_set_by_run_job_is_kept(table, monkeypatch):
+    """run_job이 wms를 이미 채웠으면 덮어쓰지 않는다."""
+    put_job(table)
+    registered = WmsState(status="등록됨", by="auto", wms_id="wms-0009")
+
+    def fake(job_id, files, fetch, **_):
+        return Job(job_id=job_id, status="waiting_approval", result=JobResult(wms=registered))
+
+    monkeypatch.setattr(document_agent, "run_job", fake)
+    worker.lambda_handler({"job_id": JOB, "files": FILES}, None)
+    assert saved(table).result.wms == registered
 
 
 def test_failed_job_writes_no_shipment(table, monkeypatch, shipments):

@@ -187,21 +187,27 @@ def test_post_then_worker_shows_mismatch(fakes, lambda_client):
     assert status == 200
     Job.model_validate(job)  # 약속 2 형식
     assert job["status"] == "waiting_approval"
-    # 불일치 칸은 다시 확인한다 (B8): 상업송장·포장명세서 총중량
+    # 선하증권이 없어 먼저 빠진 서류로 남긴다 (#168). 불일치 칸은 다시 확인한다 (B8): 상업송장·포장명세서 총중량
     # 끝나면 화물 기록 한 줄 (E3). 이 서류에는 선하증권이 없어 쓰지 않았다는 줄이다
     assert [s["tool"] for s in job["steps"]] == [
-        "read_document", "read_document", "cross_check", "reread_field", "reread_field", "record_shipment",
+        "check_missing_docs", "read_document", "read_document", "cross_check", "reread_field", "reread_field",
+        "record_shipment",
     ]
     assert "B/L 번호가 없어" in job["steps"][-1]["summary"]
-    [issue] = job["result"]["issues"]
+    issue, missing = job["result"]["issues"]
     assert issue["grade"] == "불일치" and issue["rule_id"] == "X-WT-01"
+    assert (missing["rule_id"], missing["grade"]) == ("DOC-MISSING", "확인 필요")
+    # 승인 대기로 끝나면 화면이 승인 입력을 그리도록 wms를 채운다 (#159, 실제 run_job 출력 FB14)
+    assert job["result"]["wms"] == {"status": "승인 대기", "by": None, "wms_id": None}
 
 
 def test_matching_docs_are_done(fakes, lambda_client):
+    """서로 맞는 두 장은 불일치가 없다. 선하증권이 없어 빠진 서류 '확인 필요'만 남고 승인 대기다 (#168)."""
     _, body = call("POST", "/api/jobs", files("invoice.pdf", "pl_ok.pdf"))
     process(lambda_client)
     _, job = call("GET", f"/api/jobs/{body['job_id']}")
-    assert job["status"] == "done" and job["result"]["issues"] == []
+    assert job["status"] == "waiting_approval"
+    assert [i["rule_id"] for i in job["result"]["issues"]] == ["DOC-MISSING"]
 
 
 def test_read_failure_is_check_needed(fakes, lambda_client):
@@ -210,7 +216,7 @@ def test_read_failure_is_check_needed(fakes, lambda_client):
     _, job = call("GET", f"/api/jobs/{body['job_id']}")
     assert job["status"] == "waiting_approval"
     assert job["result"]["issues"][0]["rule_id"] == "READ-FAIL"
-    assert job["steps"][1]["ok"] is False
+    assert [s["tool"] for s in job["steps"] if not s["ok"]] == ["read_document"]  # 첫 단계는 빠진 서류 (#168)
 
 
 def test_old_paths_without_api_prefix_still_work(fakes, lambda_client):
@@ -218,7 +224,7 @@ def test_old_paths_without_api_prefix_still_work(fakes, lambda_client):
     _, body = call("POST", "/jobs", files("invoice.pdf", "pl_ok.pdf"))
     process(lambda_client)
     status, job = call("GET", f"/jobs/{body['job_id']}")
-    assert status == 200 and job["status"] == "done"
+    assert status == 200 and job["status"] == "waiting_approval"  # 끝까지 처리됨. 선하증권이 없어 승인 대기 (#168)
 
 
 def test_http_api_v2_events_end_to_end(fakes, lambda_client):
@@ -737,6 +743,33 @@ def test_approve_still_done_when_shipments_store_fails(wms_fakes, monkeypatch):
     assert job["steps"][-1] == {"tool": "mark_registered", "summary": "화물 기록 상태를 고치지 못함: KeyError", "ok": False}
 
 
+def test_approve_same_bl_from_other_job_is_409_and_left_in_steps(wms_fakes):
+    """#176: 같은 B/L이 다른 작업으로 이미 등록됐으면 승인해도 등록하지 않는다. 이유는 409 문장과 단계 기록에 남고,
+    작업은 승인 대기 그대로다. 먼저 들어간 기록은 바뀌지 않는다."""
+    table, memory = wms_fakes
+    first = wms.make_record("job-00000d01", example_docs() + [
+        ExtractedDocument(doc_type="bill_of_lading", file="uploads/old/bl.pdf", doc_no=Cell(raw=BL, value=BL))
+    ], [], IMPORTER, "human")
+    wms.push_to_wms(first, adapter=memory)
+    put_approve_job(table, grade="확인 필요")
+
+    status, body = post_approve()
+
+    assert status == 409 and "이미" in body["error"] and "job-00000d01" in body["error"]
+    assert list(memory.records) == [f"{BL}#job-00000d01"]
+    _, job = call("GET", f"/jobs/{APPROVE_JOB}")
+    assert job["status"] == "waiting_approval" and job["result"]["wms"]["status"] == "승인 대기"
+    last = job["steps"][-1]
+    assert (last["tool"], last["ok"]) == ("push_to_wms", False)
+    assert last["summary"].startswith("사람 승인(김담당) 했지만 WMS에 등록하지 않음: ") and "job-00000d01" in last["summary"]
+
+    # 같은 이유로 다시 눌러도(승인자가 달라도) 409는 그대로이고 단계 기록에는 한 줄만 남는다 (PR #190 리뷰)
+    steps = len(job["steps"])
+    assert post_approve({"approver": "박담당"})[0] == 409
+    _, job = call("GET", f"/jobs/{APPROVE_JOB}")
+    assert len(job["steps"]) == steps
+
+
 def test_approve_with_mismatch_is_409_and_changes_nothing(wms_fakes):
     """끝난 기준: 불일치가 남았으면 409와 {"error"} 문장 (화면이 그대로 보여 준다). 등록도 저장도 하지 않는다."""
     table, memory = wms_fakes
@@ -812,6 +845,9 @@ def test_approve_wms_failure_is_502_and_job_unchanged(wms_fakes, monkeypatch):
     before = dict(table.items[APPROVE_JOB])
 
     class BrokenWms:
+        def registered_jobs(self, bl_no):
+            return {}
+
         def register(self, record):
             raise ClientError({"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "가짜"}}, "PutItem")
 
@@ -1108,6 +1144,9 @@ def test_wms_failure_still_saves_hs_choice(hs_fakes, monkeypatch):
     table, history, _ = hs_fakes
 
     class BrokenWms:
+        def registered_jobs(self, bl_no):
+            return {}
+
         def register(self, record):
             raise ClientError({"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "가짜"}}, "PutItem")
 
@@ -1125,3 +1164,119 @@ def test_wms_failure_still_saves_hs_choice(hs_fakes, monkeypatch):
     assert job["steps"][-1] == {
         "tool": "push_to_wms", "summary": "WMS 자동 등록 못 함: 가상 WMS 오류(ClientError). 승인하면 다시 등록합니다", "ok": False,
     }
+
+
+# ---------------------------------------------------------------------------
+# GET /jobs/{id}/files 서류 보기 (F7 #156)
+# ---------------------------------------------------------------------------
+from tools.models import JobFilesResponse  # noqa: E402
+
+
+class ViewS3:
+    """서류 보기용 가짜 S3. GET 서명과 이미지 앞부분 받기만 흉내 낸다."""
+
+    def __init__(self, images: dict[str, bytes]):
+        self.images, self.signed, self.ranges = images, [], []
+
+    def generate_presigned_url(self, operation, Params, ExpiresIn, HttpMethod=None):
+        self.signed.append((operation, Params, ExpiresIn))
+        return f"https://s3.test/{Params['Key']}?sig={len(self.signed)}"
+
+    def get_object(self, Bucket, Key, Range=None):
+        from io import BytesIO
+
+        self.ranges.append((Key, Range))
+        return {"Body": BytesIO(self.images[Key])}
+
+
+def _png(width: int, height: int) -> bytes:
+    from io import BytesIO
+
+    from PIL import Image
+
+    buf = BytesIO()
+    Image.new("RGB", (width, height), "white").save(buf, format="PNG")
+    return buf.getvalue()
+
+
+@pytest.fixture
+def view_s3(monkeypatch):
+    fake = ViewS3({"uploads/s1/photo.png": _png(1200, 1600)})
+    monkeypatch.setattr(handler, "_s3", lambda: fake)
+    monkeypatch.setenv("DOCS_BUCKET", "team06-docs-test")
+    return fake
+
+
+def _typed_job(job_id: str, key: str, doc_type: str, status: str = "waiting_approval") -> dict:
+    return {
+        "job_id": job_id, "updated_at": 1795000000, "files": json.dumps([{"key": key, "doc_type": doc_type}]),
+        "data": Job(job_id=job_id, status=status).model_dump_json(),
+    }
+
+
+def test_job_files_give_original_url_and_read_fields(fakes, lambda_client, classifier, view_s3):
+    """끝난 기준: 원본 주소(미리 서명된 GET, inline)와 읽은 칸. 칸 경로는 IssueCell.field와 같다."""
+    job_id = post_untyped("invoice.pdf", "packing_list.pdf")
+    process(lambda_client)
+
+    status, body = call("GET", f"/api/jobs/{job_id}/files")
+
+    assert status == 200
+    res = JobFilesResponse.model_validate(body)
+    assert [f.file_name for f in res.files] == ["invoice.pdf", "packing_list.pdf"]
+    inv = res.files[0]
+    assert (inv.doc_type, inv.classified_by, inv.content_type) == ("commercial_invoice", "model", "application/pdf")
+    assert inv.url.startswith("https://s3.test/uploads/s1/invoice.pdf") and inv.pages == [] and inv.marks == []
+    fields = {f.field: f for f in inv.fields}
+    assert fields["total_gross_kg"].raw == "6,250.00 KGS" and fields["total_gross_kg"].label == "총중량"
+    assert fields["doc_no"].raw == "INV-2026-001"
+    _, issue_job = call("GET", f"/api/jobs/{job_id}")
+    issue_cells = {(c["doc"], c["field"]) for i in issue_job["result"]["issues"] for c in i["cells"]}
+    shown = {(f.doc_type, r.field) for f in res.files for r in f.fields}
+    assert issue_cells and issue_cells <= shown  # 화면이 불일치 칸을 바로 짚는다
+    op, params, seconds = view_s3.signed[0]
+    assert (op, seconds, params["ResponseContentDisposition"]) == ("get_object", handler.VIEW_SECONDS, "inline")
+
+
+def test_job_files_image_has_one_page_with_size(fakes, view_s3):
+    fakes.items["job-0000bbbb"] = _typed_job("job-0000bbbb", "uploads/s1/photo.png", "packing_list")
+
+    [view] = JobFilesResponse.model_validate(call("GET", "/api/jobs/job-0000bbbb/files")[1]).files
+
+    assert view.content_type == "image/png" and [(p.width, p.height) for p in view.pages] == [(1200, 1600)]
+    assert view.fields == []  # 읽지 않은 서류
+    assert view_s3.ranges == [("uploads/s1/photo.png", f"bytes=0-{handler.IMAGE_HEAD_BYTES - 1}")]
+
+
+def test_job_files_broken_image_still_gives_url(fakes, view_s3):
+    view_s3.images["uploads/s1/photo.png"] = b"not an image"
+    fakes.items["job-0000cccc"] = _typed_job("job-0000cccc", "uploads/s1/photo.png", "packing_list", "done")
+
+    [view] = call("GET", "/api/jobs/job-0000cccc/files")[1]["files"]
+
+    assert view["pages"] == [] and view["url"].startswith("https://s3.test/")
+
+
+@pytest.mark.parametrize("job_id", ["job-00000000", "nope"])
+def test_job_files_unknown_job_is_404(fakes, job_id):
+    assert call("GET", f"/api/jobs/{job_id}/files")[0] == 404
+
+
+def test_presign_view_is_regional_get_with_inline(monkeypatch):
+    """실제 botocore로 GET 서명만 해 본다 (AWS를 부르지 않는다)."""
+    for name in ("AWS_PROFILE", "AWS_SESSION_TOKEN", "AWS_ENDPOINT_URL", "AWS_ENDPOINT_URL_S3"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "fake-id")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "fake-secret")
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "ap-northeast-2")
+    monkeypatch.setenv("DOCS_BUCKET", "team06-docs-test")
+    monkeypatch.setattr(boto3, "DEFAULT_SESSION", None)
+    handler._s3.cache_clear()
+    try:
+        url = handler.presign_view("uploads/b1/1-invoice.pdf", "application/pdf")
+    finally:
+        handler._s3.cache_clear()
+    parts, query = urlsplit(url), parse_qs(urlsplit(url).query)
+    assert parts.netloc == "team06-docs-test.s3.ap-northeast-2.amazonaws.com"
+    assert query["response-content-type"] == ["application/pdf"] and query["response-content-disposition"] == ["inline"]
+    assert query["X-Amz-Expires"] == [str(handler.VIEW_SECONDS)]

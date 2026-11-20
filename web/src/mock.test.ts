@@ -4,7 +4,7 @@ import chatExample from "../../docs/examples/chat_response.json";
 import jobExample from "../../docs/examples/job_waiting_approval.json";
 import { ApiError } from "./api";
 import { clearMockMismatches, mockJobAt, mockRequest, resetMock } from "./mock";
-import type { DocumentsResponse, Job } from "./types";
+import type { DocumentsResponse, Job, JobFilesResponse } from "./types";
 
 describe("mockRequest", () => {
   it("POST /api/uploads 는 파일마다 uploads/ 로 시작하는 key 를 준다", async () => {
@@ -109,5 +109,21 @@ describe("mockRequest", () => {
 
   it("GET /api/documents 의 doc_type 이 값 목록 밖이면 400", async () => {
     await expect(mockRequest("GET", "/api/documents?doc_type=memo", undefined)).rejects.toMatchObject({ status: 400 });
+  });
+  it("GET /api/jobs/{id}/files 는 그 작업의 서류마다 쪽 그림과 0~1 위치를 준다", async () => {
+    const res = (await mockRequest("GET", "/api/jobs/job-7c1e/files", undefined)) as JobFilesResponse;
+
+    expect(res.files.map((f) => f.file_name)).toEqual(["invoice.pdf", "packing.pdf", "bl.jpg"]);
+    for (const f of res.files) {
+      expect(f.pages[0].url.startsWith("data:image/svg+xml")).toBe(true);
+      expect(f.marks.every((m) => m.bbox.every((v) => v >= 0 && v <= 1))).toBe(true);
+    }
+    // 예시의 불일치 칸(items[0].gross_kg)이 두 서류 모두에 표시로 있다
+    const gross = res.files.map((f) => f.marks.find((m) => m.field === "items[0].gross_kg")?.text);
+    expect(gross.slice(0, 2)).toEqual(["6,250.00 KGS", "6,520.00 KGS"]);
+  });
+
+  it("GET /api/jobs/{id}/files 는 없는 작업이면 404", async () => {
+    await expect(mockRequest("GET", "/api/jobs/job-none/files", undefined)).rejects.toMatchObject({ status: 404 });
   });
 });

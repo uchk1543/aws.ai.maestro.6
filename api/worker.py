@@ -7,6 +7,7 @@ API Lambda(api/handler.py의 POST /jobs)가 작업을 queued로 저장한 뒤 �
             HS는 recommend_hs(C1·C2)로 품목마다 추천한다 (모델 없이 품명 검색, 확정 이력은 team06-hs-history).
             마지막 저장 때 읽은 서류(docs)와 수입자(importer)를 같은 줄에 넣는다. HS 선택(C3)·승인(D3)이 읽는다 (#122).
             waiting_approval·done이면 마지막 저장 직전에 화물 기록(team06-shipments)에 한 줄을 쓴다 (E3, #31).
+            waiting_approval이면 result.wms를 '승인 대기'로 채워 저장한다. 화면이 승인 입력을 그린다 (#159).
 제한 시간 300초. 환경 변수: JOBS_TABLE, DOCS_BUCKET, MODEL_ID, HS_HISTORY_TABLE, SHIPMENTS_TABLE (도구에 따라 WMS_TABLE)
 
 비동기 호출은 함수가 오류·시간 초과로 끝나면 Lambda가 같은 이벤트를 다시 보낸다. 그래서 저장된 상태를 보고 한 번만 처리한다.
@@ -20,7 +21,7 @@ from functools import cache
 
 from api import handler
 from tools import hs, report
-from tools.models import ExtractedDocument, HSResult, Job, Step
+from tools.models import ExtractedDocument, HSResult, Job, Step, WmsState
 from tools.query import dynamo_shipments
 
 INTERRUPTED = "처리가 중간에 멈췄습니다 (시간 초과 등). 서류를 다시 올려 주세요"
@@ -110,6 +111,18 @@ def _record_shipment(job_id: str, docs: list[ExtractedDocument]) -> Step:
     return report.record_shipment(job_id, docs, store)
 
 
+def _mark_waiting(job: Job) -> None:
+    """승인 대기로 끝난 작업에 result.wms = 승인 대기를 넣는다 (#159).
+
+    언제: 마지막 저장 직전. 화면은 result.wms.status가 '승인 대기'일 때만 승인 입력을 그린다(WmsPanel).
+    받는 것: run_job이 돌려준 Job. 그 자리에서 고친다.
+    waiting_approval이 아니거나 wms가 이미 있으면(등록됨 등) 그대로 둔다. done의 자동 등록은 #154가 한다.
+    """
+    if job.status != "waiting_approval" or job.result is None or job.result.wms is not None:
+        return
+    job.result.wms = WmsState(status="승인 대기")
+
+
 def lambda_handler(event, context):
     """작업 하나를 처리한다.
 
@@ -164,6 +177,7 @@ def lambda_handler(event, context):
     print(f"[job] {job_id} status={result.status} {time.perf_counter() - started:.1f}초")
     if result.status in ("waiting_approval", "done") and read:  # 실패한 작업은 화물 기록을 쓰지 않는다
         result.steps.append(_record_shipment(job_id, read))
+    _mark_waiting(result)
     columns = _docs_columns(read)
     print(f"[worker] job={job_id} 서류 기록 docs={len(read)} importer={'있음' if 'importer' in columns else '없음'}")
     _save(result, {**item, **columns})

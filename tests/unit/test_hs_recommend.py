@@ -2,7 +2,7 @@
 import pytest
 
 from tests.unit.fakes import MemoryHSHistory
-from tools.hs import CsvHSTable, _norm, _Row, confirm_by_human, item_key, recommend_hs
+from tools.hs import CsvHSTable, _norm, _Row, confirm_by_human, is_known_hs, item_key, recommend_hs
 from tools.models import Cell, ExtractedDocument, ExtractedItem, HSCandidate, HSPick, HSSearchTerms
 
 BATT = "8507603000"  # 에너지 저장장치용 (정답이라고 가정)
@@ -209,3 +209,58 @@ def test_사람_확정은_후보를_그대로_남긴다(table):
     first = run([_doc("commercial_invoice", None)], table, reader=reader_of("battery"), picker=picker_of(BATT, BATT_OTHER))
     done = confirm_by_human(first, BATT_OTHER, "수입자A", "code:BP-200", "job-1", history=MemoryHSHistory())
     assert done.hs_code == BATT_OTHER and done.candidates == first.candidates
+
+# --- 품명·서류 HS를 결과에 담기 (FB07 #164) -------------------------------------------
+
+
+def test_사람_확인_결과에_품명과_서류_HS가_담긴다(table):
+    docs = [_doc("commercial_invoice", "8507.60", name="KNOCK-DOWN DINING CHAIR")]
+    r = run(docs, table, reader=reader_of("battery"), picker=picker_of(BATT))
+    assert r.status == "사람 확인 필요"
+    assert (r.item_name, r.doc_hs_code) == ("KNOCK-DOWN DINING CHAIR", "8507.60")
+
+
+def test_서류에_HS가_없으면_서류_HS는_null이고_품명은_담긴다(table):
+    r = run([_doc("commercial_invoice", None)], table)
+    assert (r.item_name, r.doc_hs_code) == ("LITHIUM-ION BATTERY PACK", None)
+
+
+def test_품명을_못_읽었으면_품명은_null(table):
+    r = run([_doc("commercial_invoice", None, name=None)], table)
+    assert r.item_name is None
+
+
+def test_이력으로_자동_확정해도_품명과_서류_HS가_담긴다(table):
+    h = MemoryHSHistory()
+    h.put("수입자A", "code:BP-200", BATT, "job-1")
+    r = run([_doc("commercial_invoice", "8507.60")], table, h)
+    assert (r.by, r.item_name, r.doc_hs_code) == ("history", "LITHIUM-ION BATTERY PACK", "8507.60")
+
+
+def test_자동_확정_auto_match도_품명과_서류_HS가_담긴다(table):
+    r = run([_doc("commercial_invoice", BATT)], table, reader=reader_of("battery"), picker=picker_of(BATT))
+    assert (r.by, r.item_name, r.doc_hs_code) == ("auto_match", "LITHIUM-ION BATTERY PACK", BATT)
+
+
+def test_서류_HS는_상업송장부터_우선한다(table):
+    docs = [_doc("packing_list", "9999.99"), _doc("commercial_invoice", "8507.60")]
+    assert run(docs, table).doc_hs_code == "8507.60"
+
+
+def test_사람_확정해도_품명과_서류_HS를_남긴다(table):
+    first = run([_doc("commercial_invoice", "8507.60")], table, reader=reader_of("battery"), picker=picker_of(BATT))
+    done = confirm_by_human(first, BATT, "수입자A", "code:BP-200", "job-1", history=MemoryHSHistory())
+    assert (done.item_name, done.doc_hs_code) == ("LITHIUM-ION BATTERY PACK", "8507.60")
+
+
+# --- 직접 입력한 HS가 표에 있는지 (FB07 #164, 서버 #181이 400에 쓴다) ------------------
+
+
+def test_표에_있는_10자리_코드만_참(table):
+    assert is_known_hs(BATT, table) is True
+    assert is_known_hs("9999999999", table) is False  # 10자리지만 표에 없음
+
+
+@pytest.mark.parametrize("bad", ["", "850760", "8507603000 ", "8507.603000", "85076030AB", "８５０７６０３０００"])
+def test_10자리_숫자가_아니면_거짓(table, bad):
+    assert is_known_hs(bad, table) is False

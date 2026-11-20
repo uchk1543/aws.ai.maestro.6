@@ -15,6 +15,26 @@ case "${MODEL_ID}" in global.anthropic.*) ;; *)
 esac
 echo "[create] 계정 ${ACCOUNT_ID}, 리전 ${AWS_REGION}"
 mkdir -p "${BUILD}"
+# ---------------------------------------------------------------------------
+# 0. Bedrock Guardrail (현황 조회 입력 검사, F8 #151). 이름으로 찾고 없으면 만든다.
+#    한국어는 Standard 등급만 지원해서 APAC 교차 리전 프로필(apac.guardrail.v1:0)을 쓴다.
+#    설정을 바꾸려면 infra/guardrail-chat.json을 고치고 update-guardrail 뒤 새 버전을 만든다 (이 스크립트는 만들기만 한다)
+# ---------------------------------------------------------------------------
+GUARDRAIL_ID=$(aws bedrock list-guardrails --query "guardrails[?name=='${GUARDRAIL_NAME}'].id | [0]" --output text)
+if [ -z "${GUARDRAIL_ID}" ] || [ "${GUARDRAIL_ID}" = "None" ]; then
+  GUARDRAIL_ID=$(aws bedrock create-guardrail --cli-input-json "file://${ROOT}/infra/guardrail-chat.json" --query guardrailId --output text)
+  echo "[create] 가드레일 ${GUARDRAIL_NAME} 만듦 (${GUARDRAIL_ID})"
+else
+  echo "[create] 가드레일 ${GUARDRAIL_NAME} 있음 (${GUARDRAIL_ID})"
+fi
+GUARDRAIL_VERSION=$(aws bedrock list-guardrails --guardrail-identifier "${GUARDRAIL_ID}" \
+  --query "max(guardrails[?version!='DRAFT'].version)" --output text 2>/dev/null || true)
+if [ -z "${GUARDRAIL_VERSION}" ] || [ "${GUARDRAIL_VERSION}" = "None" ]; then
+  GUARDRAIL_VERSION=$(aws bedrock create-guardrail-version --guardrail-identifier "${GUARDRAIL_ID}" \
+    --description "F8 #151 첫 버전" --query version --output text)
+  echo "[create] 가드레일 버전 ${GUARDRAIL_VERSION} 만듦"
+fi
+echo "[create] 가드레일 버전 ${GUARDRAIL_VERSION} 사용"
 
 # ---------------------------------------------------------------------------
 # 1. IAM 역할 두 개
@@ -36,6 +56,9 @@ ensure_role() {
 }
 ensure_role "${ROLE_API}" logs data bedrock invoke-worker jobs-list  # jobs-list: 문서 분류 내역 GET /documents (#143)
 ensure_role "${ROLE_WORKER}" logs data bedrock textract
+# 채팅 기록·가드레일은 API Lambda만 (F8 #151). 정책에 가드레일 ID가 들어가서 따로 붙인다
+aws iam put-role-policy --role-name "${ROLE_API}" --policy-name "team06-chat" \
+  --policy-document "file://$(render policy-chat.json "GUARDRAIL_ID=${GUARDRAIL_ID}")"
 
 # ---------------------------------------------------------------------------
 # 2. DynamoDB 테이블 (모두 온디맨드, 문자열 키. 정렬 키는 있을 때만)
@@ -68,6 +91,13 @@ ensure_table "${TABLE}" job_id
 ensure_table "${HS_HISTORY_TABLE}" importer item_key
 ensure_table "${WMS_TABLE}" idempotency_key
 ensure_table "${SHIPMENTS_TABLE}" bl_no
+ensure_table "${CHAT_TABLE}" session_id ts
+# 채팅 기록은 7일 뒤 지운다 (E6이 expires_at에 초를 넣는다)
+if [ "$(aws dynamodb describe-time-to-live --table-name "${CHAT_TABLE}" --query TimeToLiveDescription.TimeToLiveStatus --output text)" != "ENABLED" ]; then
+  aws dynamodb update-time-to-live --table-name "${CHAT_TABLE}" \
+    --time-to-live-specification "Enabled=true,AttributeName=expires_at" >/dev/null
+  echo "[create] 테이블 ${CHAT_TABLE} TTL(expires_at) 켬"
+fi
 
 # ---------------------------------------------------------------------------
 # 3. S3 버킷 두 개 (둘 다 공개 차단)
@@ -123,9 +153,9 @@ ensure_function() {
   fi
   aws lambda put-function-concurrency --function-name "${fn}" --reserved-concurrent-executions 5 >/dev/null
 }
-COMMON_ENV="MODEL_ID=${MODEL_ID},JOBS_TABLE=${TABLE},HS_HISTORY_TABLE=${HS_HISTORY_TABLE},WMS_TABLE=${WMS_TABLE},SHIPMENTS_TABLE=${SHIPMENTS_TABLE},DOCS_BUCKET=${BUCKET}"
+COMMON_ENV="MODEL_ID=${MODEL_ID},JOBS_TABLE=${TABLE},HS_HISTORY_TABLE=${HS_HISTORY_TABLE},WMS_TABLE=${WMS_TABLE},SHIPMENTS_TABLE=${SHIPMENTS_TABLE},DOCS_BUCKET=${BUCKET},CHAT_TABLE=${CHAT_TABLE}"
 WORKER_ENV="${COMMON_ENV}"
-API_ENV="${COMMON_ENV},WORKER_FUNCTION=${FN_WORKER}"
+API_ENV="${COMMON_ENV},WORKER_FUNCTION=${FN_WORKER},GUARDRAIL_ID=${GUARDRAIL_ID},GUARDRAIL_VERSION=${GUARDRAIL_VERSION}"
 ensure_function "${FN_WORKER}" "${HANDLER_WORKER}" "${ROLE_WORKER}" 300 1024 "${WORKER_ENV}"
 ensure_function "${FN_API}" "${HANDLER_API}" "${ROLE_API}" 30 512 "${API_ENV}"
 
