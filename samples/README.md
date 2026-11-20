@@ -84,7 +84,7 @@ DS="uv run --with openpyxl --with reportlab --with pillow --with numpy python"
 | `eval/fields.csv` | `set_id, doc, field, answer` | 서류마다 찍힌 핵심 칸 값 (심은 오류 포함). 날짜는 YYYY-MM-DD |
 | `eval/sets.csv` | `set_id, split, consignee, docs, line, item, hs_answer, trap_hs` | 서류 자리·형식, 품목 줄마다 정답 HS 10자리와 헷갈리는 HS |
 | `eval/declarations.csv` | `set_id, split, line, field, label, answer, source, expect_blank` | 신고서 간이 칸의 진짜 값. `line` 이 비면 신고서 한 장에 하나인 칸. `expect_blank=1` 은 심은 오류 때문에 비워야 하는 칸 |
-| `eval/queries.csv` | `query_id, question, expected_conditions, expected_count` | 현황 질문 24개. 조건은 JSON (`status`, `period`, `date_from`, `date_to`, 기준일 `today`, `period_resolved`, 지연 `rule`). Q21~Q24는 조회하지 않아야 하는 질문(#165): `expect`가 `안내`(못 담는 조건, `unsupported`에 예) 또는 `되묻기`(조건 없음), 건수 0 |
+| `eval/queries.csv` | `query_id, question, expected_conditions, expected_count` | 현황 질문 24개. 조건은 JSON (`status`, `period`, `date_from`, `date_to`, 기준일 `today`, `period_resolved`, 지연 `rule`). Q21~Q24는 조회하지 않아야 하는 질문(#165): `expect`가 `안내`(못 담는 조건, `unsupported`에 예)·`되묻기`(조건 없음)·`막힘`(화물 현황과 무관, #152), 건수 0 |
 | `samples/data/shipments.json` | `docs/examples/shipment.json` 과 같음 | 가상 화물 기록 76건. `data/seed/shipments.json` 으로 옮겨 쓰면 된다 (A5) |
 
 **제안값이라 담당이 확정하면 고칠 것** (`make_extra.py` 맨 위 값만 바꾸고 3번을 다시 돌린다)

@@ -111,8 +111,9 @@ def test_fb08_questions_do_not_answer_everything(question, filters, kind):
     res = answer(question, "s1", store=STORE, today=TODAY, parser=parser_of(**filters))
     ChatResponse.model_validate(res.model_dump(mode="json", by_alias=True))  # 약속 2 형식
     assert res.rows == [] and res.period_resolved is None and "76" not in res.answer
-    head = "아직 조회할 수 없습니다" if kind == "안내" else "어떤 화물을 찾을지 알려 주세요"
-    assert head in res.answer
+    heads = {"안내": "아직 조회할 수 없습니다", "되묻기": "어떤 화물을 찾을지 알려 주세요", "막힘": "통관·화물 현황 질문만 답합니다"}
+    assert heads[kind] in res.answer
+    assert res.blocked == ("무관한 질문" if kind == "막힘" else None)  # 화물 현황과 무관한 질문은 막는다 (E7 #152)
     assert res.filters.unsupported == filters.get("unsupported", [])
 
 

@@ -1,7 +1,7 @@
 """현황 조회 측정 (E5). 담당: 판독. 규칙: .kiro/steering/agent-design.md 11번 '현황 조회: 질문 20개의 기대 조건·기대 건수와 맞는 수'
 
 eval/queries.csv 질문을 실제 모델로 조건(ChatFilters)으로 바꾸고, 가상 화물 기록(data/seed 또는 samples/data)에서 센 건수를 정답과 맞춘다.
-조회하지 않아야 하는 질문(expect: 안내·되묻기, #165)은 rows 없이 그 답으로 끝났는지와 unsupported가 찼는지(안내)·비었는지(되묻기)를 본다.
+조회하지 않아야 하는 질문(expect: 안내·되묻기·막힘, #165·#152)은 rows 없이 그 답으로 끝났는지와 unsupported가 찼는지(안내)·비었는지를 본다.
 기준일은 --today(기본: 한국 시간 오늘)다. 시드 날짜를 그날로 옮기고(PM이 시드를 넣을 때와 같다), 정답도 그날 날짜로
 다시 계산한다 (samples/seed_dates.py, #170). 정답지 그대로(2026-11-21)를 재려면 --today 2026-11-21. 질문 하나에 모델 호출 한 번.
 
@@ -26,7 +26,7 @@ from tools.models import Shipment
 ROOT = Path(__file__).resolve().parent.parent
 SEEDS = [ROOT / "data" / "seed" / "shipments.json", ROOT / "samples" / "data" / "shipments.json"]
 KEYS = ("status", "period", "date_from", "date_to")
-HEADS = {"안내": "아직 조회할 수 없습니다", "되묻기": "어떤 화물을 찾을지 알려 주세요"}  # agent/query_agent.py 답 문장 (#165)
+HEADS = {"안내": "아직 조회할 수 없습니다", "되묻기": "어떤 화물을 찾을지 알려 주세요", "막힘": "통관·화물 현황 질문만 답합니다"}  # agent/query_agent.py 답 문장 (#165, #152)
 
 
 def main() -> None:
