@@ -175,25 +175,31 @@ _F = ChatFilters(status="통관 지연", period="this_week")
 @pytest.mark.parametrize(
     ("fields", "ok"),
     [
-        # 통과: 질문 줄, 조회한 답 줄, 막힌 답 줄
+        # 통과: 질문 줄, 조회한 답 줄, 조회하지 않은 답 줄(count null), 막힌 답 줄
         ({"role": "user"}, True),
         ({"role": "assistant", "filters": _F, "count": 1, "rule": "입항 후 3일 지나도 수리·반출 아님", "blocked": False}, True),
+        ({"role": "assistant", "filters": ChatFilters(unsupported=["수하인 샘플무역"]), "blocked": False}, True),
         ({"role": "assistant", "blocked": True, "block_reason": "무관한 질문"}, True),
         # 2.3 질문 줄에 답 칸
         ({"role": "user", "count": 0}, False),
         # 2.4 답 줄에 blocked 없음
         ({"role": "assistant", "filters": _F, "count": 1}, False),
-        # 2.5 조회한 답 줄에 filters·count 없음
+        # 2.5 막지 않은 답 줄에 filters 없음, 조회하지 않았는데(count null) rule
         ({"role": "assistant", "count": 1, "blocked": False}, False),
-        ({"role": "assistant", "filters": _F, "blocked": False}, False),
-        # 2.6 조회한 답 줄에 block_reason
+        ({"role": "assistant", "filters": _F, "rule": "입항 후 3일 지나도 수리·반출 아님", "blocked": False}, False),
+        # 2.6 막지 않은 답 줄에 block_reason
         ({"role": "assistant", "filters": _F, "count": 1, "blocked": False, "block_reason": "무관한 질문"}, False),
         # 2.7 막힌 답 줄에 이유 없음·빈 이유
         ({"role": "assistant", "blocked": True}, False),
         ({"role": "assistant", "blocked": True, "block_reason": ""}, False),
+        # 막힌 답 줄에 조회 칸
+        ({"role": "assistant", "blocked": True, "block_reason": "무관한 질문", "count": 5}, False),
+        ({"role": "assistant", "blocked": True, "block_reason": "무관한 질문", "filters": _F}, False),
+        ({"role": "assistant", "blocked": True, "block_reason": "무관한 질문", "rule": "입항 후 3일 지나도 수리·반출 아님"}, False),
     ],
-    ids=["user", "answered", "blocked", "user-with-count", "no-blocked", "no-filters", "no-count",
-         "answered-with-reason", "blocked-no-reason", "blocked-empty-reason"],
+    ids=["user", "answered", "not-queried", "blocked", "user-with-count", "no-blocked", "no-filters", "rule-without-count",
+         "answered-with-reason", "blocked-no-reason", "blocked-empty-reason", "blocked-with-count", "blocked-with-filters",
+         "blocked-with-rule"],
 )
 def test_chat_history_line_rule_examples(fields, ok):
     if ok:
@@ -223,6 +229,8 @@ def random_line_fields(rng: random.Random):
             ("user", dict.fromkeys(choices)),
             ("assistant", {"filters": rng.choice(choices["filters"][1:]), "count": rng.choice(choices["count"][1:]),
                            "rule": rng.choice(choices["rule"]), "blocked": False, "reason": None}),
+            ("assistant", {"filters": rng.choice(choices["filters"][1:]), "count": None, "rule": None,
+                           "blocked": False, "reason": None}),
             ("assistant", {"filters": None, "count": None, "rule": None, "blocked": True,
                            "reason": rng.choice(choices["reason"][2:])}),
         ])
@@ -233,14 +241,14 @@ def random_line_fields(rng: random.Random):
 
 
 def _line_ok(role, filters, count, rule, blocked, reason) -> bool:
-    """독립 판정: 요구 2.3~2.7."""
+    """독립 판정: 요구 2.3~2.7 + 조회하지 않은 답(count null)에는 rule 없음, 막힌 답에는 조회 칸 없음."""
     if role == "user":
         return all(v is None for v in (filters, count, rule, blocked, reason))
     if blocked is None:
         return False
     if blocked is False:
-        return filters is not None and count is not None and reason is None
-    return isinstance(reason, str) and reason != ""
+        return filters is not None and reason is None and (rule is None or count is not None)
+    return isinstance(reason, str) and reason != "" and filters is None and count is None and rule is None
 
 
 @pytest.mark.parametrize("seed", range(100))

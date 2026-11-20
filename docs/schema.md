@@ -43,13 +43,15 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 | `GET /api/jobs/{id}/files` | - | `docs/examples/job_files.json` (서류 보기: 원본 주소 + 읽은 칸, #156) |
 
 대화 기록 (`POST /api/chat`·`GET /api/chat/{session_id}`, E6 #157. 모양은 `tools/models.py`의 `ChatHistoryLine`·`ChatHistoryResponse`)
-- `session_id`: 영문 대소문자·숫자·`-`로 1~64자 (`^[A-Za-z0-9-]{1,64}$`). 화면의 `crypto.randomUUID()`와 `s-<밀리초>-<16진수>`가 이 형식이다
-  - `POST /api/chat`: 칸이 없거나 null이면 답은 하고 기록은 남기지 않는다. 그 밖의 값이 형식에 맞지 않으면(빈 문자열 포함) 400 "session_id는 영문·숫자·-로 64자까지입니다"
+- `session_id`: 영문 대소문자·숫자로 시작하고 영문 대소문자·숫자·`-`로 1~64자 (`^[A-Za-z0-9][A-Za-z0-9-]{0,63}$`). `-` 하나는 익명 요청 표시(Query_Agent 로그)라 받지 않는다. 화면의 `crypto.randomUUID()`와 `s-<밀리초>-<16진수>`가 이 형식이다
+  - `POST /api/chat`: 칸이 없거나 null이면 답은 하고 기록은 남기지 않는다. 그 밖의 값이 형식에 맞지 않으면(빈 문자열 포함) 400 "session_id는 영문·숫자로 시작하고 영문·숫자·-로 64자까지입니다"
   - `GET /api/chat/{session_id}`: 형식에 맞지 않으면 같은 400
 - 요청 하나가 질문 한 줄(`role` `user`)과 답 한 줄(`role` `assistant`)을 남긴다. 기록 저장이 실패해도 답은 그대로 200이다
 - `messages[]` 칸: `session_id`, `ts`, `role`, `text`, `filters`, `count`, `rule`, `blocked`, `block_reason`
   - 질문 줄: `text`는 앞뒤 공백을 뺀 질문. 나머지 다섯 칸은 모두 null
-  - 조회한 답 줄 (`ChatResponse.blocked`가 null): `blocked` false, `filters`는 쓴 조회 조건, `count`는 코드가 센 건수(`rows` 수), `rule`은 통관 지연 조회일 때만 규칙 문장(그 밖은 null), `block_reason` null
+  - 막지 않은 답 줄 (`ChatResponse.blocked`가 null): `blocked` false, `filters`는 모델이 낸 조회 조건, `block_reason` null
+    - 조회한 답: `count`는 코드가 센 건수(`rows` 수), `rule`은 통관 지연으로 조회했을 때만 규칙 문장(그 밖은 null)
+    - 조회하지 않은 답 (조건을 못 만듦, 되묻기, 못 담는 조건 `unsupported`, 화물 기록에 없는 상태): `count`·`rule` null. 0건 조회와 구분한다
   - 가드레일(E7 #152)이 막은 답 줄 (`ChatResponse.blocked`가 있음): `blocked` true, `block_reason`은 `ChatResponse.blocked` 값(예: `무관한 질문`, `프롬프트 공격`), `filters`·`count`·`rule` null
 - `ts`: `<요청 받은 시각, 한국 시간 YYYYMMDDHHMMSSmmm 17자리>#<요청마다 새로 만든 16진수 8자리>#<0 질문 | 1 답>`. 예: `20261121090000123#a1b2c3d4#0`. 앞 17자리는 `infra/README.md` team06-chat의 `ts` 형식 그대로이고, 뒤 꼬리는 같은 밀리초의 두 줄이 겹치지 않게 더한 것이다. 글자 순서가 저장 순서이고, 같은 요청의 질문 줄 바로 뒤에 답 줄이 온다. 화면에 보일 시각은 앞 17자리에서 구한다
 - `GET`은 그 세션에서 `ts`가 가장 큰 50줄을 읽어 만료된 줄을 빼고 오래된 순으로 준다 (줄 기준이라 맨 앞 줄이 짝 없는 답 줄일 수 있다). 기록이 없으면 `{"messages": []}`, 읽기 실패는 502 "대화 기록을 불러오지 못했습니다"

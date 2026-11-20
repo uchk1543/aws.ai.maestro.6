@@ -478,20 +478,23 @@ class ChatHistoryLine(_Strict):
     """대화 기록 한 줄 (team06-chat 한 줄, GET /chat/{session_id}의 messages 한 줄. E6 #157).
 
     질문 줄(user)은 filters·count·rule·blocked·block_reason을 모두 null로 둔다.
-    답 줄(assistant)은 blocked가 꼭 있다. 조회한 답(false)은 filters·count가 있고 block_reason이 null,
-    가드레일이 막은 답(true, ChatResponse.blocked가 있던 답)은 block_reason이 비지 않은 문자열이다.
+    답 줄(assistant)은 blocked가 꼭 있다. 막지 않은 답(false)은 filters가 있고 block_reason이 null이다.
+      count는 실제로 조회했을 때만 있고(조회 안 한 되묻기·읽기 실패·못 담는 조건·모르는 상태는 null), rule은 count가 있을 때만 쓴다.
+    가드레일이 막은 답(true, ChatResponse.blocked가 있던 답)은 block_reason이 비지 않은 문자열이고 filters·count·rule이 null이다.
     테이블의 expires_at(TTL)은 저장 칸이라 이 모델에 없다 (docs/schema.md 약속 2).
     """
 
-    session_id: str = Field(description="대화 세션 ID. 영문·숫자·-로 64자까지 (docs/schema.md 약속 2)")
+    session_id: str = Field(description="대화 세션 ID. 영문·숫자로 시작하고 영문·숫자·-로 64자까지 (docs/schema.md 약속 2)")
     ts: str = Field(
         description="정렬 키 '<한국 시간 YYYYMMDDHHMMSSmmm>#<16진수 8자리>#<0 질문|1 답>'. 예: '20261121090000123#a1b2c3d4#0'"
     )
     role: ChatRole = Field(description="user = 질문, assistant = 답")
     text: str = Field(description="질문(앞뒤 공백을 뺀 것) 또는 답 문장")
-    filters: ChatFilters | None = Field(default=None, description="답 줄: 쓴 조회 조건. 질문 줄·막힌 답은 null")
-    count: int | None = Field(default=None, description="답 줄: 코드가 센 건수(rows 수). 질문 줄·막힌 답은 null")
-    rule: str | None = Field(default=None, description="답 줄: 쓴 상태 규칙. 통관 지연 조회일 때만. 그 밖은 null")
+    filters: ChatFilters | None = Field(default=None, description="답 줄: 모델이 낸 조회 조건. 질문 줄·막힌 답은 null")
+    count: int | None = Field(
+        default=None, description="답 줄: 조회했을 때 코드가 센 건수(rows 수). 조회하지 않은 답·질문 줄·막힌 답은 null"
+    )
+    rule: str | None = Field(default=None, description="답 줄: 쓴 상태 규칙. 통관 지연으로 조회했을 때만(count가 있음). 그 밖은 null")
     blocked: bool | None = Field(default=None, description="답 줄: 가드레일이 막았는지 (ChatResponse.blocked가 있었는지). 질문 줄은 null")
     block_reason: str | None = Field(default=None, description="막힌 답 줄: 막힌 이유 (ChatResponse.blocked 값). 그 밖은 null")
 
@@ -504,12 +507,17 @@ class ChatHistoryLine(_Strict):
         elif self.blocked is None:
             raise ValueError("답 줄(assistant)에는 blocked가 있어야 합니다")
         elif not self.blocked:
-            if self.filters is None or self.count is None:
-                raise ValueError("조회한 답 줄(blocked false)에는 filters와 count가 있어야 합니다")
+            if self.filters is None:
+                raise ValueError("막지 않은 답 줄(blocked false)에는 filters가 있어야 합니다")
             if self.block_reason is not None:
-                raise ValueError("조회한 답 줄(blocked false)의 block_reason은 null입니다")
-        elif not self.block_reason:
-            raise ValueError("막힌 답 줄(blocked true)에는 block_reason이 있어야 합니다")
+                raise ValueError("막지 않은 답 줄(blocked false)의 block_reason은 null입니다")
+            if self.rule is not None and self.count is None:
+                raise ValueError("rule은 조회한 답 줄(count가 있음)에만 씁니다")
+        else:
+            if not self.block_reason:
+                raise ValueError("막힌 답 줄(blocked true)에는 block_reason이 있어야 합니다")
+            if any(v is not None for v in (self.filters, self.count, self.rule)):
+                raise ValueError("막힌 답 줄(blocked true)은 filters·count·rule이 모두 null입니다")
         return self
 
 
