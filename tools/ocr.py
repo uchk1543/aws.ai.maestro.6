@@ -13,13 +13,14 @@ import hashlib
 import os
 import re
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cache
 from pathlib import PurePath
 from typing import Protocol
 
-from tools.models import DocMark, OcrLine, OcrResult, ReadField
+from tools.models import Classification, DocMark, OcrLine, OcrResult, ReadField
 
 MAX_PAGES = 5  # PDF는 앞 5쪽만 그리고 OCR 한다 (쪽당 과금, 처리 Lambda 시간)
 MAX_BYTES = 10_000_000  # Textract 동기 API 한 번에 보낼 수 있는 크기
@@ -27,6 +28,11 @@ TIMEOUT_SECONDS = 5  # team.md: 외부 API 타임아웃 5초, 재시도 1회
 RENDER_DPI = 150  # PDF 쪽 그림 해상도. A4 가 약 1240×1754 px
 MAX_SIDE_PX = 3000  # 쪽 그림 긴 변 상한 (큰 용지 PDF 로 메모리가 바닥나지 않게, #194 리뷰)
 JPEG_QUALITY = 85
+# Textract 동기 API 계정 한도: 서울 리전 DetectDocumentText·AnalyzeDocument 초당 1건 (service-quotas, 2026-11-20 확인).
+# 처리 Lambda 는 서류마다 스레드로 OCR 하므로, 한 컨테이너 안에서 호출 사이를 이만큼 띄운다. 한도를 올리면 TEXTRACT_TPS 로 바꾼다
+TEXTRACT_MIN_INTERVAL = 1.0 / float(os.environ.get("TEXTRACT_TPS", "1"))
+_PACE_LOCK = threading.Lock()
+_last_call = 0.0
 
 
 class TextractClient(Protocol):
@@ -61,6 +67,16 @@ def _client() -> TextractClient:
         retries={"total_max_attempts": 2, "mode": "standard"},  # 처음 한 번 + 재시도 1회
     )
     return boto3.client("textract", region_name=os.environ.get("AWS_REGION", "ap-northeast-2"), config=config)
+
+
+def _pace() -> None:
+    """Textract 호출 사이를 TEXTRACT_MIN_INTERVAL 이상 띄운다 (한 프로세스 안, 스레드끼리). 한도 초과(Throttling)로 OCR 이 빠지지 않게."""
+    global _last_call
+    with _PACE_LOCK:
+        wait = _last_call + TEXTRACT_MIN_INTERVAL - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        _last_call = time.monotonic()
 
 
 def is_pdf(file: str) -> bool:
@@ -141,6 +157,7 @@ def ocr_document(
     for number, page in enumerate(pages, start=1):
         if len(page) > MAX_BYTES:
             raise ValueError(f"Textract 동기 한도를 넘습니다 ({len(page):,}바이트, 최대 {MAX_BYTES:,})")
+        _pace()
         response = client.detect_document_text(Document={"Bytes": page})
         for block in response.get("Blocks", []):
             if block.get("BlockType") != "LINE" or not block.get("Text"):
@@ -352,3 +369,43 @@ def locate_marks(fields: list[ReadField], ocr: OcrResult, reason: str = "") -> l
         if field.raw and (hit := finder.find(field.raw)):
             marks.append(DocMark(kind="field", label=field.label, text=field.raw, field=field.field, page=hit[0].page, bbox=hit[1]))
     return marks
+
+
+# ---------------------------------------------------------------------------
+# Textract 글자로 서류 종류 고르기 (비용 줄이기: 서류마다 Bedrock 분류 호출 하나를 줄인다)
+# 근거: 개발용 24세트 92장(pdf·png·스캔본, 스타일 1·2, 원산지증명서 KCFTA·AK·VK)에서 92/92. 실험은 B4-L0 이슈에 적었다.
+# 확신이 없으면 None 을 돌려주고 부른 쪽이 모델로 분류한다 (제목이 없음, 위쪽에 없음, 두 종류 제목이 비슷함).
+
+_TITLES: dict[str, str] = {
+    "commercial_invoice": r"^\s*COMMERCIAL\s+INVOICE\s*$",
+    "packing_list": r"^\s*PACKING\s+LIST\s*$",
+    "bill_of_lading": r"^\s*(OCEAN\s+|COMBINED\s+TRANSPORT\s+)?BILL\s+OF\s+LADING\s*$",
+    "certificate_of_origin": r"^\s*CERTIFICATE\s+OF\s+ORIGIN\b",
+}
+TITLE_MAX_TOP = 0.3  # 제목은 첫 쪽 위쪽 30% 안에 있다
+TITLE_MARGIN = 1.3  # 1등 제목 글자 높이가 2등의 1.3배는 되어야 확신한다
+
+
+def classify_from_ocr(ocr: OcrResult | None) -> Classification | None:
+    """Textract 글자에서 서류 제목 줄을 찾아 서류 종류를 고른다. 모델 호출 없음.
+
+    언제: 처리 Lambda 가 분류할 때 모델보다 먼저 (CLASSIFY_BY_OCR=1, api/worker.py).
+    받는 것: 그 서류의 OcrResult (없으면 None).
+    반환: Classification(종류, 근거 '제목 ... (Textract)'), 확신이 없으면 None (부른 쪽이 모델로 분류한다).
+    """
+    if ocr is None:
+        return None
+    best: dict[str, OcrLine] = {}
+    for line in ocr.lines:
+        if line.page != 1 or line.bbox[1] > TITLE_MAX_TOP:
+            continue
+        for doc_type, pattern in _TITLES.items():
+            if re.search(pattern, line.text, re.I) and (doc_type not in best or line.bbox[3] > best[doc_type].bbox[3]):
+                best[doc_type] = line
+    if not best:
+        return None
+    ranked = sorted(best.items(), key=lambda kv: kv[1].bbox[3], reverse=True)
+    if len(ranked) > 1 and ranked[0][1].bbox[3] < ranked[1][1].bbox[3] * TITLE_MARGIN:
+        return None
+    doc_type, line = ranked[0]
+    return Classification(doc_type=doc_type, reason=f"제목 '{line.text.strip()}' (Textract 글자, 모델 호출 없음)")

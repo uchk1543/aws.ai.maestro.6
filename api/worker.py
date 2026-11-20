@@ -17,7 +17,8 @@ API Lambda(api/handler.py의 POST /jobs)가 작업을 queued로 저장한 뒤 �
             ocr 칸은 OCR_MAX_LINES 에서 자른다. 자르지 않은 결과는 S3 cache/ocr/<ocr_cache_key(파일)>.json 에 두고, 같은 파일이면
             그것을 써서 Textract 를 다시 부르지 않는다 (B4-L0, l0). NO_CACHE=1 이면 저장·재사용하지 않는다.
             OCR은 처리 시작부터 OCR_WAIT_SECONDS까지만 기다린다. 넘으면 그 서류는 OCR 없이 진행한다 (Lambda 300초 안에 끝나게).
-제한 시간 300초. 환경 변수: JOBS_TABLE, DOCS_BUCKET, MODEL_ID, HS_HISTORY_TABLE, SHIPMENTS_TABLE, WMS_TABLE
+            CLASSIFY_BY_OCR=1 이면 서류 종류를 Textract 글자의 제목 줄로 고르고, 못 정하면 Bedrock 으로 분류한다 (비용 줄이기, 기본은 끔).
+제한 시간 300초. 환경 변수: JOBS_TABLE, DOCS_BUCKET, MODEL_ID, HS_HISTORY_TABLE, SHIPMENTS_TABLE, WMS_TABLE, CLASSIFY_BY_OCR(선택)
 
 비동기 호출은 함수가 오류·시간 초과로 끝나면 Lambda가 같은 이벤트를 다시 보낸다. 그래서 저장된 상태를 보고 한 번만 처리한다.
     queued   → 처리한다
@@ -25,7 +26,9 @@ API Lambda(api/handler.py의 POST /jobs)가 작업을 queued로 저장한 뒤 �
     그 밖    → 이미 끝난 작업이다. 아무것도 하지 않는다
 """
 
+import hashlib
 import json
+import os
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
@@ -33,8 +36,9 @@ from functools import cache
 
 from api import handler
 from tools import declaration, hs, report
-from tools.models import ExtractedDocument, HSResult, Job, OcrResult, RereadResult, Step, WmsState
-from tools.ocr import default_ocr_cache, is_pdf, ocr_cached, ocr_document, render_pages, upright_image
+from tools.models import Classification, ExtractedDocument, HSResult, Job, OcrResult, RereadResult, Step, WmsState
+from tools.extract import _strands_classifier, content_blocks
+from tools.ocr import classify_from_ocr, default_ocr_cache, is_pdf, ocr_cached, ocr_document, render_pages, upright_image
 from tools.query import dynamo_shipments
 from tools.reread import reread_field
 
@@ -216,6 +220,50 @@ def _rereader_with(ocr: OcrRun):
     return rereader
 
 
+# Bedrock 분류 (Textract 로 못 정했을 때). 테스트는 가짜로 바꾼다
+_model_classifier = _strands_classifier
+
+
+def _blocks_hash(blocks: list[dict]) -> str | None:
+    """content_blocks 결과(첫 블록의 바이트)의 해시. 분류기가 받은 블록이 어느 파일인지 찾는 데 쓴다."""
+    try:
+        block = blocks[0]
+        return hashlib.sha256((block.get("document") or block.get("image"))["source"]["bytes"]).hexdigest()
+    except (IndexError, KeyError, TypeError):
+        return None
+
+
+def _ocr_classifying(ocr: OcrRun):
+    """CLASSIFY_BY_OCR=1 일 때 run_job 에 넘길 (fetch, classifier).
+
+    fetch 는 받은 파일의 content_blocks 해시 → S3 키를 적어 두고, classifier 는 그 파일의 Textract 글자에서
+    제목 줄로 종류를 고른다 (tools.ocr.classify_from_ocr). 확신이 없거나 OCR 이 없으면 Bedrock 으로 분류한다.
+    분류는 OCR 을 기다리므로(서류마다, OCR_WAIT_SECONDS 까지) 분류 단계가 그만큼 늦어질 수 있다.
+    """
+    keys: dict[str, str] = {}
+
+    def fetch(key: str) -> bytes:
+        data = handler.fetch_object(key)
+        try:
+            digest = _blocks_hash(content_blocks(key, data))
+            if digest:
+                keys[digest] = key
+        except Exception as exc:  # 지원하지 않는 형식 등: 분류 때 모델로 넘어간다
+            print(f"[warn] classify_by_ocr key={key} 블록 해시 실패: {type(exc).__name__}")
+        return data
+
+    def classifier(blocks: list[dict], prompt: str) -> Classification:
+        key = keys.get(_blocks_hash(blocks) or "")
+        got = classify_from_ocr(ocr.get(key)[0] if key else None)
+        if got is not None:
+            print(f"[tool] classify_from_ocr key={key} → {got.doc_type} ({got.reason})")
+            return got
+        print(f"[classify] key={key} Textract 제목으로 못 정함: 모델로 분류")
+        return _model_classifier(blocks, prompt)
+
+    return fetch, classifier
+
+
 def _draft(job: Job, docs: list[ExtractedDocument]) -> None:
     """처리 직후 신고서 초안을 채우고 단계 한 줄을 더한다 (C8 #154, tools/declaration.draft_declaration).
 
@@ -337,10 +385,13 @@ def lambda_handler(event, context):
 
     started = time.perf_counter()
     ocr_run = OcrRun([f["key"] for f in files])  # run_job 과 동시에 돈다 (F10 #188)
+    fetch, classifier = handler.fetch_object, None
+    if os.environ.get("CLASSIFY_BY_OCR") == "1":  # 분류를 Textract 글자로 (서류마다 Bedrock 분류 호출 하나를 줄인다)
+        fetch, classifier = _ocr_classifying(ocr_run)
     try:
         result = run_job(
-            job_id, files, handler.fetch_object, on_step=on_step, hs_recommender=recommend_line, on_docs=read.extend,
-            rereader=_rereader_with(ocr_run),
+            job_id, files, fetch, on_step=on_step, hs_recommender=recommend_line, on_docs=read.extend,
+            rereader=_rereader_with(ocr_run), classifier=classifier,
         )
     except Exception as exc:  # 예상 못 한 오류도 작업 상태로 남긴다 (Lambda가 다시 돌리지 않게 여기서 끝낸다)
         print(f"[error] worker job={job_id} {type(exc).__name__}: {exc}")

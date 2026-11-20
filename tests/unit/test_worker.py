@@ -745,3 +745,61 @@ def test_same_file_reuses_saved_ocr_and_keeps_full_copy(table, monkeypatch, ocr)
     assert len(cache.items) == 1
     assert json.loads(table.items[JOB]["ocr"])["uploads/s1/invoice.pdf"]["lines"][0]["text"] == "COMMERCIAL INVOICE"
     assert ocr["stored"] == {"uploads/s1/invoice.pdf.p1.jpg": "image/jpeg"}  # 쪽 그림은 화면이 쓰므로 매번 둔다
+
+
+# ---------------------------------------------------------------------------
+# Textract 글자로 분류 (CLASSIFY_BY_OCR=1): 제목이 분명하면 Bedrock 분류 호출을 하지 않는다
+# ---------------------------------------------------------------------------
+def classifying_run_job(seen):
+    """진짜 run_job 처럼 fetch 한 바이트로 content_blocks 를 만들어 classifier 를 부른다."""
+    from tools.extract import content_blocks
+
+    def run(job_id, files, fetch, *, classifier=None, **_):
+        seen["classifier"] = classifier
+        if classifier is not None:
+            for f in files:
+                seen.setdefault("classified", {})[f["key"]] = classifier(content_blocks(f["key"], fetch(f["key"])), "prompt")
+        return Job(job_id=job_id, status="done", result=JobResult())
+
+    return run
+
+
+def test_classify_by_ocr_uses_textract_title_without_model(table, monkeypatch):
+    seen, model_calls = {}, []
+    monkeypatch.setenv("CLASSIFY_BY_OCR", "1")
+    monkeypatch.setattr(worker, "_model_classifier", lambda blocks, prompt: model_calls.append(1))
+    monkeypatch.setattr(document_agent, "run_job", classifying_run_job(seen))
+    put_job(table)
+
+    worker.lambda_handler({"job_id": JOB, "files": [{"key": "uploads/s1/invoice.pdf", "doc_type": None}]}, None)
+
+    got = seen["classified"]["uploads/s1/invoice.pdf"]
+    assert got.doc_type == "commercial_invoice" and "COMMERCIAL INVOICE" in got.reason
+    assert model_calls == []
+
+
+def test_classify_by_ocr_falls_back_to_model_when_ocr_has_no_title(table, monkeypatch):
+    from tools.models import Classification
+
+    seen = {}
+    monkeypatch.setenv("CLASSIFY_BY_OCR", "1")
+    monkeypatch.setattr(worker, "ocr_document", lambda key, data, *, client=None, pages=None: OcrResult(
+        file=key, lines=[OcrLine(page=1, text="Shipper", bbox=(0.1, 0.1, 0.1, 0.01))]))
+    monkeypatch.setattr(worker, "_model_classifier", lambda blocks, prompt: Classification(doc_type="packing_list", reason="모델"))
+    monkeypatch.setattr(document_agent, "run_job", classifying_run_job(seen))
+    put_job(table)
+
+    worker.lambda_handler({"job_id": JOB, "files": [{"key": "uploads/s1/scan.jpg", "doc_type": None}]}, None)
+
+    assert seen["classified"]["uploads/s1/scan.jpg"].reason == "모델"
+
+
+def test_classify_by_ocr_is_off_by_default(table, monkeypatch):
+    seen = {}
+    monkeypatch.delenv("CLASSIFY_BY_OCR", raising=False)
+    monkeypatch.setattr(document_agent, "run_job", classifying_run_job(seen))
+    put_job(table)
+
+    worker.lambda_handler({"job_id": JOB, "files": FILES}, None)
+
+    assert seen["classifier"] is None  # run_job 기본(Bedrock 분류)
