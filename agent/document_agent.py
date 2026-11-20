@@ -4,7 +4,8 @@ run_job은 두 길로 돈다. 두 길 모두 같은 도구 묶음(_Run)을 쓰�
 - 고정 순서(기본, P0 첫 배포): 코드가 분류 → 읽기 → 대조 → 다시 확인 → HS 순서로, 해야 할 것만 부른다.
 - 에이전트 루프(AGENT_LOOP=1, 또는 agent_model을 넘길 때): Strands Agent가 도구를 고른다. finish_report가
   빠진 것을 돌려주면 그 도구를 다시 부른다. 횟수·시간 한도를 넘거나 다 못 끝내면 코드가 고정 순서로 마저 한다.
-아직 없는 도구(B8 reread_field, C1·C2 recommend_hs)는 부르지 않고, finish_report 조건에서도 뺀다 (P1에서 넣는다).
+다시 확인(B8 reread_field)은 기본으로 쓴다. HS(C1·C2 recommend_hs)는 처리 Lambda가 hs_recommender로 넘길 때만 부르고,
+넘기지 않으면 finish_report 조건에서도 뺀다.
 """
 
 import os
@@ -32,7 +33,7 @@ from tools.models import (
     Step,
 )
 from tools.report import finish_report, hs_lines
-from tools.reread import apply_rereads
+from tools.reread import apply_rereads, reread_field
 from tools.validate import cross_check
 
 MAX_FILES = 10
@@ -279,27 +280,33 @@ class _Run:
         return apply_rereads(issues, self.state.rereads) if self.state.rereads else issues
 
     # -- reread_field (B8) ---------------------------------------------------
-    def reread(self, key: str, field: str) -> str:
-        if self.rereader is None:
-            return "reread_field는 아직 없는 도구다 (B8, P1)"
-        doc = self.state.docs.get(key)
-        if doc is None:
-            return f"{key}: 읽은 결과가 없어 다시 확인할 수 없다"
-        ko = DOC_TYPE_KO[doc.doc_type]
+    def _reread_work(self, key: str, field: str) -> RereadResult | Exception:
         try:
-            result = self.rereader(doc, field, self.data(key))
-        except Exception as exc:
-            error = _error_text(exc)
+            return self.rereader(self.state.docs[key], field, self.data(key))
+        except Exception as exc:  # 모델 호출 실패 등. 불일치는 그대로 남는다
+            return exc
+
+    def _reread_record(self, key: str, field: str, outcome: RereadResult | Exception) -> str:
+        ko = DOC_TYPE_KO[self.state.docs[key].doc_type]
+        if isinstance(outcome, Exception):
+            error = _error_text(outcome)
             self.step("reread_field", f"{ko} {field} 다시 확인 실패: {error}", ok=False)
             return f"{key} {field}: 다시 확인 실패 ({error})"
         with self.lock:
-            self.state.rereads = [r for r in self.state.rereads if (r.doc, r.field) != (result.doc, result.field)]
-            self.state.rereads.append(result)
+            self.state.rereads = [r for r in self.state.rereads if (r.doc, r.field) != (outcome.doc, outcome.field)]
+            self.state.rereads.append(outcome)
             self.state.issues = self._applied(self.checked)
-        found = result.second_raw if result.second_raw is not None else "못 찾음"
-        same = "첫 판독과 같음" if result.same else "첫 판독과 다름"
-        self.step("reread_field", f"{ko} {field}: {_CHECKED_BY_KO[result.checked_by]}에서 {found} ({same})")
-        return f"{key} {field}: {result.checked_by} {found} ({same})"
+        found = outcome.second_raw if outcome.second_raw is not None else "못 찾음"
+        same = "첫 판독과 같음" if outcome.same else "첫 판독과 다름"
+        self.step("reread_field", f"{ko} {field}: {_CHECKED_BY_KO[outcome.checked_by]}에서 {found} ({same})")
+        return f"{key} {field}: {outcome.checked_by} {found} ({same})"
+
+    def reread(self, key: str, field: str) -> str:
+        if self.rereader is None:
+            return "reread_field는 아직 없는 도구다 (B8, P1)"
+        if key not in self.state.docs:
+            return f"{key}: 읽은 결과가 없어 다시 확인할 수 없다"
+        return self._reread_record(key, field, self._reread_work(key, field))
 
     # -- recommend_hs (C1·C2) -------------------------------------------------
     def recommend(self, line: int) -> str:
@@ -387,12 +394,14 @@ def _run_fixed(run: _Run) -> None:
     # 4. 다시 확인: 불일치 칸마다 (B8이 들어오면)
     if run.rereader is not None:
         done = {(r.doc, r.field) for r in state.rereads}
+        todo: list[tuple[str, str]] = []
         for issue in [i for i in state.issues if i.grade == "불일치"]:
             for cell in issue.cells:
-                for key in [k for k in state.files if k in state.docs and state.docs[k].doc_type == cell.doc]:
-                    if (cell.doc, cell.field) not in done:
-                        run.reread(key, cell.field)
-                        done.add((cell.doc, cell.field))
+                key = next((k for k in state.files if k in state.docs and state.docs[k].doc_type == cell.doc), None)
+                if key is not None and (cell.doc, cell.field) not in done:
+                    todo.append((key, cell.field))
+                    done.add((cell.doc, cell.field))
+        _in_order(run._reread_work, run._reread_record, todo)  # 칸끼리 동시에, 기록은 차례대로
     # 5. HS: 품목 행마다 (C1·C2가 들어오면)
     if run.hs_recommender is not None:
         have = {h.line for h in state.hs}
@@ -549,11 +558,16 @@ def run_job(
       - reader·classifier: 읽기·분류 모델 (테스트용 가짜). 없으면 Bedrock
       - on_step: 단계가 늘 때마다 지금까지의 Job(status=running)을 받는다. 처리 Lambda가 저장하면 진행 화면에 보인다.
         실패해도 처리는 계속한다
-      - rereader·hs_recommender: 다시 확인(B8)·HS(C1·C2) 도구. None이면 아직 없는 도구로 보고 부르지 않는다
+      - rereader: 다시 확인 도구 (테스트용 가짜). 없으면 tools.reread.reread_field (모델 다시 읽기에는 reader를 쓴다)
+      - hs_recommender: HS 도구(C1·C2). None이면 부르지 않고 finish_report 조건에서도 뺀다
       - agent_model: 에이전트 루프용 Strands 모델 (테스트용 가짜). 주거나 환경 변수 AGENT_LOOP=1이면 루프로 돈다
     반환: Job. unknown·분류 실패·읽기 실패는 '확인 필요'(DOC-UNKNOWN · CLASSIFY-FAIL · READ-FAIL)로 남기고
           그 서류는 대조에서 뺀다. finish_report 조건을 못 채우면 REPORT-INCOMPLETE '확인 필요'를 더한다.
     """
+    if rereader is None:
+        def rereader(doc: ExtractedDocument, field: str, data: bytes) -> RereadResult:
+            return reread_field(doc, field, data, reader=reader)
+
     run = _Run(
         job_id, files, fetch,
         reader=reader, classifier=classifier, on_step=on_step, rereader=rereader, hs_recommender=hs_recommender,
