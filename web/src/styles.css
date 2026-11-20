@@ -4115,3 +4115,44 @@ button.link {
     padding-right: max(var(--gutter), calc((100% - var(--page-max)) / 2));
   }
 }
+
+/* ── AI chat 결과 표: 대화 칸 안에 맞춘다 ───────────────────────────────────
+   태블릿·PC 의 table.cards td { white-space: nowrap } 때문에 표가 대화 카드 밖으로 넘쳤다.
+   글자 칸(수하인·품명·상태)은 줄을 바꾸고, B/L 번호·날짜는 한 줄로 둔다. 그래도 넘치면 답 안에서만 가로로 민다. */
+.chat-main,
+.chat-log,
+.chat-answer {
+  min-width: 0;
+}
+
+@media (min-width: 768px) {
+  .chat-answer {
+    overflow-x: auto;
+  }
+  .chat-answer table.cards td {
+    white-space: normal;
+    word-break: keep-all;
+  }
+  .chat-answer table.cards th,
+  .chat-answer table.cards td:nth-child(1),
+  .chat-answer table.cards td:nth-child(4),
+  .chat-answer table.cards td:nth-child(6),
+  .chat-answer table.cards td:nth-child(7) {
+    white-space: nowrap;
+  }
+  .chat-answer table.cells th,
+  .chat-answer table.cells td {
+    padding: 12px 10px;
+  }
+}
+
+/* PC: '새 대화' 버튼은 흰 대화 카드 안쪽 오른쪽 위 (카드 모서리 20px 에 잘리지 않게) */
+@media (min-width: 1200px) {
+  .chat-head {
+    top: 48px; /* 대화 카드가 .chat 위에서 32px 아래에 시작한다 + 카드 안 16px */
+    right: 18px;
+  }
+  .chat.has-log .chat-main {
+    padding-top: 68px;
+  }
+}
