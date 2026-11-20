@@ -8,11 +8,11 @@ CloudFront가 /api/*를 API Gateway로 보내고, rawPath에 /api가 붙어 온�
     GET  /api/jobs/{id}      → Job                     (화면이 2초마다)
     POST /api/jobs/{id}/hs   → {"declaration_draft"}   (C3, 사람이 고른 HS 반영)
     POST /api/jobs/{id}/approve → {"wms"}              (D3, 사람 승인으로 WMS 등록. 불일치가 남았으면 409)
-나머지 경로(/chat)는 501을 돌려준다. Spec 2·3에서 채운다.
+    POST /api/chat           → ChatResponse            (E5, 현황 조회. 1번 agent.query_agent)
 서류 처리(run_job)는 처리 Lambda team06-worker(api/worker.py)가 한다. API Gateway는 요청 하나를 30초 안에 끝내야 한다.
 
 환경 변수: JOBS_TABLE(team06-jobs), DOCS_BUCKET(team06-docs-...), MODEL_ID, HS_HISTORY_TABLE(team06-hs-history),
-WMS_TABLE(team06-wms), WORKER_FUNCTION(team06-worker, API Lambda에만)
+WMS_TABLE(team06-wms), SHIPMENTS_TABLE(team06-shipments), WORKER_FUNCTION(team06-worker, API Lambda에만)
 """
 
 import base64
@@ -462,10 +462,32 @@ def approve_job(job_id: str, body) -> dict:
     return _response(200, _wms_body(state))
 
 
+MAX_QUESTION = 500  # 현황 질문 길이 한도
+
+
+def chat(body) -> dict:
+    """POST /chat. 현황 질문에 답한다 (E5, 1번 agent.query_agent). 형식: docs/examples/chat_response.json
+
+    받는 것: {"session_id", "message"}. message는 비지 않은 글자 500자까지, session_id는 글자(없으면 '-').
+    반환: 200 ChatResponse / 400 요청 형식. 조회·건수는 코드가 하고 모델은 질문을 조건으로만 바꾼다.
+    """
+    message = body.get("message") if isinstance(body, dict) else None
+    session_id = body.get("session_id") if isinstance(body, dict) else None
+    if not isinstance(message, str) or not message.strip():
+        return _error(400, "message가 비어 있습니다")
+    if len(message) > MAX_QUESTION:
+        return _error(400, f"message는 {MAX_QUESTION}자까지입니다")
+    if session_id is not None and not isinstance(session_id, str):
+        return _error(400, "session_id는 글자입니다")
+    from agent.query_agent import answer
+    from tools.query import dynamo_shipments
+
+    res = answer(message.strip(), session_id or "-", store=dynamo_shipments())
+    return _response(200, res.model_dump(mode="json", by_alias=True))
+
+
 # 약속 2에 있지만 아직 없는 경로 → 작업 ID (e2e-plan.md). 만들면 여기서 지운다.
-_PLANNED = {
-    ("POST", "/chat"): "E5",
-}
+_PLANNED: dict[tuple[str, str], str] = {}
 
 
 def _planned_route(method: str, path: str) -> str | None:
@@ -505,6 +527,8 @@ def lambda_handler(event, context):
             return choose_hs(parts[2], _body(event))
         if method == "POST" and len(parts) == 4 and parts[1] == "jobs" and parts[3] == "approve":
             return approve_job(parts[2], _body(event))
+        if method == "POST" and path == "/chat":
+            return chat(_body(event))
         planned = _planned_route(method, path)
         if planned:
             return _error(501, f"아직 만들지 않은 경로입니다 ({planned}). 형식은 docs/schema.md 약속 2")

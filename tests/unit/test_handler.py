@@ -257,10 +257,9 @@ def test_unknown_job_and_path_are_404(fakes):
     assert call("GET", "/apix")[0] == 404
 
 
-@pytest.mark.parametrize("path", ["/chat", "/api/chat"])
-def test_planned_routes_are_501(fakes, path):
-    """약속 2의 경로가 모두 자리를 갖고 있다. 만들면 이 목록에서 뺀다."""
-    assert call("POST", path, {})[0] == 501
+def test_no_planned_routes_left():
+    """약속 2의 경로를 모두 만들었다 (/chat은 E5). 501로 남은 경로가 없다."""
+    assert handler._PLANNED == {}
 
 
 # ---------------------------------------------------------------------------

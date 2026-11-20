@@ -4,7 +4,9 @@
 통관 지연 기준은 검증 담당이 docs/schema.md에 정한다 (E1, #29·#114). 데이터셋 생성기(samples/make_extra.py)와 같은 값이다.
 """
 
+import os
 from datetime import date, timedelta
+from functools import cache
 from typing import Protocol
 
 from tools.models import ChatFilters, PeriodResolved, QueryResult, Shipment
@@ -20,6 +22,37 @@ class ShipmentStore(Protocol):
     """화물 기록(team06-shipments). 구현: api/ (DynamoDB), 테스트: 메모리 목록."""
 
     def all(self) -> list[Shipment]: ...
+
+
+class DynamoShipments:
+    """ShipmentStore의 DynamoDB판 (team06-shipments, 키 bl_no). 칸 약속은 infra/README.md "테이블".
+
+    날짜는 YYYY-MM-DD 문자열, job_id가 없으면 칸 없음 (infra/seed_shipments.py와 같은 모양).
+    all()은 Scan을 끝까지 넘겨 읽는다. 화물 기록은 100건 안팎이라 Scan으로 충분하다.
+    """
+
+    def __init__(self, table):
+        self.table = table
+
+    def all(self) -> list[Shipment]:
+        items, kwargs = [], {}
+        while True:
+            page = self.table.scan(**kwargs)
+            items += page.get("Items", [])
+            if "LastEvaluatedKey" not in page:
+                break
+            kwargs["ExclusiveStartKey"] = page["LastEvaluatedKey"]
+        return [Shipment.model_validate(item) for item in items]
+
+
+@cache
+def dynamo_shipments() -> DynamoShipments:
+    """Lambda에서 쓰는 화물 기록. 테이블은 환경 변수 SHIPMENTS_TABLE(team06-shipments). 타임아웃 5초, 재시도 1회."""
+    import boto3
+    from botocore.config import Config
+
+    config = Config(connect_timeout=5, read_timeout=5, retries={"max_attempts": 2})
+    return DynamoShipments(boto3.resource("dynamodb", config=config).Table(os.environ["SHIPMENTS_TABLE"]))
 
 
 def resolve_period(filters: ChatFilters, today: date) -> PeriodResolved | None:
