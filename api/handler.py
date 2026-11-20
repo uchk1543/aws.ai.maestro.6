@@ -580,6 +580,8 @@ def job_documents(item: dict) -> list[DocumentRecord]:
             doc_type, by, reason = f["doc_type"], "user", "올릴 때 사용자가 고른 종류"
         elif name in classified:
             (doc_type, reason), by = classified[name], "model"
+        elif key in docs:  # files 칸이 없는 옛 작업(#143 전)에서 종류를 정해 올린 서류. 분류 기록 없이 읽기만 했다
+            doc_type, by, reason = docs[key].doc_type, "user", "올릴 때 고른 종류 (분류 기록 없음)"
         elif job.status in ("queued", "running"):
             continue  # 아직 분류하지 않았다
         else:

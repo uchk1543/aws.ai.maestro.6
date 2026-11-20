@@ -798,6 +798,20 @@ def test_documents_pages_newest_first(fakes, lambda_client, classifier, monkeypa
     assert page1["next_cursor"] == "1" and page2["next_cursor"] is None
 
 
+def test_documents_old_job_without_files_uses_read_doc_type(fakes):
+    """#143 전 작업은 files·created_at 칸이 없고, 종류를 정해 올려 분류 기록도 없다. 읽은 서류의 종류를 쓴다."""
+    doc = ExtractedDocument(doc_type="commercial_invoice", file="uploads/old/invoice.pdf", doc_no=Cell(raw="INV-OLD", value="INV-OLD"))
+    fakes.items["job-0000aaaa"] = {
+        "job_id": "job-0000aaaa", "updated_at": 1795000000,
+        "data": Job(job_id="job-0000aaaa", status="waiting_approval").model_dump_json(),
+        "docs": handler._DOCS.dump_json([doc]).decode(),
+    }
+    body = get_documents("commercial_invoice")[1]
+    [rec] = body["items"]
+    assert (rec["file_name"], rec["classified_by"], rec["doc_no"]) == ("invoice.pdf", "user", "INV-OLD")
+    assert body["counts"]["unknown"] == 0
+
+
 @pytest.mark.parametrize(("doc_type", "cursor"), [(None, None), ("invoice", None), ("packing_list", "abc")])
 def test_documents_bad_query_is_400(fakes, doc_type, cursor):
     assert get_documents(doc_type, cursor)[0] == 400
