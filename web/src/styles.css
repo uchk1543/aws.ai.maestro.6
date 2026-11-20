@@ -419,3 +419,45 @@ h3 {
   margin: 0;
   padding-left: 1.2rem;
 }
+/* 결과: WMS 상태·승인 */
+.wms-state {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 0 0 0.75rem;
+}
+
+.wms-approve {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.wms-approve label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.wms-approve input {
+  font: inherit;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  min-width: 200px;
+}
+
+.wms-conflict {
+  margin-top: 0.9rem;
+  padding: 0.7rem 0.9rem;
+  border-left: 4px solid var(--danger);
+  background: #fdecea;
+  color: var(--danger);
+}
+
+.wms-conflict p {
+  margin: 0.3rem 0 0;
+}
