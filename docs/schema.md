@@ -39,6 +39,14 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 | `POST /api/jobs/{id}/approve` | `{"approver"}` | `{"wms":{"status","wms_id"}}`, 불일치가 남았으면 409 |
 | `POST /api/chat` | `{"session_id","message"}` | `docs/examples/chat_response.json` |
 | `GET /api/documents?doc_type=<종류>&cursor=<다음 쪽>` | - | `docs/examples/documents.json` (문서 분류 내역, #143) |
+| `GET /api/jobs/{id}/files` | - | `docs/examples/job_files.json` (서류 보기: 원본 주소 + 읽은 칸, #156) |
+
+서류 보기 (`GET /api/jobs/{id}/files`, F7 #156. 모양은 `tools/models.py`의 `JobFilesResponse`)
+- 서류마다 `url`(원본, 미리 서명된 GET 300초, inline), `content_type`. 화면은 PDF는 iframe, 이미지는 img로 띄운다
+- `pages`: 이미지 서류만 원본 한 장과 크기(px). PDF는 쪽 그림을 만들지 않아 빈 목록
+- `marks`: 칸 위치(bbox). OCR 좌표가 없어 지금은 늘 빈 목록 (Textract B4 뒤)
+- `fields[]`: 읽은 칸 `{field, label, raw, value, unit, unreadable}`. `field`는 `IssueCell.field`와 같은 이름이라 `issues[].cells`의 `doc`+`field`로 불일치 칸을 바로 짚는다. 읽지 않은 서류는 빈 목록
+- 분류 전(queued·running)인 서류는 빼고, 종류·근거는 문서 분류 내역과 같은 규칙
 
 문서 분류 내역 (`GET /api/documents`, G10 #143. 모양은 `tools/models.py`의 `DocumentsResponse`)
 - `doc_type`: 약속 1의 4종 또는 `unknown`(분류 못 함·분류 실패). 그 밖은 400. `cursor`는 앞 쪽의 `next_cursor`

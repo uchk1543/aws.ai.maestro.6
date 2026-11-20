@@ -487,6 +487,61 @@ class DocumentsResponse(_Strict):
     next_cursor: str | None = Field(default=None, description="다음 쪽 커서. 마지막 쪽이면 null")
 
 
+# GET /jobs/{id}/files 서류 보기 (F7 #156). 화면 web/src/types.ts JobFilesResponse(#140)에 url·content_type·fields를 더한 모양
+MarkKind = Literal["title", "feature", "field"]
+
+
+class DocPage(_Strict):
+    """서류 한 쪽의 그림. 지금은 이미지 서류만 원본 한 장을 준다 (PDF는 쪽 그림을 만들지 않는다)."""
+
+    url: str = Field(description="그림 주소 (미리 서명된 GET, 몇 분 뒤 만료)")
+    width: int = Field(description="가로 px")
+    height: int = Field(description="세로 px")
+
+
+class DocMark(_Strict):
+    """서류 위 표시. 위치(bbox)는 OCR 좌표가 있어야 해서 지금은 비어 있다 (Textract B4 뒤)."""
+
+    kind: MarkKind = Field(description="title 제목 · feature 분류 특징 칸 · field 읽은 칸")
+    label: str = Field(description="보일 이름")
+    text: str = Field(description="그 자리의 글자")
+    field: str | None = Field(default=None, description="kind=field일 때 칸 경로. IssueCell.field와 같은 이름")
+    page: int = Field(description="쪽 번호. 1부터")
+    bbox: list[float] = Field(description="left, top, width, height (0~1 비율) 네 개")
+
+
+class ReadField(_Strict):
+    """읽은 칸 하나 (OCR 결과 표의 한 줄)."""
+
+    field: str = Field(description="칸 경로. IssueCell.field와 같은 이름. 예: 'total_gross_kg', 'items[0].qty'")
+    label: str = Field(description="한국어 칸 이름. 예: '총중량', '1행 수량'")
+    raw: str | None = Field(default=None, description="서류에 적힌 그대로. 못 읽었으면 null")
+    value: str | int | float | None = Field(default=None, description="코드가 푼 값")
+    unit: str | None = Field(default=None, description="단위나 통화")
+    unreadable: Unreadable | None = Field(default=None, description="못 읽은 이유")
+
+
+class JobFileView(_Strict):
+    """작업에 올라온 서류 하나의 보기 (원본 주소 + 읽은 칸)."""
+
+    key: str = Field(description="S3 키")
+    file_name: str = Field(description="키의 마지막 조각")
+    doc_type: DocType = Field(description="분류 결과")
+    classified_by: ClassifiedBy = Field(description="model · user")
+    reason: str = Field(description="분류 근거")
+    url: str = Field(description="원본 파일 주소 (미리 서명된 GET, 몇 분 뒤 만료). PDF는 iframe, 이미지는 img로 띄운다")
+    content_type: str = Field(description="원본 형식. 예: 'application/pdf', 'image/png'")
+    pages: list[DocPage] = Field(default_factory=list, description="쪽 그림. 이미지 서류만 한 장, PDF는 빈 목록")
+    marks: list[DocMark] = Field(default_factory=list, description="서류 위 표시. 지금은 늘 빈 목록")
+    fields: list[ReadField] = Field(default_factory=list, description="읽은 칸. 읽지 않은 서류는 빈 목록")
+
+
+class JobFilesResponse(_Strict):
+    """GET /jobs/{id}/files 응답."""
+
+    files: list[JobFileView] = Field(default_factory=list, description="올린 순서")
+
+
 # ---------------------------------------------------------------------------
 # 역할 사이 약속 (협업 뼈대). 담당끼리 주고받는 모양이다. 바꾸면 단톡에 알린다.
 # ---------------------------------------------------------------------------
