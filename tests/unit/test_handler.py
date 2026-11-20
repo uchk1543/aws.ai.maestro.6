@@ -195,6 +195,8 @@ def test_post_then_worker_shows_mismatch(fakes, lambda_client):
     assert "B/L 번호가 없어" in job["steps"][-1]["summary"]
     [issue] = job["result"]["issues"]
     assert issue["grade"] == "불일치" and issue["rule_id"] == "X-WT-01"
+    # 승인 대기로 끝나면 화면이 승인 입력을 그리도록 wms를 채운다 (#159, 실제 run_job 출력 FB14)
+    assert job["result"]["wms"] == {"status": "승인 대기", "by": None, "wms_id": None}
 
 
 def test_matching_docs_are_done(fakes, lambda_client):
