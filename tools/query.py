@@ -24,6 +24,21 @@ class ShipmentStore(Protocol):
     def all(self) -> list[Shipment]: ...
 
 
+class SeedRowExists(Exception):
+    """미리 넣은 가상 화물 기록(job_id 없음)이라 덮어쓰지 않았다 (E3)."""
+
+
+class ShipmentWriter(Protocol):
+    """화물 기록 쓰기 (E3, tools/report.record_shipment). 구현: DynamoShipments, 테스트: 메모리.
+
+    put은 미리 넣은 기록(job_id 없음)을 덮어쓰지 않는다. 그런 줄이 있으면 SeedRowExists.
+    """
+
+    def get(self, bl_no: str) -> Shipment | None: ...
+
+    def put(self, row: Shipment) -> None: ...
+
+
 class DynamoShipments:
     """ShipmentStore의 DynamoDB판 (team06-shipments, 키 bl_no). 칸 약속은 infra/README.md "테이블".
 
@@ -44,10 +59,28 @@ class DynamoShipments:
             kwargs["ExclusiveStartKey"] = page["LastEvaluatedKey"]
         return [Shipment.model_validate(item) for item in items]
 
+    def get(self, bl_no: str) -> Shipment | None:
+        item = self.table.get_item(Key={"bl_no": bl_no}).get("Item")
+        return Shipment.model_validate(item) if item else None
+
+    def put(self, row: Shipment) -> None:
+        """한 줄을 쓴다. 미리 넣은 기록(job_id 칸 없음)이 이미 있으면 쓰지 않고 SeedRowExists (조건부 쓰기라 동시에 써도 지킨다)."""
+        from botocore.exceptions import ClientError
+
+        item = row.model_dump(mode="json", exclude_none=True)  # job_id가 없으면 칸 없음 (시드와 같은 모양)
+        try:
+            self.table.put_item(
+                Item=item, ConditionExpression="attribute_not_exists(bl_no) OR attribute_exists(job_id)"
+            )
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+                raise SeedRowExists(row.bl_no) from exc
+            raise
+
 
 @cache
 def dynamo_shipments() -> DynamoShipments:
-    """Lambda에서 쓰는 화물 기록. 테이블은 환경 변수 SHIPMENTS_TABLE(team06-shipments). 타임아웃 5초, 재시도 1회."""
+    """Lambda에서 쓰는 화물 기록 (조회 all, 쓰기 get·put). 테이블은 환경 변수 SHIPMENTS_TABLE(team06-shipments). 타임아웃 5초, 재시도 1회."""
     import boto3
     from botocore.config import Config
 

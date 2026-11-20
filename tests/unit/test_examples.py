@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from tools.models import ChatResponse, ExtractedDocument, Job, Shipment
+from tools.models import ChatResponse, DocumentsResponse, ExtractedDocument, Job, Shipment
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "docs" / "examples"
 
@@ -14,6 +14,7 @@ CASES = [
     ("job_waiting_approval.json", Job),
     ("chat_response.json", ChatResponse),
     ("shipment.json", Shipment),
+    ("documents.json", DocumentsResponse),
 ]
 
 

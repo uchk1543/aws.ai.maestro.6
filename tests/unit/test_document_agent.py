@@ -124,15 +124,15 @@ def test_user_unknown_also_asks_human():
     assert job.result.issues[0].rule_id == "DOC-UNKNOWN" and job.status == "waiting_approval"
 
 
-def test_bill_of_lading_is_read_and_origin_is_not_yet():
-    """선하증권은 읽어서 대조(X-WT-01 3자)에 넣고, 원산지증명서는 칸이 들어오기 전까지 분류만 하고 '참고'로 알린다 (#110)."""
+def test_bill_of_lading_and_origin_are_read():
+    """선하증권은 읽어서 대조(X-WT-01 3자)에 넣고, 원산지증명서도 읽는다 (B2 P1 #11). 4종을 모두 읽으면 '참고'(DOC-LATER)는 없다."""
     bl = {"doc_no": {"raw": "BL-1"}, "total_gross_kg": {"raw": "6,250 KGS"}, "consignee_name": {"raw": "EXAMPLE CO., LTD."}}
-    m = Models(raws={**RAWS, "packing.pdf": RAWS["invoice.pdf"], "bl.pdf": bl})
+    co = {"doc_no": {"raw": "INV-1"}, "items": [{"line": 1}, {"line": 2}]}
+    m = Models(raws={**RAWS, "packing.pdf": RAWS["invoice.pdf"], "bl.pdf": bl, "co.pdf": co})
     job = run_job("job-1", files(INV, PL, BL, CO), fetch, reader=m.reader, classifier=m.classifier)
     assert job.steps[2].summary == "bl.pdf → 선하증권 (제목 BILL OF LADING, Vessel/Voyage·Freight 칸)"
-    assert sorted(m.read) == ["bl.pdf", "invoice.pdf", "packing.pdf"]
-    [note] = job.result.issues
-    assert (note.rule_id, note.grade, note.cells[0].doc) == ("DOC-LATER", "참고", "certificate_of_origin")
+    assert sorted(m.read) == ["bl.pdf", "co.pdf", "invoice.pdf", "packing.pdf"]
+    assert job.result.issues == []
     assert job.status == "done"
 
 

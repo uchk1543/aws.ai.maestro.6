@@ -34,7 +34,7 @@ ensure_role() {
       --policy-document "file://$(render "policy-${name}.json")"
   done
 }
-ensure_role "${ROLE_API}" logs data bedrock invoke-worker
+ensure_role "${ROLE_API}" logs data bedrock invoke-worker jobs-list  # jobs-list: 문서 분류 내역 GET /documents (#143)
 ensure_role "${ROLE_WORKER}" logs data bedrock textract
 
 # ---------------------------------------------------------------------------
