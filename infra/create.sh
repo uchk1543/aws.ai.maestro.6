@@ -1,32 +1,44 @@
 #!/usr/bin/env bash
-# 뼈대 리소스를 처음 한 번 만든다. 이미 있으면 건너뛴다 (지우거나 바꾸지 않는다).
-# 실행: MODEL_ID=<global 추론 프로필 ID> bash infra/create.sh
-# 만드는 것: IAM 역할 team06-agent-role, DynamoDB team06-jobs, S3 team06-docs-<계정>,
-#           로그 그룹(보존 7일), Lambda team06-agent, 동시 실행 상한 5, 공개 Function URL
+# 새 구조(#67) 리소스를 처음 한 번 만든다. 이미 있으면 건너뛴다 (지우거나 바꾸지 않는다). 실행: PM만.
+#   MODEL_ID=<global 추론 프로필 ID> bash infra/create.sh
+# 만드는 것
+#   IAM 역할 team06-api-role, team06-worker-role (인라인 정책만, 필요한 권한만)
+#   DynamoDB team06-jobs, S3 team06-docs-<계정>(서류·배포 zip), team06-web-<계정>(화면, CloudFront만 읽음)
+#   로그 그룹 2개(보존 7일), Lambda team06-api(30초) · team06-worker(300초), 각각 동시 실행 상한 5
+#   API Gateway HTTP API team06-api (/api, /api/{proxy+}, 요청 제한), CloudFront team06-web (/* → S3, /api/* → API)
 source "$(dirname "$0")/config.sh"
 
 : "${MODEL_ID:?MODEL_ID 환경 변수가 필요합니다}"
 case "${MODEL_ID}" in global.anthropic.*) ;; *)
   echo "MODEL_ID는 global.anthropic. 로 시작해야 합니다 (policy-bedrock.json 범위)"; exit 1;;
 esac
-
 echo "[create] 계정 ${ACCOUNT_ID}, 리전 ${AWS_REGION}"
+mkdir -p "${BUILD}"
 
-# 1. IAM 역할 (Lambda 실행 역할, 필요한 권한만)
-if aws iam get-role --role-name "${ROLE}" >/dev/null 2>&1; then
-  echo "[create] 역할 ${ROLE} 있음"
-else
-  aws iam create-role --role-name "${ROLE}" \
-    --assume-role-policy-document "file://${ROOT}/infra/trust-lambda.json" >/dev/null
-  echo "[create] 역할 ${ROLE} 만듦"
-fi
-for name in bedrock logs data; do
-  aws iam put-role-policy --role-name "${ROLE}" --policy-name "team06-${name}" \
-    --policy-document "file://$(render_policy "policy-${name}.json")"
-done
-ROLE_ARN=$(aws iam get-role --role-name "${ROLE}" --query Role.Arn --output text)
+# ---------------------------------------------------------------------------
+# 1. IAM 역할 두 개
+# ---------------------------------------------------------------------------
+ensure_role() {
+  local role="$1"; shift
+  if aws iam get-role --role-name "${role}" >/dev/null 2>&1; then
+    echo "[create] 역할 ${role} 있음"
+  else
+    aws iam create-role --role-name "${role}" \
+      --assume-role-policy-document "file://${ROOT}/infra/trust-lambda.json" >/dev/null
+    echo "[create] 역할 ${role} 만듦"
+  fi
+  local name
+  for name in "$@"; do
+    aws iam put-role-policy --role-name "${role}" --policy-name "team06-${name}" \
+      --policy-document "file://$(render "policy-${name}.json")"
+  done
+}
+ensure_role "${ROLE_API}" logs data bedrock invoke-worker
+ensure_role "${ROLE_WORKER}" logs data bedrock
 
-# 2. DynamoDB 작업 테이블 (온디맨드)
+# ---------------------------------------------------------------------------
+# 2. DynamoDB 작업 테이블
+# ---------------------------------------------------------------------------
 if aws dynamodb describe-table --table-name "${TABLE}" >/dev/null 2>&1; then
   echo "[create] 테이블 ${TABLE} 있음"
 else
@@ -38,57 +50,127 @@ else
   echo "[create] 테이블 ${TABLE} 만듦"
 fi
 
-# 3. S3 서류 버킷 (공개 차단)
-if aws s3api head-bucket --bucket "${BUCKET}" >/dev/null 2>&1; then
-  echo "[create] 버킷 ${BUCKET} 있음"
-else
-  aws s3api create-bucket --bucket "${BUCKET}" \
-    --create-bucket-configuration LocationConstraint=ap-northeast-2 >/dev/null
-  echo "[create] 버킷 ${BUCKET} 만듦"
-fi
-aws s3api put-public-access-block --bucket "${BUCKET}" --public-access-block-configuration \
-  BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+# ---------------------------------------------------------------------------
+# 3. S3 버킷 두 개 (둘 다 공개 차단)
+# ---------------------------------------------------------------------------
+ensure_bucket() {
+  if aws s3api head-bucket --bucket "$1" >/dev/null 2>&1; then
+    echo "[create] 버킷 $1 있음"
+  else
+    aws s3api create-bucket --bucket "$1" --create-bucket-configuration LocationConstraint=ap-northeast-2 >/dev/null
+    echo "[create] 버킷 $1 만듦"
+  fi
+  aws s3api put-public-access-block --bucket "$1" --public-access-block-configuration \
+    BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+}
+ensure_bucket "${BUCKET}"
+ensure_bucket "${WEB_BUCKET}"
 
+# ---------------------------------------------------------------------------
 # 4. 로그 그룹 (보존 7일)
-aws logs create-log-group --log-group-name "${LOG_GROUP}" 2>/dev/null || true
-aws logs put-retention-policy --log-group-name "${LOG_GROUP}" --retention-in-days 7
+# ---------------------------------------------------------------------------
+for fn in "${FN_API}" "${FN_WORKER}"; do
+  aws logs create-log-group --log-group-name "/aws/lambda/${fn}" 2>/dev/null || true
+  aws logs put-retention-policy --log-group-name "/aws/lambda/${fn}" --retention-in-days 7
+done
 
-# 5. Lambda 함수
+# ---------------------------------------------------------------------------
+# 5. Lambda 두 개 (같은 zip, 진입점만 다름)
+# ---------------------------------------------------------------------------
 package_and_upload
-if aws lambda get-function --function-name "${FUNCTION}" >/dev/null 2>&1; then
-  echo "[create] 함수 ${FUNCTION} 있음. 코드 갱신은 deploy.sh"
+ensure_function() {
+  local fn="$1" handler="$2" role="$3" timeout="$4" memory="$5" env="$6"
+  if aws lambda get-function --function-name "${fn}" >/dev/null 2>&1; then
+    echo "[create] 함수 ${fn} 있음. 코드 갱신은 deploy.sh"
+  else
+    local role_arn attempt
+    role_arn=$(aws iam get-role --role-name "${role}" --query Role.Arn --output text)
+    # 새 역할은 몇 초 뒤에 쓸 수 있어 몇 번 다시 시도한다
+    for attempt in 1 2 3 4 5 6; do
+      if aws lambda create-function --function-name "${fn}" \
+        --runtime python3.13 --architectures x86_64 --memory-size "${memory}" --timeout "${timeout}" \
+        --handler "${handler}" --role "${role_arn}" \
+        --code "S3Bucket=${BUCKET},S3Key=${CODE_KEY}" \
+        --environment "Variables={${env}}" >/dev/null 2>"${BUILD}/create-function.err"; then
+        echo "[create] 함수 ${fn} 만듦"; break
+      fi
+      if grep -q "cannot be assumed" "${BUILD}/create-function.err" && [ "${attempt}" -lt 6 ]; then
+        echo "[create] 역할 전파 대기 (${attempt}/6)"; sleep 10
+      else
+        cat "${BUILD}/create-function.err"; exit 1
+      fi
+    done
+    aws lambda wait function-active-v2 --function-name "${fn}"
+  fi
+  aws lambda put-function-concurrency --function-name "${fn}" --reserved-concurrent-executions 5 >/dev/null
+}
+COMMON_ENV="MODEL_ID=${MODEL_ID},JOBS_TABLE=${TABLE},DOCS_BUCKET=${BUCKET}"
+ensure_function "${FN_WORKER}" "${HANDLER_WORKER}" "${ROLE_WORKER}" 300 1024 "${COMMON_ENV}"
+ensure_function "${FN_API}" "${HANDLER_API}" "${ROLE_API}" 30 512 "${COMMON_ENV},WORKER_FUNCTION=${FN_WORKER}"
+
+# ---------------------------------------------------------------------------
+# 6. API Gateway HTTP API (/api, /api/{proxy+} → team06-api)
+# ---------------------------------------------------------------------------
+API_ID=$(aws apigatewayv2 get-apis --query "Items[?Name=='${API_NAME}'].ApiId | [0]" --output text)
+if [ "${API_ID}" != "None" ] && [ -n "${API_ID}" ]; then
+  echo "[create] API ${API_NAME} 있음 (${API_ID})"
 else
-  # 새 역할은 몇 초 뒤에 쓸 수 있어 몇 번 다시 시도한다
-  for attempt in 1 2 3 4 5 6; do
-    if aws lambda create-function --function-name "${FUNCTION}" \
-      --runtime python3.13 --architectures x86_64 --memory-size 1024 --timeout 300 \
-      --handler api.handler.lambda_handler --role "${ROLE_ARN}" \
-      --code "S3Bucket=${BUCKET},S3Key=${CODE_KEY}" \
-      --environment "Variables={MODEL_ID=${MODEL_ID},JOBS_TABLE=${TABLE},DOCS_BUCKET=${BUCKET}}" \
-      >/dev/null 2>"${BUILD}/create-function.err"; then
-      echo "[create] 함수 ${FUNCTION} 만듦"; break
-    fi
-    if grep -q "cannot be assumed" "${BUILD}/create-function.err" && [ "${attempt}" -lt 6 ]; then
-      echo "[create] 역할 전파 대기 (${attempt}/6)"; sleep 10
-    else
-      cat "${BUILD}/create-function.err"; exit 1
-    fi
+  API_ID=$(aws apigatewayv2 create-api --name "${API_NAME}" --protocol-type HTTP --query ApiId --output text)
+  INTEGRATION_ID=$(aws apigatewayv2 create-integration --api-id "${API_ID}" --integration-type AWS_PROXY \
+    --integration-uri "$(fn_arn "${FN_API}")" --payload-format-version 2.0 --timeout-in-millis 30000 \
+    --query IntegrationId --output text)
+  for route in "ANY /api" "ANY /api/{proxy+}"; do
+    aws apigatewayv2 create-route --api-id "${API_ID}" --route-key "${route}" \
+      --target "integrations/${INTEGRATION_ID}" >/dev/null
   done
-  aws lambda wait function-active-v2 --function-name "${FUNCTION}"
+  # 요청 제한: 초당 10건, 순간 20건 (공개 주소 비용 상한)
+  aws apigatewayv2 create-stage --api-id "${API_ID}" --stage-name '$default' --auto-deploy \
+    --default-route-settings '{"ThrottlingBurstLimit":20,"ThrottlingRateLimit":10}' >/dev/null
+  aws lambda add-permission --function-name "${FN_API}" --statement-id team06-apigw \
+    --action lambda:InvokeFunction --principal apigateway.amazonaws.com \
+    --source-arn "arn:aws:execute-api:${AWS_REGION}:${ACCOUNT_ID}:${API_ID}/*" >/dev/null
+  echo "[create] API ${API_NAME} 만듦 (${API_ID})"
+fi
+API_DOMAIN="${API_ID}.execute-api.${AWS_REGION}.amazonaws.com"
+
+# ---------------------------------------------------------------------------
+# 7. CloudFront (/* → 화면 버킷, /api/* → API Gateway)
+# ---------------------------------------------------------------------------
+OAC_ID=$(aws cloudfront list-origin-access-controls \
+  --query "OriginAccessControlList.Items[?Name=='${OAC_NAME}'].Id | [0]" --output text)
+if [ "${OAC_ID}" = "None" ] || [ -z "${OAC_ID}" ]; then
+  OAC_ID=$(aws cloudfront create-origin-access-control --origin-access-control-config \
+    "Name=${OAC_NAME},SigningProtocol=sigv4,SigningBehavior=always,OriginAccessControlOriginType=s3" \
+    --query OriginAccessControl.Id --output text)
+  echo "[create] OAC ${OAC_NAME} 만듦"
 fi
 
-# 6. 동시 실행 상한 5 (공개 URL 비용 상한)
-aws lambda put-function-concurrency --function-name "${FUNCTION}" --reserved-concurrent-executions 5 >/dev/null
-
-# 7. 공개 Function URL (인증 없음, 함수 URL로만 호출 가능)
-if ! aws lambda get-function-url-config --function-name "${FUNCTION}" >/dev/null 2>&1; then
-  aws lambda create-function-url-config --function-name "${FUNCTION}" --auth-type NONE \
-    --cors 'AllowOrigins=*,AllowMethods=GET,POST,AllowHeaders=content-type' >/dev/null
-  aws lambda add-permission --function-name "${FUNCTION}" --statement-id FunctionURLAllowPublicAccess \
-    --action lambda:InvokeFunctionUrl --principal '*' --function-url-auth-type NONE >/dev/null
-  aws lambda add-permission --function-name "${FUNCTION}" --statement-id FunctionURLInvokeAllowPublicAccess \
-    --action lambda:InvokeFunction --principal '*' --invoked-via-function-url >/dev/null
-  echo "[create] Function URL 만듦"
+DIST_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?Comment=='${DIST_COMMENT}'].Id | [0]" --output text)
+if [ "${DIST_ID}" != "None" ] && [ -n "${DIST_ID}" ]; then
+  echo "[create] CloudFront ${DIST_COMMENT} 있음 (${DIST_ID})"
+else
+  CONFIG=$(render cloudfront.json "CALLER_REF=team06-web-$(date +%s)" "OAC_ID=${OAC_ID}" "API_DOMAIN=${API_DOMAIN}" \
+    "CACHE_OPTIMIZED=${CACHE_OPTIMIZED}" "CACHE_DISABLED=${CACHE_DISABLED}" "ORIGIN_ALL_EXCEPT_HOST=${ORIGIN_ALL_EXCEPT_HOST}")
+  DIST_ID=$(aws cloudfront create-distribution --distribution-config "file://${CONFIG}" --query Distribution.Id --output text)
+  echo "[create] CloudFront ${DIST_COMMENT} 만듦 (${DIST_ID}). 퍼지는 데 몇 분 걸린다"
 fi
-URL=$(aws lambda get-function-url-config --function-name "${FUNCTION}" --query FunctionUrl --output text)
-echo "[create] 끝. 확인: curl ${URL}"
+DIST_ARN="arn:aws:cloudfront::${ACCOUNT_ID}:distribution/${DIST_ID}"
+WEB_DOMAIN=$(aws cloudfront get-distribution --id "${DIST_ID}" --query Distribution.DomainName --output text)
+
+# 화면 버킷은 이 CloudFront만 읽는다. 서류 버킷은 화면 주소에서 미리 서명된 URL로 PUT만 받는다
+aws s3api put-bucket-policy --bucket "${WEB_BUCKET}" \
+  --policy "file://$(render policy-web-bucket.json "DIST_ARN=${DIST_ARN}")"
+aws s3api put-bucket-cors --bucket "${BUCKET}" \
+  --cors-configuration "file://$(render s3-cors-docs.json "WEB_DOMAIN=${WEB_DOMAIN}")"
+
+# 화면이 아직 없으면 자리표시 페이지 하나 (3번이 빌드하면 deploy-web.sh가 덮어쓴다)
+if ! aws s3api head-object --bucket "${WEB_BUCKET}" --key index.html >/dev/null 2>&1; then
+  printf '<!doctype html><meta charset="utf-8"><title>6팀</title><p>6팀 물류 문서 Agent: 화면 준비 중</p>\n' > "${BUILD}/index.html"
+  aws s3 cp --only-show-errors --content-type "text/html; charset=utf-8" "${BUILD}/index.html" "s3://${WEB_BUCKET}/index.html"
+fi
+
+echo "[create] CloudFront가 퍼지기를 기다린다 (보통 5~10분)"
+aws cloudfront wait distribution-deployed --id "${DIST_ID}"
+echo "[create] 끝"
+echo "  화면: https://${WEB_DOMAIN}/"
+echo "  API : https://${WEB_DOMAIN}/api/   (4번 F3 전에는 핸들러의 404 JSON이 정상)"

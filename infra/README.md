@@ -1,95 +1,84 @@
-# infra: 뼈대 리소스와 배포 (담당: PM, 배포 단독. 4번 서버는 PR로 고칠 수 있다)
+# infra: 리소스와 배포 (담당: PM, 배포 단독. 4번 서버는 PR로 고칠 수 있다)
 
 리소스는 이 폴더의 스크립트로만 만든다. 콘솔이나 MCP로 즉석에서 만들거나 바꾸지 않는다.
 리전은 ap-northeast-2, 이름은 모두 `team06-`으로 시작한다 (CloudFront는 전역 서비스라 예외).
+대회 계정은 그룹 `pnu6`으로 5명 모두 관리자 권한이 있다. 그래도 리소스 생성·배포 실행은 PM만 한다 (team.md).
 
-## 목표 구조 (#67, 스크립트는 F1·F3·F4·F5에서 고친다)
+## 구조 (#67)
 ```
-CloudFront `team06-web` ─┬ /*     → S3 `team06-web-<계정ID>` (화면 빌드 파일, OAC로만 읽기)
-                         └ /api/* → API Gateway HTTP API `team06-api` (요청 제한으로 비용 상한)
-                                      → Lambda `team06-api` (api/handler.py)
-                                          → 비동기 호출 → Lambda `team06-worker` (run_job)
-S3 `team06-docs-<계정ID>` (서류, 미리 서명된 URL) · DynamoDB `team06-jobs` 외
+브라우저 → CloudFront `team06-web` ─┬ /*     → S3 `team06-web-<계정ID>` (화면 빌드 파일, OAC로 CloudFront만 읽음)
+                                   └ /api/* → API Gateway HTTP API `team06-api` (초당 10건, 순간 20건 제한)
+                                                → Lambda `team06-api` (api.handler.lambda_handler, 30초)
+                                                    → 비동기 호출 → Lambda `team06-worker` (api.worker.lambda_handler, 300초)
+서류 원본: S3 `team06-docs-<계정ID>/uploads/` (화면이 미리 서명된 URL로 직접 PUT, 화면 주소에서만 CORS 허용)
+상태·결과: DynamoDB `team06-jobs`
 ```
+PM과 4번 사이 이름 약속(진입점, 이벤트, 환경 변수)은 이슈 #34·#36 댓글에 있다. 바꾸려면 그 이슈에서 먼저 맞춘다.
 
-| 바뀌는 것 | 지금 스크립트 | 목표 | 작업 |
-|---|---|---|---|
-| 입구 | Lambda Function URL (공개) | CloudFront → API Gateway HTTP API | F1 |
-| Lambda | 1개 `team06-agent` | 2개: `team06-api`(짧은 요청), `team06-worker`(서류 처리, 제한 시간 300초) | F3 |
-| 실행 역할 | 1개 | 2개, API Lambda에 `lambda:InvokeFunction`(worker만) 추가 | F4 |
-| 화면 | 없음 | S3 + CloudFront, 기본 주소 사용 | F5 |
-
-- 아래 "리소스 목록"과 "실행 순서"는 지금 스크립트(Function URL 뼈대) 기준이다. 목표 구조로 바꾸면 이 표와 함께 고친다.
-- IAM 역할을 만들 권한이 없어서 어느 구조든 대회 측 답변(역할 ARN 또는 이름 규칙)이 먼저다.
-
-## 리소스 목록 (지금 스크립트)
+## 리소스 목록
 | 종류 | 이름 | 설정 |
 |---|---|---|
-| IAM 역할 | `team06-agent-role` | Lambda 신뢰 정책(`trust-lambda.json`), 인라인 정책 3개 |
-| 인라인 정책 | `team06-bedrock` | `policy-bedrock.json`: global 추론 프로필 `global.anthropic.*`과 foundation-model(서울 + 리전 없는 global ARN), InvokeModel·InvokeModelWithResponseStream |
-| 인라인 정책 | `team06-logs` | `policy-logs.json`: `/aws/lambda/team06-agent` 로그 스트림 쓰기 |
-| 인라인 정책 | `team06-data` | `policy-data.json`: `team06-jobs` Get/Put/UpdateItem, 버킷 `uploads/*` Get/PutObject |
-| DynamoDB | `team06-jobs` | 키 `job_id`(S), 온디맨드. 칸: `data`(Job JSON 문자열), `updated_at` |
-| S3 | `team06-docs-<계정ID>` | 공개 차단. `uploads/`: 서류, `deploy/`: 배포 zip |
-| 로그 그룹 | `/aws/lambda/team06-agent` | 보존 7일 |
-| Lambda | `team06-agent` | Python 3.13, x86_64, 1024MB, 제한 시간 300초, 핸들러 `api.handler.lambda_handler` |
-| Lambda 환경 변수 | | `MODEL_ID`, `JOBS_TABLE=team06-jobs`, `DOCS_BUCKET=team06-docs-<계정ID>` |
-| 동시 실행 상한 | | 5 (공개 URL 비용 상한) |
-| Function URL | | 인증 NONE, CORS `*` GET/POST, 리소스 정책 2개(InvokeFunctionUrl, InvokeFunction + InvokedViaFunctionUrl) |
+| IAM 역할 | `team06-api-role` | 인라인 정책: logs, data, bedrock, invoke-worker |
+| IAM 역할 | `team06-worker-role` | 인라인 정책: logs, data, bedrock |
+| 정책 | `policy-bedrock.json` | global 추론 프로필 `global.anthropic.*`과 foundation-model(서울 + 리전 없는 global ARN) |
+| 정책 | `policy-logs.json` | 두 Lambda의 로그 그룹에 쓰기 |
+| 정책 | `policy-data.json` | `team06-jobs` Get/Put/UpdateItem, 서류 버킷 `uploads/*` Get/PutObject (미리 서명된 URL 포함) |
+| 정책 | `policy-invoke-worker.json` | API Lambda가 `team06-worker`만 호출 |
+| DynamoDB | `team06-jobs` | 키 `job_id`(S), 온디맨드 |
+| S3 | `team06-docs-<계정ID>` | 공개 차단. `uploads/` 서류, `deploy/` 배포 zip. CORS: 화면 주소에서 PUT만 |
+| S3 | `team06-web-<계정ID>` | 공개 차단. 버킷 정책 `policy-web-bucket.json`: CloudFront 배포 하나만 읽기 |
+| 로그 그룹 | `/aws/lambda/team06-api`, `/aws/lambda/team06-worker` | 보존 7일 |
+| Lambda | `team06-api` | Python 3.13, x86_64, 512MB, 30초, 동시 실행 상한 5. 환경 변수 `MODEL_ID`, `JOBS_TABLE`, `DOCS_BUCKET`, `WORKER_FUNCTION` |
+| Lambda | `team06-worker` | Python 3.13, x86_64, 1024MB, 300초, 동시 실행 상한 5. 환경 변수 `MODEL_ID`, `JOBS_TABLE`, `DOCS_BUCKET` |
+| API Gateway | `team06-api` (HTTP API) | 경로 `ANY /api`, `ANY /api/{proxy+}` → team06-api (페이로드 2.0, 30초). `$default` 스테이지 자동 배포 |
+| CloudFront | 설명 `team06-web` | 설정 `cloudfront.json`. 기본 → 화면 버킷(캐시), `/api/*` → API Gateway(캐시 안 함, Host 헤더 안 넘김). 기본 주소 사용 |
+| OAC | `team06-web-oac` | CloudFront가 화면 버킷을 서명해서 읽음 |
 
-## 배포하는 사람의 권한
-`create.sh`·`deploy.sh`를 실행하는 IAM 사용자에게 `policy-deployer.json` 권한이 있어야 한다 (team06-* 리소스만, 서울만).
-붙일 때 `__ACCOUNT_ID__`를 계정 번호로 바꾼다.
-2026-11-19 PM의 IAM 사용자는 `iam:CreateRole`이 없어 S4 첫 단계에서 멈췄다 (만든 리소스 없음). 계정 관리자가 이 정책을 붙여야 진행된다.
-
-## 실행 순서
+## 실행 순서 (PM)
 ```bash
-aws login                                   # 브라우저 로그인 (ExpiredToken이면 다시)
-aws configure set region ap-northeast-2
-uv sync && uv run pytest -q                 # 먼저 테스트 통과 확인
+aws login && aws sts get-caller-identity       # 계정 465105354705, 사용자 확인
+git switch main && git pull && uv sync && uv run pytest -q
 
-# 처음 한 번: 리소스 만들기 (있으면 건너뜀, 지우지 않음)
-MODEL_ID=<global.anthropic... 추론 프로필 ID> bash infra/create.sh
-curl <출력된 URL>                            # {"ok": true}
+# 처음 한 번: 리소스 만들기 (있으면 건너뜀, 지우지 않음). CloudFront가 퍼지는 데 5~10분
+MODEL_ID=global.anthropic.claude-sonnet-5-5 bash infra/create.sh
+curl -s https://<CloudFront 주소>/api/            # 4번 F3 전: 핸들러 404 JSON / F3 뒤: {"ok": true}
 
-# 코드만 다시 배포 (main 최신으로 받은 뒤)
+# 합칠 때마다: 두 Lambda 코드 갱신
 bash infra/deploy.sh
+
+# 화면 빌드가 생기면 (F5)
+WEB_DIST=web/dist bash infra/deploy-web.sh
 ```
 
-모델 ID를 바꿀 때 (설정만 바뀜, 코드는 그대로):
-```bash
-aws lambda update-function-configuration --function-name team06-agent \
-  --environment "Variables={MODEL_ID=<새 ID>,JOBS_TABLE=team06-jobs,DOCS_BUCKET=team06-docs-<계정ID>}"
-```
+모델 ID를 바꿀 때 (설정만 바뀜): 두 함수 모두 `aws lambda update-function-configuration --environment ...`로 바꾼다. 다른 환경 변수도 함께 넣어야 한다(덮어쓰기).
 
-## 끝까지 한 번 (S5 확인)
+## 끝까지 한 번 (F3 뒤)
 ```bash
-BUCKET=team06-docs-$(aws sts get-caller-identity --query Account --output text)
-aws s3 cp samples/<송장>.pdf s3://$BUCKET/uploads/s1/invoice.pdf
-aws s3 cp samples/<포장명세서>.pdf s3://$BUCKET/uploads/s1/packing_list.pdf
-URL=<Function URL>
-time curl -s -X POST "${URL}jobs" -H 'content-type: application/json' \
+BUCKET=team06-docs-465105354705
+aws s3 cp <상업송장>.pdf s3://$BUCKET/uploads/s1/invoice.pdf
+aws s3 cp <포장명세서>.pdf s3://$BUCKET/uploads/s1/packing_list.pdf
+URL=https://<CloudFront 주소>
+curl -s -X POST "$URL/api/jobs" -H 'content-type: application/json' \
   -d '{"files":[{"key":"uploads/s1/invoice.pdf","doc_type":"commercial_invoice"},{"key":"uploads/s1/packing_list.pdf","doc_type":"packing_list"}]}'
-curl -s "${URL}jobs/<job_id>"                 # result.issues 확인
+curl -s "$URL/api/jobs/<job_id>"                # queued → running → waiting_approval·done
 ```
-응답 시간은 `.kiro/specs/00-skeleton/design.md`의 S5 결과에 적는다.
 
 ## 로컬 확인 (AWS 없이)
 - `uv run pytest -q`: 핸들러·읽기·대조를 가짜 DynamoDB·S3·모델로 확인한다.
-- 모델 첫 호출: `MODEL_ID=... uv run python -m scripts.ping_bedrock [서류 경로 doc_type]` (로컬 aws login 필요)
+- 모델 호출: `MODEL_ID=... uv run python -m scripts.ping_bedrock [서류 경로 doc_type]` (로컬 aws login 필요)
 
 ## 남은 일
-- [ ] S1 실행과 결과 기록 (`design.md` S1 표), READ_MODE 결정
-- [ ] S4 `create.sh` 실행, curl `{"ok": true}` 확인
-- [ ] S5 실제 서류 두 장으로 끝까지 한 번, 응답 시간 기록
-- [ ] POST /uploads(미리 서명된 URL), 비동기 처리, Textract 권한, team06-shipments·hs-history 테이블 (Spec 2·3)
-- [ ] 8장 점검: `team06-` 아닌 리소스나 서울 밖 리소스가 없는지
+- [ ] F1 `create.sh` 실행, CloudFront → API Gateway → Lambda 연결 확인
+- [ ] F3(4번) 합친 뒤 `deploy.sh`, `/api/` → `{"ok": true}`, 끝까지 한 번
+- [ ] F4 Textract 권한, team06-shipments·hs-history·WMS 테이블 (4번이 infra/ PR로 정의 → PM 실행)
+- [ ] F5 화면 빌드 올리기 (`deploy-web.sh`)
+- [ ] F6 합칠 때마다 배포, `team06-` 아닌 리소스·서울 밖 리소스(CloudFront 제외) 점검
 
 ## 알려진 문제와 주의
-- **패키징 플랫폼**: `x86_64-manylinux_2_28`을 쓴다. pillow 13(strands-agents-tools 의존성)에 manylinux2014 휠이 없기 때문이다. 2_28은 2014 휠도 받고, Lambda Python 3.13(Amazon Linux 2023, glibc 2.34)에서 돈다.
-- **zip 크기**: 약 51MB, 압축 전 약 153MB. 직접 업로드 한도 50MB를 넘어서 S3(`deploy/`)를 거쳐 올린다. 압축 전 한도는 250MB다. 큰 의존성은 sympy, botocore, cryptography, pillow 순이고 대부분 strands-agents-tools에서 온다. Lambda에서 strands-agents-tools를 쓰지 않으면 빼서 줄일 수 있다.
-- **동시 실행 상한**: 계정의 동시 실행 한도가 낮으면(예: 10) `put-function-concurrency`가 실패한다. 그때는 Service Quotas에서 Lambda 동시 실행 한도 상향을 요청한다. 상한 없이 공개 URL을 두지 않는다.
-- **Bedrock 정책 범위**: `global.anthropic.*` 추론 프로필만 허용한다. 다른 프로필(예: `apac.`)을 쓰면 `policy-bedrock.json`을 고친 뒤 `create.sh`를 다시 실행한다(인라인 정책만 덮어씀).
-- **모델 접근**: 계정에서 해당 Anthropic 모델 사용이 허용되어 있어야 한다. AccessDenied가 나면 Bedrock 콘솔의 모델 접근 상태를 먼저 본다.
-- **동기 처리**: POST /jobs 안에서 끝까지 처리한다. Function URL은 최대 15분, 함수 제한 시간은 300초다. 서류가 많으면 비동기로 바꾼다(2일차).
-- **공개 URL**: 인증 없이 누구나 부를 수 있다. 동시 실행 상한 5와 요청 검사(`uploads/` 키만, 서류 10개까지, 4.5MB까지)로 피해를 줄인다.
+- **패키징 플랫폼**: `x86_64-manylinux_2_28`을 쓴다. pillow 13(strands-agents-tools 의존성)에 manylinux2014 휠이 없다. 2_28은 Lambda Python 3.13(Amazon Linux 2023, glibc 2.34)에서 돈다.
+- **zip 크기**: 약 51MB(압축 전 약 153MB). 직접 업로드 한도 50MB를 넘어 S3(`deploy/`)를 거쳐 올린다. 두 Lambda가 같은 zip을 쓴다.
+- **API 시간 제한**: API Gateway는 요청 하나를 30초 안에 끝내야 한다. 서류 처리는 반드시 처리 Lambda로 넘긴다 (F3).
+- **화면 라우팅**: CloudFront의 오류 응답 바꾸기(404 → index.html)를 쓰지 않는다. 배포 전체에 걸려 `/api`의 404 JSON까지 바뀐다. 화면은 해시 라우팅(`#/jobs/…`)을 쓴다.
+- **공개 주소**: 인증 없이 누구나 부를 수 있다. API 요청 제한(초당 10건), Lambda 동시 실행 상한 5, 요청 검사(`uploads/` 키만, 서류 10개까지, 4.5MB까지)로 비용과 피해를 줄인다.
+- **Bedrock 정책 범위**: `global.anthropic.*` 추론 프로필만 허용한다. 다른 프로필을 쓰면 `policy-bedrock.json`을 고친 뒤 `create.sh`를 다시 실행한다(인라인 정책만 덮어씀).
+- **같은 계정의 다른 팀 리소스**: `team06-`으로 시작하지 않는 리소스는 조회도 하지 말고 절대 바꾸지 않는다.

@@ -4,7 +4,10 @@
     {
       "Effect": "Allow",
       "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
-      "Resource": "arn:aws:logs:ap-northeast-2:__ACCOUNT_ID__:log-group:/aws/lambda/team06-agent:*"
+      "Resource": [
+        "arn:aws:logs:ap-northeast-2:__ACCOUNT_ID__:log-group:/aws/lambda/team06-api:*",
+        "arn:aws:logs:ap-northeast-2:__ACCOUNT_ID__:log-group:/aws/lambda/team06-worker:*"
+      ]
     }
   ]
 }
