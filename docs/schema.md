@@ -47,7 +47,7 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 ## 신고서 초안 칸 (declaration_draft)
 - 간이 양식이다. 코드가 템플릿에 값을 채우고 모델은 쓰지 않는다 (agent-design.md 7번). 초안에는 "사람 검토 전 초안"을 적고 신고 전송은 하지 않는다.
 - `fields[]`: `{"name": 신고서 칸 이름, "value": 채운 값, "source": 출처}`. `source`는 `서류.칸`이고, 품목 칸은 `items[0]`처럼 줄 번호 − 1을 쓴다 (1번 줄 = `items[0]`).
-- `blank_fields[]`: 비워 둔 칸의 경로. 서류 전체 칸은 `total_gross_kg`, 품목 칸은 `items[0].qty`처럼 쓴다 (줄 번호 − 1).
+- `blank_fields[]`: 비워 둔 칸. 아래 표의 `field`(칸 키)로 적는다. 서류 전체 칸은 `total_gross_kg`, 품목 칸은 `items[0].qty`처럼 쓴다 (줄 번호 − 1). 수량과 단위처럼 출처가 같은 칸도 키로 구분한다.
 - 칸 목록은 `eval/declarations.csv`(정답지)의 `field`·`label`·`source`와 같다. 바꾸면 정답지도 함께 바꾼다.
 - "읽기 칸"은 지금 `tools/models.py`의 `ExtractedDocument`에 이 출처가 있는지다. 없음인 칸은 읽기 칸(B2, 1번 담당)이 늘어야 채울 수 있고, 그 전에는 비워 두고 blank_fields에 적는다.
 
