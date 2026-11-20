@@ -14,7 +14,9 @@ colors:
   fill: '#f2f4f6'
   fill-2: '#f9fafb'
   bg: '#ffffff'
-  red: '#d6402a'
+  red: '#e02a3b'
+  red-strong: '#d22030'
+  red-tint: '#ffeeee'
 typography:
   family: Pretendard Variable, Pretendard, system-ui, Apple SD Gothic Neo, Malgun Gothic, sans-serif
   page-title: { fontSize: 26px, fontWeight: 700, use: 화면 제목 (모바일 24px) }
@@ -79,11 +81,13 @@ gutter: 22px
 | `--fill` | `#f2f4f6` | surface-muted | – | 회색 칸, 표 머리, 고르지 않은 칩 |
 | `--fill-2` | `#f9fafb` | (우리 값) | – | 더 옅은 바탕, 고르지 않은 단계 |
 | `--bg` | `#ffffff` | canvas | – | 화면 바탕, 패널 |
-| `--red` | `#d6402a` | (우리 값) | 4.5:1 | 불일치·실패·오류·통관 지연에만 |
+| `--red` | `#e02a3b` | (우리 값, Toss 톤에 맞춘 빨강) | 4.6:1 | 불일치·실패·오류·통관 지연에만 |
+| `--red-strong` | `#d22030` | (우리 값) | 5.3:1 | 옅은 빨강 바탕 위 글자(4.7:1) |
+| `--red-tint` | `#ffeeee` | (우리 값) | – | 불일치 상자, 고른 오류 줄 바탕 |
 
 - `#3182f6` 위에 흰 글자는 3.7:1 이라 본문 기준(4.5:1)에 모자란다. 그래서 채운 버튼은 `#0064ff` 를 쓴다.
 - `--muted` 는 회색 칸(`--fill`) 위에서 4.2:1 이다. 회색 칸 위 13px 이하 글자는 `--ink-secondary` 를 쓴다.
-- Toss 명세에는 오류·성공 색이 없다. 빨강은 우리 규칙(불일치·실패에만) 그대로이고, 성공은 색 대신 ✔ 표시와 글자로 보인다.
+- Toss 명세에는 오류·성공 색이 없다. 빨강은 Toss 회색·파랑과 어울리는 `#e02a3b` 로 정했고 쓰임은 우리 규칙(불일치·실패에만) 그대로다. 옅은 빨강 바탕 위 글자는 `#d22030`. 성공은 색 대신 ✔ 표시와 글자로 보인다.
 - 고른(파랑) 칸 위의 보조 글자는 회색 대신 `rgba(255,255,255,0.92)` 를 쓴다.
 
 ### 등급 색
@@ -149,7 +153,7 @@ gutter: 22px
 | 칩·탭 `.kind`, `.doc-tab`, `.filter-chip` | 고르지 않음 `--fill` 바탕 `--ink-secondary` / 고름 `--primary` 바탕 흰 글자 | `aria-selected` 또는 `.active` |
 | 단계 표시줄 `.stage` | 흰 칸, 테두리 없음, 12px 모서리. 고름은 2px `--ink` 안쪽 테두리 | 표시 원: 완료 ✔ `--primary`, 할 일 ! 빨강, 대기 … 회색, 실패 ✖ 빨강 |
 | 섹션 카드 `.panel`, `.dash-panel`, `.doc-card` | 흰 바탕, 테두리 없음, 20px 모서리, 안쪽 20/28px | – |
-| 다음 할 일 `.next-action` | 흰 카드, 문장 17px/700 `--ink`. 불일치·실패면 옅은 빨강(`#fdf0ee`) 바탕 | 버튼은 옅은 파랑 |
+| 다음 할 일 `.next-action` | 흰 카드, 문장 17px/700 `--ink`. 불일치·실패면 옅은 빨강(`#ffeeee`) 바탕 | 버튼은 옅은 파랑 |
 | 상태·등급 배지 `.status`, `.grade` | 테두리 없는 6px 칸, 13px/600. 기본 `--fill`, 끝남·문제 없음 옅은 파랑, 불일치·실패 빨강 바탕 흰 글자, 확인 필요 흰 바탕 빨강 테두리 | – |
 | 표 (신고서 초안 등) | 머리 `--fill` 바탕 `--ink-secondary` 글자, 본문 흰 바탕 `--ink`, 1px `--line` 가로줄 | – |
 | HS 후보 `.hs-candidate` | `--fill` 칸, 고르면 `--primary` 바탕 흰 글자 | 라디오 `accent-color: --primary` |
