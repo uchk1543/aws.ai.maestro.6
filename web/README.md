@@ -6,11 +6,25 @@
 - **비동기**: `POST /api/jobs`는 `job_id`를 바로 돌려준다. 결과는 `GET /api/jobs/{id}`를 2초마다 불러 받는다.
 
 ## 먼저 정할 것 (G1)
-- [ ] 기술: (예: React + Vite, 순수 HTML/JS). 정적 빌드가 되는 것
-- [ ] 개발 중 가짜 응답 모드: `docs/examples/`를 돌려주는 방법 (예: 환경 변수 하나로 켜고 끔)
-- [ ] 로컬 개발 서버에서 `/api`를 어디로 보낼지 (배포 전에는 가짜 응답, 배포 뒤에는 CloudFront 주소로 프록시)
+- [x] 기술: React + Vite + TypeScript. `npm run build`가 정적 파일(`dist/`)만 만든다
+  - 서버 상태와 2초 폴링: TanStack Query (`refetchInterval`)
+  - 라우팅: 해시 방식 (`#/jobs/job-7c1e`). 새로고침해도 S3에 없는 경로를 요청하지 않는다
+  - 스타일: 일반 CSS 또는 CSS Modules (UI 라이브러리는 쓰지 않는다)
+  - 테스트: Vitest + Testing Library. AWS와 서버를 부르지 않고 `docs/examples/`의 가짜 응답을 쓴다
+  - 패키지 관리: npm (Node 20 이상)
+- [x] 개발 중 가짜 응답 모드: 환경 변수 `VITE_MOCK=1`이면 `/api` 호출을 `docs/examples/*.json`으로 대신 답한다. 기본값은 켜짐(`npm run dev`). API 호출은 한 파일(`src/api.ts`)에 모아 두고, 코드에서는 항상 상대 경로(`/api/...`)로 부른다
+- [x] 로컬 개발 서버에서 `/api`를 어디로 보낼지: `VITE_MOCK=0`이면 Vite 개발 서버 프록시가 `/api`를 `VITE_API_PROXY`(배포된 CloudFront 주소)로 보낸다. 배포 전에는 이 값이 없으므로 가짜 응답만 쓴다
 
-정하면 이 칸을 채우고, 실행·빌드 방법을 아래에 적는다.
+## 실행·빌드 방법
+프로젝트 파일(`package.json` 등)은 G2에서 만든다. 만든 뒤 아래 명령을 쓴다.
+```
+cd web
+npm install
+npm run dev                                   # 개발 서버, 가짜 응답 모드
+VITE_MOCK=0 VITE_API_PROXY=<CloudFront 주소> npm run dev   # 배포된 API에 붙이기
+npm test                                      # 단위 테스트
+npm run build                                 # dist/ 생성. PM이 이 폴더를 S3에 올린다
+```
 
 ## 화면과 쓰는 API (docs/schema.md 약속 2)
 | 작업 | 화면 | 부르는 것 | 가짜 응답 |
