@@ -2,21 +2,26 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import historyExample from "../../../docs/examples/chat_history.json";
 import chatExample from "../../../docs/examples/chat_response.json";
 import * as api from "../api";
 import { renderWithQuery } from "../test-utils";
-import type { ChatResponse } from "../types";
-import { ChatPage, chatSessionId, describeFilters, EXAMPLES } from "./ChatPage";
+import type { ChatHistoryResponse, ChatResponse } from "../types";
+import { ChatPage, chatSessionId, describeFilters, EXAMPLES, historyToMessages } from "./ChatPage";
 
 vi.mock("../api", async (importOriginal) => {
   const real = await importOriginal<typeof import("../api")>();
-  return { ...real, sendChat: vi.fn() };
+  return { ...real, sendChat: vi.fn(), getChatHistory: vi.fn() };
 });
 
 const example = chatExample as ChatResponse;
 
+const history = historyExample as unknown as ChatHistoryResponse;
+
 beforeEach(() => {
   vi.mocked(api.sendChat).mockReset();
+  // 기본은 서버에 기록 경로가 없는 것처럼 (메모리만 쓴다)
+  vi.mocked(api.getChatHistory).mockReset().mockRejectedValue(new api.ApiError(404, "없는 경로입니다"));
   sessionStorage.clear();
 });
 
@@ -142,5 +147,70 @@ describe("describeFilters", () => {
     expect(api.sendChat).toHaveBeenCalledTimes(1);
     expect(vi.mocked(api.sendChat).mock.calls[0][0].message).toBe("지금 통관이 늦어지고 있는 화물 전부 보여줘");
     expect(window.location.hash).toBe("#/chat");
+  });
+
+  it("열 때 서버 기록을 불러와 그린다: 막힌 답은 회색 안내, 지난 답은 건수만 (G14)", async () => {
+    vi.mocked(api.getChatHistory).mockResolvedValue(history);
+    renderWithQuery(<ChatPage />);
+
+    expect(await screen.findByText("이번 주 통관 지연 건 알려줘")).toBeInTheDocument();
+    expect(api.getChatHistory).toHaveBeenCalledWith(chatSessionId());
+    const answer = screen.getByText(/이번 주\(11\/16~11\/22\) 통관 지연 건은 1건입니다/).closest(".chat-answer")!;
+    expect(within(answer as HTMLElement).getByText("1건")).toBeInTheDocument();
+    expect(answer).toHaveTextContent("지난 대화라 결과 표는 없습니다");
+    const blocked = screen.getByText(/통관·화물 현황 질문만 답합니다/).closest(".chat-answer")!;
+    expect(blocked).toHaveClass("blocked");
+    expect(blocked).toHaveTextContent("안내 · 무관한 질문");
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
+
+  it("서버에 기록 경로가 없으면(404) 이 탭의 메모리 대화를 그대로 쓴다", async () => {
+    sessionStorage.setItem("team06-chat-messages", JSON.stringify([{ role: "user", text: "메모리에 있던 질문" }]));
+    renderWithQuery(<ChatPage />);
+    await waitFor(() => expect(api.getChatHistory).toHaveBeenCalled());
+    expect(screen.getByText("메모리에 있던 질문")).toBeInTheDocument();
+    expect(screen.queryByText(/지난 대화를 불러오지 못해/)).not.toBeInTheDocument();
+  });
+
+  it("새 대화를 누르면 대화를 비우고 새 session_id 로 묻는다", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.getChatHistory).mockResolvedValue(history);
+    renderWithQuery(<ChatPage />);
+    await screen.findByText("이번 주 통관 지연 건 알려줘");
+    const before = chatSessionId();
+
+    vi.mocked(api.getChatHistory).mockResolvedValue({ messages: [] });
+    await user.click(screen.getByRole("button", { name: "새 대화" }));
+
+    expect(screen.queryByText("이번 주 통관 지연 건 알려줘")).not.toBeInTheDocument();
+    expect(chatSessionId()).not.toBe(before);
+    await waitFor(() => expect(api.getChatHistory).toHaveBeenLastCalledWith(chatSessionId()));
+
+    vi.mocked(api.sendChat).mockResolvedValue(example);
+    await user.click(screen.getByRole("button", { name: EXAMPLES[0] }));
+    await screen.findByText(example.answer);
+    expect(vi.mocked(api.sendChat).mock.calls[0][0].session_id).toBe(chatSessionId());
+  });
+
+  it("질문을 보낸 뒤 늦게 온 기록으로 대화를 덮지 않는다", async () => {
+    const user = userEvent.setup();
+    let resolve!: (v: ChatHistoryResponse) => void;
+    vi.mocked(api.getChatHistory).mockReturnValue(new Promise((r) => (resolve = r)));
+    vi.mocked(api.sendChat).mockResolvedValue(example);
+    renderWithQuery(<ChatPage />);
+
+    await user.click(screen.getByRole("button", { name: EXAMPLES[1] }));
+    await screen.findByText(example.answer);
+    resolve(history);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.getByText(EXAMPLES[1], { selector: ".chat-user" })).toBeInTheDocument();
+    expect(screen.queryByText("오늘 점심 메뉴 추천해 줘")).not.toBeInTheDocument();
+  });
+
+  it("historyToMessages 는 질문·답 줄을 대화로 바꾼다", () => {
+    const msgs = historyToMessages(history.messages);
+    expect(msgs.map((m) => m.role)).toEqual(["user", "assistant", "user", "assistant"]);
+    const last = msgs[3];
+    expect(last.role === "assistant" && last.response.blocked).toBe("무관한 질문");
   });
 });

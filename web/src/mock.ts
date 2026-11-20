@@ -11,6 +11,7 @@ import { ApiError } from "./api";
 import { fileViewOf } from "./mockDocs";
 import type {
   ApproveResponse,
+  ChatHistoryLine,
   ChatRequest,
   ChatResponse,
   ChooseHsResponse,
@@ -145,6 +146,47 @@ function jobFiles(jobId: string): JobFilesResponse {
   return { files: records.map(fileViewOf) };
 }
 
+// 대화 기록 (E6 #157 흉내): 새로 고쳐도 남도록 브라우저 localStorage 에 둔다. 개발용 가짜 서버만 쓴다
+const CHAT_STORE = "team06-mock-chat";
+
+function chatStore(): Record<string, ChatHistoryLine[]> {
+  try {
+    return JSON.parse(localStorage.getItem(CHAT_STORE) ?? "{}");
+  } catch {
+    return {};
+  }
+}
+
+function chatLines(sessionId: string): ChatHistoryLine[] {
+  return (chatStore()[sessionId] ?? []).slice(-50);
+}
+
+function saveChatLines(sessionId: string, question: string, res: ChatResponse): void {
+  const store = chatStore();
+  const ts = `${Date.now()}#mock`;
+  const blocked = res.blocked ?? null;
+  store[sessionId] = [
+    ...(store[sessionId] ?? []),
+    { session_id: sessionId, ts: `${ts}#0`, role: "user", text: question, filters: null, count: null, rule: null, blocked: null, block_reason: null },
+    {
+      session_id: sessionId,
+      ts: `${ts}#1`,
+      role: "assistant",
+      text: res.answer,
+      filters: blocked ? null : res.filters,
+      count: blocked ? null : res.rows.length,
+      rule: null,
+      blocked: blocked !== null,
+      block_reason: blocked,
+    },
+  ];
+  try {
+    localStorage.setItem(CHAT_STORE, JSON.stringify(store));
+  } catch {
+    // 저장 못 해도 가짜 응답은 계속 준다
+  }
+}
+
 /** api.ts 의 request 대신 불린다. 서버와 같은 경로·모양으로 답한다. */
 export async function mockRequest(method: string, path: string, body: unknown): Promise<unknown> {
   await wait(DELAY_MS);
@@ -164,9 +206,13 @@ export async function mockRequest(method: string, path: string, body: unknown): 
   if (method === "POST" && path === "/api/chat") {
     const req = body as Partial<ChatRequest> | undefined;
     if (!req?.session_id || !req.message?.trim()) throw new ApiError(400, "session_id와 message가 필요합니다");
-    // 가짜는 질문과 상관없이 예시 답을 준다
-    return copy(chatExample as ChatResponse);
+    // 가짜는 질문과 상관없이 예시 답을 준다. 서버처럼 질문·답 두 줄을 기록에 남긴다 (E6)
+    const res = copy(chatExample as ChatResponse);
+    saveChatLines(req.session_id, req.message.trim(), res);
+    return res;
   }
+  const chatRoute = path.match(/^\/api\/chat\/([^/]+)$/);
+  if (method === "GET" && chatRoute) return { messages: chatLines(decodeURIComponent(chatRoute[1])) };
   const [pathname, search = ""] = path.split("?");
   if (method === "GET" && pathname === "/api/documents") return documents(new URLSearchParams(search));
   if (method === "GET" && pathname === "/api/stats") {

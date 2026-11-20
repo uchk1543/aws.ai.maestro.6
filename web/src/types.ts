@@ -131,6 +131,8 @@ export interface ChatFilters {
   period: Period | null;
   date_from?: string | null;
   date_to?: string | null;
+  /** 모델이 칸으로 나타내지 못한 조건 (#165). 비어 있지 않으면 서버는 조회하지 않는다 */
+  unsupported?: string[];
 }
 export interface PeriodResolved {
   from: string;
@@ -150,6 +152,23 @@ export interface ChatResponse {
   filters: ChatFilters;
   period_resolved: PeriodResolved | null;
   rows: Shipment[];
+  /** 가드레일이 막았으면 그 이유 (E7 #152), 아니면 null */
+  blocked?: string | null;
+}
+// GET /api/chat/{session_id} 대화 기록 (E6 #157, docs/examples/chat_history.json). 줄마다 질문 또는 답 하나
+export interface ChatHistoryLine {
+  session_id: string;
+  ts: string;
+  role: "user" | "assistant";
+  text: string;
+  filters: ChatFilters | null;
+  count: number | null;
+  rule: string | null;
+  blocked: boolean | null;
+  block_reason: string | null;
+}
+export interface ChatHistoryResponse {
+  messages: ChatHistoryLine[];
 }
 // GET /api/documents (문서 분류 내역, G10)
 // 임시(제안 중): 서버 약속 제안 이슈가 합쳐지기 전 모양이다. 합쳐지면 tools/models.py·docs/examples/documents.json 과 맞춘다.
