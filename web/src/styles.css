@@ -1405,6 +1405,7 @@ table.cells tr.suspect td {
    쪽 그림 위에 서버가 준 bbox 를 % 로 놓는다. 불일치는 빨강, 나머지는 검정. 강조한 박스는 굵게 + 옅게 채움 + 이름표. */
 .viewer {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   max-height: 70vh;
   max-height: 70dvh;
@@ -1424,6 +1425,7 @@ table.cells tr.suspect td {
 
 .viewer-page {
   position: relative;
+  width: 100%;
   margin: 0;
   background: #fff;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);

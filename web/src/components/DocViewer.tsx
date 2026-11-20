@@ -36,7 +36,7 @@ export function DocViewer({
   const activeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    activeRef.current?.scrollIntoView?.({ block: "center", inline: "center", behavior: "smooth" });
+    activeRef.current?.scrollIntoView?.({ block: "nearest", inline: "nearest", behavior: "smooth" });
   }, [activeId, file.key]);
 
   return (
