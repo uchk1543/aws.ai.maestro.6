@@ -1,7 +1,7 @@
 // 화면이 부르는 /api 를 모은 곳 (docs/schema.md 약속 2).
 // 주소는 항상 상대 경로다. 화면과 API 가 같은 CloudFront 주소라 CORS 가 필요 없다.
 // npm run dev(모드 mock)에서는 mock.ts 가 docs/examples/ 로 대신 답한다. 빌드에는 들어가지 않는다.
-import type { CreateJobResponse, JobFile, UploadRequestFile, UploadsResponse } from "./types";
+import type { CreateJobResponse, Job, JobFile, UploadRequestFile, UploadsResponse } from "./types";
 
 /** 서버가 2xx 가 아닌 응답을 줬을 때. message 는 서버의 {"error"} 문장이다. */
 export class ApiError extends Error {
@@ -46,6 +46,11 @@ export async function putToS3(url: string, file: Blob, contentType: string): Pro
 /** 올린 파일로 작업을 만든다. job_id 를 바로 돌려받는다. */
 export function createJob(files: JobFile[]): Promise<CreateJobResponse> {
   return request("POST", "/api/jobs", { files });
+}
+
+/** 작업 상태를 받는다. 진행 화면이 2초마다 부른다. */
+export function getJob(jobId: string): Promise<Job> {
+  return request("GET", `/api/jobs/${encodeURIComponent(jobId)}`);
 }
 
 /** 브라우저가 type 을 모르는 파일은 이 값으로 보낸다. */
