@@ -1447,3 +1447,45 @@ def test_documents_filters_by_job_status_grade_rule_and_hs(fakes, lambda_client,
 @pytest.mark.parametrize("filters", [{"job_status": "late"}, {"grade": "높음"}, {"hs": "done"}, {"rule_id": "X" * 41}])
 def test_documents_bad_filter_is_400(fakes, filters):
     assert get_filtered("commercial_invoice", **filters)[0] == 400
+
+
+# ---------------------------------------------------------------------------
+# GET /jobs/{id}/notice 불일치 통지 문서 내려받기 (F9 #155)
+# ---------------------------------------------------------------------------
+def get_notice(job_id, fmt=None):
+    query = {"format": fmt} if fmt is not None else None
+    event = {"requestContext": {"http": {"method": "GET"}}, "rawPath": f"/api/jobs/{job_id}/notice", "queryStringParameters": query}
+    return handler.lambda_handler(event, None)
+
+
+def test_notice_downloads_html_and_md_with_evidence(fakes, lambda_client, classifier):
+    """끝난 기준: 처리한 작업의 불일치 근거 문장이 문서에 그대로 들어 있고, 파일로 내려받는다."""
+    job_id = post_untyped("invoice.pdf", "packing_list.pdf")
+    process(lambda_client)
+    _, job = call("GET", f"/api/jobs/{job_id}")
+    [issue] = [i for i in job["result"]["issues"] if i["grade"] == "불일치"]
+
+    html = get_notice(job_id)
+    md = get_notice(job_id, "md")
+
+    assert html["statusCode"] == 200 and html["headers"]["content-type"].startswith("text/html")
+    assert html["headers"]["content-disposition"] == f'attachment; filename="notice-{job_id}.html"'
+    assert md["headers"]["content-type"].startswith("text/markdown") and md["headers"]["content-disposition"].endswith('.md"')
+    assert issue["rule_id"] in md["body"] and "자동 생성" in md["body"]
+    assert "<html" in html["body"].lower()
+
+
+def test_notice_file_name_uses_bl_number():
+    assert handler._notice_name("[불일치 확인 요청] B/L SOCLSGN26021841 / 송장 QDT/26/0289", "job-0000aaaa", "md") == "notice-SOCLSGN26021841.md"
+    assert handler._notice_name("[불일치 확인 요청] 작업 job-0000aaaa", "job-0000aaaa", "html") == "notice-job-0000aaaa.html"
+
+
+def test_notice_running_job_is_409(fakes, lambda_client, classifier):
+    job_id = post_untyped("invoice.pdf")  # 처리 Lambda를 아직 돌리지 않았다 (queued)
+    res = get_notice(job_id)
+    assert res["statusCode"] == 409
+
+
+@pytest.mark.parametrize(("job_id", "fmt", "status"), [("job-00000000", None, 404), ("nope", None, 404), ("job-00000000", "pdf", 400)])
+def test_notice_bad_requests(fakes, job_id, fmt, status):
+    assert get_notice(job_id, fmt)["statusCode"] == status
