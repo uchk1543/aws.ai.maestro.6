@@ -44,8 +44,8 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 
 서류 보기 (`GET /api/jobs/{id}/files`, F7 #156. 모양은 `tools/models.py`의 `JobFilesResponse`)
 - 서류마다 `url`(원본, 미리 서명된 GET 300초, inline), `content_type`. 화면은 PDF는 iframe, 이미지는 img로 띄운다
-- `pages`: 이미지 서류만 원본 한 장과 크기(px). PDF는 쪽 그림을 만들지 않아 빈 목록
-- `marks`: 칸 위치(bbox). OCR 좌표가 없어 지금은 늘 빈 목록 (Textract B4 뒤)
+- `pages`: 이미지 서류는 원본 한 장과 크기(px). PDF는 처리 Lambda가 그려 둔 쪽 그림(JPEG, 150dpi, 앞 5쪽, `uploads/<원본 키>.pN.jpg`). 그리지 못한 PDF는 빈 목록 (F10 #188)
+- `marks`: 서류 위 표시와 위치(bbox, 쪽 그림에 대한 0~1 비율). 처리 Lambda가 서류마다 매번 Textract OCR을 돌려 저장하고(작업 줄의 `ocr` 칸), 코드가 OCR 글자 줄에서 분류 근거의 제목(`title`)·특징 칸(`feature`)과 읽은 칸의 raw(`field`)를 찾는다. 못 찾은 것은 넣지 않는다. OCR이나 쪽 그림이 없으면 빈 목록 (F10 #188)
 - `fields[]`: 읽은 칸 `{field, label, raw, value, unit, unreadable}`. `field`는 `IssueCell.field`와 같은 이름이라 `issues[].cells`의 `doc`+`field`로 불일치 칸을 바로 짚는다. 읽지 않은 서류는 빈 목록
 - 분류 전(queued·running)인 서류는 빼고, 종류·근거는 문서 분류 내역과 같은 규칙
 

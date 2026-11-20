@@ -504,7 +504,7 @@ MarkKind = Literal["title", "feature", "field"]
 
 
 class DocPage(_Strict):
-    """서류 한 쪽의 그림. 지금은 이미지 서류만 원본 한 장을 준다 (PDF는 쪽 그림을 만들지 않는다)."""
+    """서류 한 쪽의 그림. 이미지 서류는 원본 한 장, PDF는 처리 Lambda가 그려 둔 쪽 그림 (F10 #188)."""
 
     url: str = Field(description="그림 주소 (미리 서명된 GET, 몇 분 뒤 만료)")
     width: int = Field(description="가로 px")
@@ -512,7 +512,7 @@ class DocPage(_Strict):
 
 
 class DocMark(_Strict):
-    """서류 위 표시. 위치(bbox)는 OCR 좌표가 있어야 해서 지금은 비어 있다 (Textract B4 뒤)."""
+    """서류 위 표시. 위치(bbox)는 처리 Lambda가 저장한 Textract OCR 글자 줄에서 코드가 찾는다 (F10 #188)."""
 
     kind: MarkKind = Field(description="title 제목 · feature 분류 특징 칸 · field 읽은 칸")
     label: str = Field(description="보일 이름")
@@ -544,7 +544,7 @@ class JobFileView(_Strict):
     url: str = Field(description="원본 파일 주소 (미리 서명된 GET, 몇 분 뒤 만료). PDF는 iframe, 이미지는 img로 띄운다")
     content_type: str = Field(description="원본 형식. 예: 'application/pdf', 'image/png'")
     pages: list[DocPage] = Field(default_factory=list, description="쪽 그림. 이미지 서류만 한 장, PDF는 빈 목록")
-    marks: list[DocMark] = Field(default_factory=list, description="서류 위 표시. 지금은 늘 빈 목록")
+    marks: list[DocMark] = Field(default_factory=list, description="서류 위 표시. OCR이나 쪽 그림이 없으면 빈 목록")
     fields: list[ReadField] = Field(default_factory=list, description="읽은 칸. 읽지 않은 서류는 빈 목록")
 
 
