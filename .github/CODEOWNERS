@@ -36,6 +36,8 @@
 /docs/presentation/     @uchk1543 @nnhhlee
 
 # 공용 약속과 팀 규칙 (가장 우선)
+/tests/unit/test_contracts.py  @uchk1543 @nnhhlee
+/tests/unit/fakes.py           @uchk1543 @nnhhlee
 /.kiro/                 @uchk1543 @nnhhlee
 /docs/schema.md         @uchk1543 @nnhhlee
 /docs/examples/         @uchk1543 @nnhhlee

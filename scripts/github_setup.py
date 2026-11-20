@@ -42,7 +42,7 @@ EXTRA_LABELS = {
 }
 COLUMNS = ["id", "title", "role", "phase", "depends", "files", "done"]
 # 공용 파일 (team.md 협업, CODEOWNERS 공용 칸과 같다)
-SHARED = (".kiro/", "docs/schema.md", "docs/examples/", "tools/models.py", "pyproject.toml", "uv.lock", ".github/", "TEAM.md")
+SHARED = (".kiro/", "docs/schema.md", "docs/examples/", "tools/models.py", "pyproject.toml", "uv.lock", ".github/", "TEAM.md", "tests/unit/test_contracts.py", "tests/unit/fakes.py")
 
 
 # ---------------------------------------------------------------------------

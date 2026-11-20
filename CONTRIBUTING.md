@@ -60,9 +60,25 @@ git fetch && git merge origin/main
 | `api/`, `tools/ocr.py`, `tools/wms.py` | 4번 서버 |
 | `infra/` | PM (리소스 생성·배포 실행은 PM만. 4번은 PR로 고칠 수 있다) |
 | `data/seed/`, `docs/presentation/` | 5번 발표 |
-| `.kiro/`, `docs/schema.md`, `docs/examples/`, `tools/models.py`, `pyproject.toml`, `uv.lock`, `.github/`, `TEAM.md` | 공용 (PM 또는 대리 승인) |
+| `.kiro/`, `docs/schema.md`, `docs/examples/`, `tools/models.py`, `pyproject.toml`, `uv.lock`, `.github/`, `TEAM.md`, `tests/unit/test_contracts.py`, `tests/unit/fakes.py` | 공용 (PM 또는 대리 승인) |
 
 이 표는 `.github/CODEOWNERS`와 같다. 남의 파일을 고쳐야 하면 직접 고치지 말고 담당자에게 요청한다.
+`tests/unit/`의 나머지 테스트 파일은 그 테스트가 검사하는 코드의 담당이 고친다 (예: `test_validate.py`는 2번).
+
+## 공용 파일 바꾸는 순서
+공용 파일은 모두가 기대는 약속이다. 둘이 동시에 고치면 충돌이 나고, 한 사람이 바꾸면 다른 사람 코드가 깨질 수 있다. 그래서 한 번에 하나씩, PM이 순서를 정해 합친다.
+
+1. **이슈부터**: 이슈 템플릿 "작업"으로 만들고 라벨 `공용 파일`을 붙인다. 무엇을, 왜 바꾸는지, 영향받는 담당이 누구인지 적는다.
+   예: "ExtractedDocument에 B/L 칸 bl_no·vessel 추가. 영향: 2번(대조 규칙), 3번(화면)".
+2. **PM이 순서를 정한다**: 같은 공용 파일을 고치는 이슈가 둘 이상이면 한 번에 하나만 진행한다. 다음 사람은 앞의 PR이 합쳐진 뒤 최신 main에서 시작한다.
+3. **브랜치·PR**: `chore/<이슈번호>-<짧은-이름>`. 영향받는 쪽 코드와 테스트도 같은 PR에서 함께 고친다. 남의 담당 파일을 고치면 그 담당자가 리뷰한다(CODEOWNERS가 자동 요청).
+4. **합친 뒤 공지**: PM이 단톡에 "공용 파일 변경 합쳐짐, 각자 브랜치에서 `git merge origin/main`"을 알린다.
+
+파일별 주의
+- **`tools/models.py`, `docs/schema.md`, `docs/examples/`**: 셋을 같은 PR에서 함께 고친다. 예시와 모델이 어긋나면 CI(`test_examples.py`)가 실패한다.
+- **`tests/unit/test_contracts.py`(담당 사이 연결 약속)**: 담당끼리 부르는 함수의 이름·받는 것·반환이 여기 고정되어 있다. 약속된 인자를 바꾸거나 빼면 CI가 실패하고 메시지에 담당과 순서가 나온다. 끝에 키워드 전용 인자를 기본값과 함께 더하는 것은 이슈 없이 해도 된다.
+- **`pyproject.toml`, `uv.lock`(의존성)**: `uv add <패키지>`만 쓴다. `uv.lock`이 충돌하면 손으로 고치지 말고 최신 main을 합친 뒤 `uv lock`으로 다시 만든다.
+- **`.kiro/steering/`**: 모든 사람의 Kiro 동작이 바뀐다. 합친 뒤 공지에 무엇이 바뀌었는지 한 줄로 적는다.
 ## 합치는 시각
 15 · 18 · 23 · 03 · 07시. 각자 그 전에 PR을 올리고, PM이 공용 파일 관련 PR부터 하나씩 합친 뒤 main이 도는지 확인해 단톡에 알린다. 그다음 PM이 main으로 배포하고, 전원 `git pull`.
 토요일 09시 기능 동결 뒤에는 데모에 나오는 버그 수정만 합친다. 데모 전 정상 커밋에 `git tag demo-v1 && git push --tags`.

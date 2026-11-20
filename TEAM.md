@@ -133,7 +133,7 @@ PM이 올린 PR은 예외로, PM이 승인 없이 스스로 합친다 (보호 �
 | 바뀐 파일 | 승인할 수 있는 사람 |
 |---|---|
 | 자기 담당 파일 | 그 담당자, PM, 대리 승인자 (작성자 제외) |
-| 공용 파일 (`.kiro/`, `docs/schema.md`, `docs/examples/`, `tools/models.py`, `pyproject.toml`, `uv.lock`, `.github/`, `TEAM.md`) | PM, 대리 승인자. 바꾸면 단톡 공지 |
+| 공용 파일 (`.kiro/`, `docs/schema.md`, `docs/examples/`, `tools/models.py`, `pyproject.toml`, `uv.lock`, `.github/`, `TEAM.md`, `tests/unit/test_contracts.py`, `tests/unit/fakes.py`) | PM, 대리 승인자. 바꾸는 순서는 CONTRIBUTING.md "공용 파일 바꾸는 순서" |
 | `api/`, `tools/ocr.py`, `tools/wms.py` | 4번, PM. 합친 뒤 PM이 배포 |
 | `infra/` | PM, 4번. 합친 뒤 PM이 실행 |
 
