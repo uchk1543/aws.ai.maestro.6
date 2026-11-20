@@ -332,19 +332,22 @@ def push_to_wms(record: WmsRecord, *, adapter: WmsAdapter) -> WmsState:
     return WmsState(status="등록됨", by=record.by, wms_id=wms_id)
 
 
-def approve(result: JobResult, by: WmsBy = "human") -> None:
+def approve(result: JobResult, by: WmsBy = "human", override_reason: str | None = None) -> None:
     """사람 승인 전 검사 (agent-design.md 8번 예외).
 
     언제: POST /jobs/{id}/approve에서 make_record·push_to_wms를 부르기 전.
-    받는 것: result(문제 목록), by(승인 경로. 지금은 human만 부른다).
+    받는 것: result(문제 목록), by(승인 경로. 지금은 human만 부른다),
+      override_reason(불일치를 판독 오류로 보고 넘길 때 검수자가 적은 사유. 없으면 None).
     반환: 없음. 확인 필요·참고만 남았으면 통과한다 (사람이 보고 승인했으므로).
-    실패: 불일치가 하나라도 남았으면 ApprovalRefused. 승인해도 등록하지 않고, 서류를 고쳐 다시 올려야 한다.
+      불일치가 남았어도 사유가 있으면 통과한다. 검수자가 원본을 보고 판독 오류로 판단한 것이다.
+    실패: 불일치가 남았는데 사유가 없으면 ApprovalRefused. 서류를 고쳐 다시 올리거나, 판독 오류면 사유를 적어 승인한다.
     """
     left = [i for i in result.issues if i.grade == "불일치"]
-    if left:
+    if left and not (override_reason or "").strip():
         rules = ", ".join(dict.fromkeys(i.rule_id for i in left))
         raise ApprovalRefused(
-            f"불일치 {len(left)}건({rules})이 남아 있어 WMS에 등록할 수 없습니다. 서류를 고쳐 다시 올려 주세요"
+            f"불일치 {len(left)}건({rules})이 남아 있어 WMS에 등록할 수 없습니다. "
+            "서류를 고쳐 다시 올리거나, 원본을 확인해 판독 오류면 사유를 적고 승인해 주세요"
         )
 
 
@@ -354,7 +357,7 @@ def next_action(job: Job) -> NextAction:
     언제: GET /jobs/{id}가 응답하기 직전. 저장하지 않는다 (결과가 바뀌면 다음 조회 때 다시 정한다).
     받는 것: job(상태, 결과의 문제 목록·HS·WMS).
     반환: NextAction. 승인 대기는 등록 규칙(approve·can_auto_register)과 같은 순서로 가른다.
-      1. 불일치가 남음 → fix_docs (승인해도 409. 서류를 고쳐 다시 올려야 한다)
+      1. 불일치가 남음 → fix_docs (서류를 고쳐 다시 올리거나, 판독 오류면 사유를 적고 승인한다)
       2. HS를 사람이 골라야 하는 품목이 있음 → choose_hs
       3. 그 밖(확인 필요가 남음, 또는 사람 승인만 남음) → approve
       끝남이면 WMS 등록 여부로 none, 실패면 reupload, 대기·처리 중이면 wait.
@@ -372,7 +375,7 @@ def next_action(job: Job) -> NextAction:
     if mismatch:
         return NextAction(
             kind="fix_docs",
-            message=f"불일치 {len(mismatch)}건: 서류를 고쳐 다시 올려야 등록할 수 있습니다",
+            message=f"불일치 {len(mismatch)}건: 서류를 고쳐 다시 올리거나, 원본을 확인해 판독 오류면 사유를 적고 승인하세요",
             count=len(mismatch),
         )
     pending = [r for r in result.hs if r.status == "사람 확인 필요"]

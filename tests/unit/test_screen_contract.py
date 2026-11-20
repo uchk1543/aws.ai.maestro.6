@@ -96,7 +96,7 @@ def test_waiting_approval_job_has_what_the_screen_draws(flow):
     assert job["status"] == "waiting_approval"
     result = job["result"]
     assert [i["grade"] for i in result["issues"]] == ["불일치"], result["issues"]
-    assert result["wms"] == {"status": "승인 대기", "by": None, "wms_id": None, "approver": None, "approved_at": None}  # null이면 화면이 승인 버튼을 못 그린다 (FB01)
+    assert result["wms"] == {"status": "승인 대기", "by": None, "wms_id": None, "approver": None, "approved_at": None, "override_reason": None}  # null이면 화면이 승인 버튼을 못 그린다 (FB01)
     draft = DeclarationDraft.model_validate(result["declaration_draft"])  # null이면 초안 칸이 비어 보인다 (#154)
     assert draft.fields and "total_gross_kg" in draft.blank_fields
     assert [h["status"] for h in result["hs"]] == ["사람 확인 필요"]

@@ -19,9 +19,9 @@ def job(status="waiting_approval", **result) -> Job:
     [
         # 불일치가 남으면 HS 가 남아 있어도 서류부터 (승인해도 409)
         (job(issues=[issue("X-WT-01", "불일치"), issue("X-QTY-01", "확인 필요")], hs=[PENDING]),
-         "fix_docs", "불일치 1건: 서류를 고쳐 다시 올려야 등록할 수 있습니다", 1),
+         "fix_docs", "불일치 1건: 서류를 고쳐 다시 올리거나, 원본을 확인해 판독 오류면 사유를 적고 승인하세요", 1),
         (job(issues=[issue("X-WT-01", "불일치"), issue("CNT-ISO", "불일치")]),
-         "fix_docs", "불일치 2건: 서류를 고쳐 다시 올려야 등록할 수 있습니다", 2),
+         "fix_docs", "불일치 2건: 서류를 고쳐 다시 올리거나, 원본을 확인해 판독 오류면 사유를 적고 승인하세요", 2),
         # 불일치가 없고 고를 HS 가 있으면 HS
         (job(issues=[issue("X-QTY-01", "확인 필요")], hs=[PENDING, PENDING.model_copy(update={"line": 3}), CONFIRMED]),
          "choose_hs", "HS 2개를 고르세요", 2),

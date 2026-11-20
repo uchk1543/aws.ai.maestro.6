@@ -61,6 +61,14 @@ def test_certificate_has_the_reviewer_and_the_results():
     assert "사람승인" in text and "확인필요1건" in text
 
 
+def test_certificate_shows_override_reason_when_mismatch_was_passed():
+    """불일치를 판독 오류로 보고 넘긴 승인은 승인 방식과 예외 사유를 찍는다."""
+    job = registered(issues=[issue(grade="불일치")])
+    job.result.wms.override_reason = "원본 총중량 확인, 판독 오류"
+    text = flat(certificate.make_certificate(job, docs(), importer=IMPORTER))
+    assert "불일치를판독오류로확인" in text and "원본총중량확인,판독오류" in text
+
+
 def test_same_input_gives_same_bytes():
     """만든 시각 대신 저장된 승인 시각을 쓴다. 같은 작업은 언제 받아도 같은 파일이다."""
     assert certificate.make_certificate(registered(), docs(), importer=IMPORTER) == certificate.make_certificate(
