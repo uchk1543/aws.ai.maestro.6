@@ -25,12 +25,12 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { level: 1, name: UPLOAD_HEADING })).toBeInTheDocument();
   });
 
-  it("위에 앱 이름을 적고, 메뉴는 세 개(파일 업로드 · 문서 분류 내역 · AI chat)다", () => {
+  it("위에 앱 이름을 적고, 메뉴는 네 개(파일 업로드 · 문서 분류 내역 · 대시보드 · AI chat)다", () => {
     renderWithQuery(<App />);
 
     expect(screen.getByText(APP_NAME)).toBeInTheDocument();
     const nav = screen.getByRole("navigation", { name: "메뉴" });
-    expect(Array.from(nav.querySelectorAll("button")).map((b) => b.textContent)).toEqual(["파일 업로드", "문서 분류 내역", "AI chat"]);
+    expect(Array.from(nav.querySelectorAll("button")).map((b) => b.textContent)).toEqual(["파일 업로드", "문서 분류 내역", "대시보드", "AI chat"]);
   });
 
   it("메뉴 '문서 분류 내역'은 #/documents 를 연다", async () => {
@@ -50,5 +50,18 @@ describe("App", () => {
     });
     renderWithQuery(<App />);
     expect(screen.getByRole("heading", { level: 1, name: UPLOAD_HEADING })).toBeInTheDocument();
+  });
+
+  it("메뉴 '대시보드'는 #/dashboard 를 열고, 거르기 주소는 문서 분류 내역에 넘긴다", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<App />);
+
+    await user.click(screen.getByRole("button", { name: "대시보드" }));
+    expect(window.location.hash).toBe("#/dashboard");
+    expect(await screen.findByRole("heading", { level: 1, name: "대시보드" })).toBeInTheDocument();
+
+    window.location.hash = "#/documents?grade=불일치";
+    expect(await screen.findByLabelText("거르기")).toHaveTextContent("불일치가 남은 작업");
+    expect(screen.getByRole("button", { name: "문서 분류 내역" })).toHaveAttribute("aria-current", "page");
   });
 });

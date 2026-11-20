@@ -3,30 +3,35 @@
 import type { ReactNode } from "react";
 import { Icon, type IconName } from "./components/Icon";
 import { ChatPage } from "./pages/ChatPage";
+import { DashboardPage } from "./pages/DashboardPage";
 import { DocHistoryPage } from "./pages/DocHistoryPage";
 import { JobPage } from "./pages/JobPage";
 import { UploadPage } from "./pages/UploadPage";
-import { navigate, useHashPath } from "./route";
+import { navigate, splitHash, useHashPath } from "./route";
 
 export const APP_NAME = "통관 서류 검토";
 
-type MenuKey = "upload" | "documents" | "chat";
+type MenuKey = "upload" | "documents" | "dashboard" | "chat";
 
 const MENU: { key: MenuKey; path: string; label: string; icon: IconName }[] = [
   { key: "upload", path: "/upload", label: "파일 업로드", icon: "upload" },
   { key: "documents", path: "/documents", label: "문서 분류 내역", icon: "list" },
+  { key: "dashboard", path: "/dashboard", label: "대시보드", icon: "chart" },
   { key: "chat", path: "/chat", label: "AI chat", icon: "chat" },
 ];
 
-/** 해시 경로 → 보여 줄 화면과 켜 둘 메뉴. 모르는 경로는 첫 화면(업로드)으로 본다. */
-function resolve(path: string): { page: ReactNode; active: MenuKey | null } {
+/** 해시 주소 → 보여 줄 화면과 켜 둘 메뉴. 모르는 경로는 첫 화면(업로드)으로 본다. ?조건은 화면에 넘긴다. */
+function resolve(hash: string): { page: ReactNode; active: MenuKey | null } {
+  const { path, params } = splitHash(hash);
   const job = path.match(/^\/jobs\/([^/]+)$/);
   if (job) {
     const jobId = decodeURIComponent(job[1]);
     return { page: <JobPage key={jobId} jobId={jobId} />, active: null };
   }
-  if (path === "/documents") return { page: <DocHistoryPage />, active: "documents" };
-  if (path === "/chat") return { page: <ChatPage />, active: "chat" };
+  // 조건이 바뀌면 화면을 새로 연다 (대시보드에서 다른 통계를 눌렀을 때)
+  if (path === "/documents") return { page: <DocHistoryPage key={hash} params={params} />, active: "documents" };
+  if (path === "/dashboard") return { page: <DashboardPage />, active: "dashboard" };
+  if (path === "/chat") return { page: <ChatPage key={hash} ask={params.q} />, active: "chat" };
   return { page: <UploadPage />, active: "upload" };
 }
 

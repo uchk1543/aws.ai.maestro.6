@@ -1341,7 +1341,9 @@ table.cells tr.suspect td {
 .viewer-page {
   position: relative;
   width: 100%;
-  margin: 0;
+  /* 쓸 수 있는 높이(--fit-h)가 있으면 한 쪽이 그 높이 안에 다 들어오게 너비를 줄인다 */
+  max-width: calc(var(--fit-h, 100000px) * var(--ar, 1));
+  margin: 0 auto;
   background: #fff;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
@@ -1733,9 +1735,6 @@ table.cells tr.suspect td {
     gap: 24px;
   }
 
-  .doc-card .viewer {
-    max-height: calc(100vh - 220px);
-  }
 }
 
 /* 박스 팝업 (G11): 박스를 누르면 그 자리에 무엇을 읽었는지 작게 보여 준다 */
@@ -1836,4 +1835,746 @@ table.cells tr.suspect td {
 iframe.viewer-original {
   height: 70vh;
   min-height: 420px;
+}
+
+/* 문서 분류 내역 거르기 칩 (대시보드에서 들어올 때) */
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 16px 0 4px;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--ink-2);
+  border-radius: 999px;
+}
+
+.filter-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 10px;
+  font-size: 14px;
+  color: var(--muted);
+  background: none;
+  border: 0;
+}
+
+@media (min-width: 1200px) {
+  .filter-chips {
+    margin-top: 0;
+    margin-bottom: 12px;
+  }
+}
+
+/* ───── 대시보드 (G15) ─────
+   단순 보기(OFF): 회색 칸과 막대만. 화려한 보기(ON, .dash.fx): 부산항 영상 위에 통계가 컨테이너처럼 올라오고,
+   막대가 차오르고, 서류가 위로 떠오른다. 움직임 줄이기 설정이면 처음부터 OFF 이고, ON 이어도 움직임은 멈춘다. */
+.dash-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0 12px;
+}
+
+.dash-top h1 {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.fx-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  background: var(--fill);
+  border: 0;
+  border-radius: 999px;
+}
+
+.fx-knob {
+  position: relative;
+  width: 40px;
+  height: 24px;
+  background: #c9c9c9;
+  border-radius: 999px;
+  transition: background 0.2s;
+}
+
+.fx-knob::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s;
+}
+
+.fx-toggle.on .fx-knob {
+  background: var(--ink-2);
+}
+
+.fx-toggle.on .fx-knob::after {
+  transform: translateX(16px);
+}
+
+/* 부산항 장면 */
+.port-hero {
+  position: relative;
+  height: 240px;
+  margin: 0 calc(var(--gutter) * -1);
+  overflow: hidden;
+  background: #cfd5da;
+}
+
+.port-media {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+
+img.port-media {
+  opacity: 1;
+}
+
+video.port-media.on {
+  opacity: 1;
+}
+
+.port-shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(8, 12, 18, 0.05) 0%, rgba(8, 12, 18, 0.15) 45%, rgba(8, 12, 18, 0.72) 100%);
+}
+
+.port-copy {
+  position: absolute;
+  left: var(--gutter);
+  right: var(--gutter);
+  bottom: 52px;
+  color: #fff;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.35);
+  animation: rise-in 0.9s 0.2s both cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.port-date {
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.port-title {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.port-sub {
+  font-size: 15px;
+  opacity: 0.9;
+}
+
+/* 컨테이너에서 서류가 떠오른다 */
+.port-docs {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.port-doc {
+  position: absolute;
+  bottom: -40px;
+  left: calc(8% + var(--n) * 15%);
+  width: 22px;
+  height: 28px;
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 3px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.18);
+  opacity: 0;
+  animation: doc-float 9s calc(var(--n) * 1.4s + 1.5s) infinite ease-in-out;
+}
+
+.port-doc::before,
+.port-doc::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  height: 2px;
+  background: #b9b9b9;
+  border-radius: 1px;
+}
+
+.port-doc::before {
+  top: 7px;
+}
+
+.port-doc::after {
+  top: 13px;
+  right: 8px;
+}
+
+@keyframes doc-float {
+  0% {
+    opacity: 0;
+    transform: translateY(0) rotate(-8deg) scale(0.8);
+  }
+  12% {
+    opacity: 0.95;
+  }
+  70% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-220px) translateX(18px) rotate(10deg) scale(1);
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* 지금 할 일 타일 */
+.todo-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.todo-tile-wrap:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
+.todo-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  min-height: 112px;
+  padding: 14px 16px;
+  overflow: hidden;
+  text-align: left;
+  background: var(--fill);
+  border: 0;
+  border-radius: 16px;
+}
+
+.todo-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.todo-value {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.todo-value small {
+  margin-left: 2px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.todo-hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.todo-tile.alert {
+  color: #fff;
+  background: var(--red);
+}
+
+.todo-tile.alert .todo-hint {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* 패널 */
+.dash-grid {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.dash-panel {
+  padding: 18px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+}
+
+.dash-panel h2 {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.dash-note {
+  margin: 2px 0 12px;
+  font-size: 13px;
+}
+
+.dash-sub {
+  margin: 22px 0 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.dash-sub .count {
+  color: var(--muted);
+}
+
+.flow,
+.kinds,
+.delayed,
+.rules {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.flow-row {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) 40px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 8px;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: 10px;
+}
+
+.flow-row:hover {
+  background: var(--fill-2);
+}
+
+.flow-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.flow-bar {
+  height: 14px;
+  background: var(--fill);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.flow-fill {
+  display: block;
+  height: 100%;
+  min-width: 4px;
+  background: var(--ink-2);
+  border-radius: 999px;
+  transform-origin: left center;
+}
+
+.kind-row.unknown .flow-fill {
+  background: #9a9a9a;
+}
+
+.flow-count {
+  font-size: 15px;
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.kind-row {
+  grid-template-columns: 96px minmax(0, 1fr) 40px;
+}
+
+.delayed-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 10px 12px;
+  background: var(--fill-2);
+  border-radius: 12px;
+}
+
+.delayed-main {
+  display: flex;
+  flex: 1 1 160px;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.delayed-main .hint {
+  font-size: 13px;
+}
+
+.delayed-days {
+  font-weight: 700;
+  color: var(--red);
+  font-variant-numeric: tabular-nums;
+}
+
+.auto-box {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 12px;
+  text-align: left;
+  background: var(--fill-2);
+  border: 0;
+  border-radius: 14px;
+}
+
+.auto-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 15px;
+}
+
+.auto-text .hint {
+  font-size: 13px;
+}
+
+.auto-text .auto-link-note {
+  font-size: 12px;
+  color: #8a8f98;
+}
+
+.ring {
+  flex: none;
+  width: 84px;
+  height: 84px;
+  transform: rotate(-90deg);
+}
+
+.ring-back,
+.ring-fill {
+  fill: none;
+  stroke-width: 10;
+}
+
+.ring-back {
+  stroke: #e3e3e3;
+}
+
+.ring-fill {
+  stroke: var(--ink-2);
+  stroke-linecap: round;
+  stroke-dashoffset: var(--off);
+}
+
+.ring-text {
+  font-size: 20px;
+  font-weight: 700;
+  fill: var(--ink);
+  transform: rotate(90deg);
+  transform-origin: 50px 50px;
+}
+
+.rule-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  text-align: left;
+  background: var(--fill-2);
+  border: 0;
+  border-radius: 12px;
+}
+
+.rule-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 14px;
+}
+
+.rule-main .hint {
+  font-size: 13px;
+}
+
+.rule-count {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.dash-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 14px 0 8px;
+  font-size: 13px;
+}
+
+/* 화려한 보기: 타일은 부산항 장면 위로 반쯤 걸쳐, 크레인이 컨테이너를 들어 올리듯 올라온다 */
+.dash.fx .todo-tiles {
+  position: relative;
+  z-index: 2;
+  margin-top: -36px;
+}
+
+.dash.fx .todo-tile {
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(10, 20, 30, 0.14);
+  animation: lift 0.9s calc(0.25s + var(--i, 0) * 0.12s) both cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 컨테이너 골판 무늬 (위쪽 띠) */
+.dash.fx .todo-tile::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  background: repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.16) 0 2px, transparent 2px 8px);
+}
+
+.dash.fx .todo-tile.alert {
+  background: var(--red);
+}
+
+@keyframes lift {
+  0% {
+    opacity: 0;
+    transform: translateY(56px) rotate(-1.2deg);
+  }
+  55% {
+    opacity: 1;
+    transform: translateY(-8px) rotate(0.5deg);
+  }
+  78% {
+    transform: translateY(2px) rotate(-0.2deg);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+.dash.fx .flow-fill {
+  animation: grow 1s calc(0.6s + var(--i, 0) * 0.08s) both cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dash.fx .ring-fill {
+  animation: ring-fill 1.2s 0.6s both cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dash.fx .dash-panel {
+  animation: rise-in 0.8s 0.5s both cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.delayed-days.pulse {
+  animation: pulse 2.4s 1.5s infinite ease-in-out;
+}
+
+@keyframes grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes ring-fill {
+  from {
+    stroke-dashoffset: var(--len);
+  }
+  to {
+    stroke-dashoffset: var(--off);
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dash.fx *,
+  .dash.fx *::before,
+  .dash.fx *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .port-doc {
+    display: none;
+  }
+}
+
+@media (min-width: 768px) {
+  .port-hero {
+    height: 340px;
+    margin: 0;
+    border-radius: 22px;
+  }
+
+  .port-copy {
+    left: 32px;
+    bottom: 64px;
+  }
+
+  .port-title {
+    font-size: 34px;
+  }
+
+  .todo-tiles {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .todo-tile-wrap:last-child:nth-child(odd) {
+    grid-column: auto;
+  }
+
+  .dash.fx .todo-tiles {
+    margin: -44px 16px 0;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1199px) {
+  .dash {
+    max-width: 760px;
+    margin: 0 auto;
+
+/* 문서 분류 내역: 스크롤하지 않아도 서류 한 쪽이 한 화면에 다 들어오게 (화면 높이에서 머리·메뉴 높이를 뺀 만큼) */
+.doc-card {
+  --fit-h: calc(100vh - 430px);
+  --fit-h: calc(100dvh - 430px);
+}
+
+.doc-card .viewer {
+  max-height: calc(var(--fit-h) + 24px);
+  padding: 12px;
+}
+
+@media (max-width: 767px) {
+  /* 모바일은 머리말 설명을 줄여 서류 자리를 넓힌다 */
+  .dochist .lead {
+    display: none;
+  }
+
+  .doc-card {
+    --fit-h: max(260px, calc(100dvh - 330px));
+  }
+
+  .doc-card-head {
+    margin-bottom: 10px;
+  }
+
+  .doc-card-tip {
+    margin: 0 0 8px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .dash {
+    max-width: 1240px;
+    margin: 0 auto;
+  }
+
+  .dash-top h1 {
+    font-size: 28px;
+  }
+
+  .port-hero {
+    height: 420px;
+  }
+
+  .port-copy {
+    left: 44px;
+    bottom: 84px;
+  }
+
+  .port-title {
+    font-size: 42px;
+  }
+
+  .todo-tiles {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .dash.fx .todo-tiles {
+    margin: -60px 28px 0;
+  }
+
+  .todo-tile {
+    min-height: 132px;
+    padding: 18px 20px;
+  }
+
+  .todo-value {
+    font-size: 40px;
+  }
+
+  .dash-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 16px;
+    margin-top: 16px;
+  }
+
+  .dash-panel {
+    padding: 24px;
+
+  .doc-card {
+    --fit-h: calc(100vh - 350px);
+    --fit-h: calc(100dvh - 350px);
+  }
+
+  /* 오른쪽 인식 결과가 길면 그 칸 안에서만 스크롤한다 (카드 전체는 한 화면) */
+  .doc-card-info {
+    max-height: calc(var(--fit-h) + 24px);
+    overflow-y: auto;
+    padding-right: 4px;
+  }
 }
