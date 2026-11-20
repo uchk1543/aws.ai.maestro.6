@@ -42,10 +42,12 @@ from tools.models import (
     Job,
     JobFilesResponse,
     JobFileView,
+    OcrResult,
     ReadField,
     Step,
     WmsState,
 )
+from tools.ocr import locate_marks
 from tools.query import dynamo_shipments
 
 ALLOWED_DOC_TYPES = {"commercial_invoice", "packing_list", "bill_of_lading", "certificate_of_origin"}  # 약속 1의 4종 (#129)
@@ -101,6 +103,12 @@ def fetch_object(key: str) -> bytes:
     """DOCS_BUCKET에서 파일을 받는다."""
     print(f"[tool] s3_get key={key}")
     return _s3().get_object(Bucket=os.environ["DOCS_BUCKET"], Key=key)["Body"].read()
+
+
+def store_object(key: str, data: bytes, content_type: str) -> None:
+    """DOCS_BUCKET에 파일을 쓴다. 처리 Lambda가 PDF 쪽 그림(uploads/…pN.jpg)을 둘 때 쓴다 (F10 #188). 권한: uploads/* PutObject."""
+    print(f"[tool] s3_put key={key} bytes={len(data)}")
+    _s3().put_object(Bucket=os.environ["DOCS_BUCKET"], Key=key, Body=data, ContentType=content_type)
 
 
 def presign_upload(key: str, content_type: str) -> str:
@@ -726,7 +734,8 @@ def job_files(job_id: str) -> dict:
     """GET /jobs/{id}/files. 작업에 올라온 서류마다 원본 주소와 읽은 칸을 준다 (F7 #156). 모델 호출 없음.
 
     반환: 200 JobFilesResponse (올린 순서, 아직 분류 전 서류는 뺀다) / 404 없는 작업.
-    PDF는 쪽 그림을 만들지 않고(pages 빈 목록) 원본 주소를 iframe으로 띄운다. marks(칸 위치)는 OCR 좌표가 생기기 전까지 빈 목록.
+    PDF는 처리 Lambda가 그려 둔 쪽 그림(pages 칸)이 있으면 그것을, 없으면 빈 목록(원본을 iframe으로)을 준다 (F10 #188).
+    marks(칸 위치)는 처리 Lambda가 저장한 OCR(ocr 칸)에서 분류 근거·읽은 칸의 글자를 찾아 채운다. OCR이 없으면 빈 목록.
     """
     if not JOB_ID.match(job_id):
         return _error(404, "작업을 찾을 수 없습니다")
@@ -734,16 +743,26 @@ def job_files(job_id: str) -> dict:
     if item is None:
         return _error(404, "작업을 찾을 수 없습니다")
     docs = {d.file: d for d in (_DOCS.validate_json(item["docs"]) if item.get("docs") else [])}
+    ocr = json.loads(item["ocr"]) if item.get("ocr") else {}
+    rendered = json.loads(item["pages"]) if item.get("pages") else {}
     views = []
     for rec in job_documents(item):
         content_type = UPLOAD_TYPES.get(os.path.splitext(rec.key)[1].lower(), UNKNOWN_TYPE)
         url = presign_view(rec.key, content_type)
         size = image_size(rec.key) if content_type.startswith("image/") else None
+        if size:
+            pages = [DocPage(url=url, width=size[0], height=size[1])]
+        else:  # PDF: 처리 Lambda가 그려 둔 쪽 그림 (F10)
+            pages = [
+                DocPage(url=presign_view(p["key"], "image/jpeg"), width=p["width"], height=p["height"])
+                for p in rendered.get(rec.key, [])
+            ]
+        fields = read_fields(docs.get(rec.key))
+        # 칸 위치는 그림 위에 그리므로 쪽 그림이 있을 때만 준다
+        marks = locate_marks(fields, OcrResult.model_validate(ocr[rec.key]), rec.reason) if rec.key in ocr and pages else []
         views.append(JobFileView(
             key=rec.key, file_name=rec.file_name, doc_type=rec.doc_type, classified_by=rec.classified_by,
-            reason=rec.reason, url=url, content_type=content_type,
-            pages=[DocPage(url=url, width=size[0], height=size[1])] if size else [],
-            fields=read_fields(docs.get(rec.key)),
+            reason=rec.reason, url=url, content_type=content_type, pages=pages, marks=marks, fields=fields,
         ))
     print(f"[api] job_files job={job_id} files={len(views)}")
     return _response(200, JobFilesResponse(files=views).model_dump(mode="json"))

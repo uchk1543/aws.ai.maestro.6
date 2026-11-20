@@ -7,6 +7,9 @@ API Lambda(api/handler.py의 POST /jobs)가 작업을 queued로 저장한 뒤 �
             HS는 recommend_hs(C1·C2)로 품목마다 추천한다 (모델 없이 품명 검색, 확정 이력은 team06-hs-history).
             마지막 저장 때 읽은 서류(docs)와 수입자(importer)를 같은 줄에 넣는다. HS 선택(C3)·승인(D3)이 읽는다 (#122).
             waiting_approval·done이면 마지막 저장 직전에 화물 기록(team06-shipments)에 한 줄을 쓴다 (E3, #31).
+            서류마다 Textract OCR을 매번 돌린다 (F10 #188). run_job과 동시에 돌리고, 다시 확인(reread_field)의 두 번째 근거로
+            넘긴다. PDF는 쪽 그림(JPEG)을 그려 S3(uploads/…)에 두고 그 그림을 OCR 한다. OCR 결과(ocr 칸)와 쪽 그림 목록(pages 칸)은
+            같은 줄에 저장해 서류 보기(GET /jobs/{id}/files)의 쪽 그림·칸 위치에 쓴다.
 제한 시간 300초. 환경 변수: JOBS_TABLE, DOCS_BUCKET, MODEL_ID, HS_HISTORY_TABLE, SHIPMENTS_TABLE (도구에 따라 WMS_TABLE)
 
 비동기 호출은 함수가 오류·시간 초과로 끝나면 Lambda가 같은 이벤트를 다시 보낸다. 그래서 저장된 상태를 보고 한 번만 처리한다.
@@ -15,15 +18,21 @@ API Lambda(api/handler.py의 POST /jobs)가 작업을 queued로 저장한 뒤 �
     그 밖    → 이미 끝난 작업이다. 아무것도 하지 않는다
 """
 
+import json
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from functools import cache
 
 from api import handler
 from tools import hs, report
-from tools.models import ExtractedDocument, HSResult, Job, Step
+from tools.models import ExtractedDocument, HSResult, Job, OcrResult, RereadResult, Step
+from tools.ocr import is_pdf, ocr_document, render_pages
 from tools.query import dynamo_shipments
+from tools.reread import reread_field
 
 INTERRUPTED = "처리가 중간에 멈췄습니다 (시간 초과 등). 서류를 다시 올려 주세요"
+OCR_WORKERS = 4  # 서류 OCR 을 동시에 몇 장까지
+OCR_MAX_LINES = 600  # 서류 한 장에 저장할 OCR 줄 수 상한 (DynamoDB 한 줄 400KB)
 
 
 def _save(job: Job, item: dict) -> None:
@@ -94,6 +103,67 @@ def _docs_columns(docs: list[ExtractedDocument]) -> dict:
     return columns
 
 
+def page_key(key: str, number: int) -> str:
+    """PDF 쪽 그림을 둘 S3 키. 원본 옆 uploads/ 아래 (처리 Lambda 권한이 uploads/* 쓰기까지다)."""
+    return f"{key}.p{number}.jpg"
+
+
+def ocr_one(key: str) -> tuple[OcrResult | None, list[dict]]:
+    """서류 한 장: PDF면 쪽 그림을 그려 S3 에 두고, 그 그림(이미지는 원본)을 Textract 로 OCR 한다 (F10 #188).
+
+    반환: (OcrResult 또는 실패면 None, 쪽 그림 목록 [{"key", "width", "height"}]). 예외를 내지 않는다 (그 서류만 OCR 없이 진행).
+    """
+    pages: list[dict] = []
+    try:
+        data = handler.fetch_object(key)
+        images = None
+        if is_pdf(key):
+            rendered = render_pages(data)
+            for number, page in enumerate(rendered, start=1):
+                handler.store_object(page_key(key, number), page.data, "image/jpeg")
+                pages.append({"key": page_key(key, number), "width": page.width, "height": page.height})
+            images = [p.data for p in rendered]
+        return ocr_document(key, data, pages=images), pages
+    except Exception as exc:  # 깨진 PDF·크기·권한·타임아웃. 작업은 계속한다
+        print(f"[warn] ocr key={key} {type(exc).__name__}: {exc}")
+        return None, pages
+
+
+def ocr_files(keys: list[str]) -> dict[str, tuple[OcrResult | None, list[dict]]]:
+    """서류마다 ocr_one 을 동시에 돌린다. 처리를 시작하자마자 run_job 과 동시에 부른다. 반환: S3 키 → (OCR, 쪽 그림)."""
+    with ThreadPoolExecutor(max_workers=OCR_WORKERS) as pool:
+        return dict(zip(keys, pool.map(ocr_one, keys)))
+
+
+def _ocr_step(results: dict[str, tuple[OcrResult | None, list[dict]]]) -> Step:
+    done = [r for r, _ in results.values() if r is not None]
+    lines = sum(len(r.lines) for r in done)
+    return Step(tool="ocr_document", summary=f"Textract OCR {len(done)}/{len(results)}장, 글자 줄 {lines}개", ok=len(done) == len(results))
+
+
+def _ocr_columns(results: dict[str, tuple[OcrResult | None, list[dict]]]) -> dict:
+    """마지막 저장 때 같은 줄에 더할 칸: ocr(S3 키 → OcrResult, 줄 수 상한), pages(S3 키 → PDF 쪽 그림 목록)."""
+    ocr = {
+        key: res.model_copy(update={"lines": res.lines[:OCR_MAX_LINES], "tables": []}).model_dump(mode="json")
+        for key, (res, _) in results.items() if res is not None
+    }
+    pages = {key: p for key, (_, p) in results.items() if p}
+    columns = {}
+    if ocr:
+        columns["ocr"] = json.dumps(ocr, ensure_ascii=False)
+    if pages:
+        columns["pages"] = json.dumps(pages)
+    return columns
+
+
+def _rereader_with(ocr_future: Future):
+    """다시 확인에 그 서류의 OCR 을 넘긴다 (agent-design.md 4번: 스캔본·사진은 Textract 글자와 대조). OCR 이 끝날 때까지 기다린다."""
+    def rereader(doc: ExtractedDocument, field: str, data: bytes) -> RereadResult:
+        res, _ = ocr_future.result().get(doc.file, (None, []))
+        return reread_field(doc, field, data, ocr=res)
+    return rereader
+
+
 def _record_shipment(job_id: str, docs: list[ExtractedDocument]) -> Step:
     """작업이 끝나면 화물 기록에 한 줄을 쓰고 그 단계 한 줄을 돌려준다 (E3, tools/report.record_shipment).
 
@@ -154,17 +224,22 @@ def lambda_handler(event, context):
         _save(progress, item)
 
     started = time.perf_counter()
-    try:
-        result = run_job(
-            job_id, files, handler.fetch_object, on_step=on_step, hs_recommender=recommend_line, on_docs=read.extend
-        )
-    except Exception as exc:  # 예상 못 한 오류도 작업 상태로 남긴다 (Lambda가 다시 돌리지 않게 여기서 끝낸다)
-        print(f"[error] worker job={job_id} {type(exc).__name__}: {exc}")
-        result = Job(job_id=job_id, status="failed", steps=latest.steps, error=f"{type(exc).__name__}: {exc}")
+    with ThreadPoolExecutor(max_workers=1) as background:
+        ocr_future = background.submit(ocr_files, [f["key"] for f in files])  # run_job 과 동시에 돈다 (F10 #188)
+        try:
+            result = run_job(
+                job_id, files, handler.fetch_object, on_step=on_step, hs_recommender=recommend_line, on_docs=read.extend,
+                rereader=_rereader_with(ocr_future),
+            )
+        except Exception as exc:  # 예상 못 한 오류도 작업 상태로 남긴다 (Lambda가 다시 돌리지 않게 여기서 끝낸다)
+            print(f"[error] worker job={job_id} {type(exc).__name__}: {exc}")
+            result = Job(job_id=job_id, status="failed", steps=latest.steps, error=f"{type(exc).__name__}: {exc}")
+        ocr = ocr_future.result()
+    result.steps.append(_ocr_step(ocr))
     print(f"[job] {job_id} status={result.status} {time.perf_counter() - started:.1f}초")
     if result.status in ("waiting_approval", "done") and read:  # 실패한 작업은 화물 기록을 쓰지 않는다
         result.steps.append(_record_shipment(job_id, read))
-    columns = _docs_columns(read)
+    columns = {**_docs_columns(read), **_ocr_columns(ocr)}
     print(f"[worker] job={job_id} 서류 기록 docs={len(read)} importer={'있음' if 'importer' in columns else '없음'}")
     _save(result, {**item, **columns})
     return {"job_id": job_id, "status": result.status}

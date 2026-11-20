@@ -20,8 +20,9 @@ import tools.wms as wms
 from tests.unit.fakes import MemoryHSHistory, MemoryWms
 from tests.unit.test_report_shipment import TODAY, MemoryWriter
 from tools.models import (
-    Cell, DeclarationDraft, DeclarationField, ExtractedDocument, Issue, Job, RawDocument, Shipment, WmsState,
+    Cell, DeclarationDraft, DeclarationField, ExtractedDocument, Issue, Job, OcrLine, OcrResult, RawDocument, Shipment, WmsState,
 )
+from tools.ocr import PageImage
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "docs" / "examples"
 
@@ -36,6 +37,35 @@ def shipments(monkeypatch):
     return store
 
 TOTALS = {"invoice.pdf": "6,250.00 KGS", "packing_list.pdf": "6,520.00 KGS", "pl_ok.pdf": "6,250 KG"}
+OCR_TOTALS = TOTALS
+
+@pytest.fixture(autouse=True)
+def ocr(monkeypatch):
+    """Textract·PDF 그리기·S3 쓰기 대신 (F10 #188). PDF는 한 쪽 그림(가짜)을 만들고, OCR 은 서류마다 줄을 돌려준다.
+
+    반환: 부른 기록 {"ocr": [키], "stored": {S3 키: 형식}}.
+    """
+    seen = {"ocr": [], "stored": {}}
+
+    def fake_render(data, *, max_pages=None):
+        return [PageImage(data=b"jpeg-page-1", width=1240, height=1754)]
+
+    def fake_ocr(key, data, *, client=None, pages=None):
+        seen["ocr"].append(key)
+        name = key.rsplit("/", 1)[-1]
+        lines = [
+            OcrLine(page=1, text="COMMERCIAL INVOICE", bbox=(0.25, 0.05, 0.5, 0.04)),
+            OcrLine(page=1, text="Invoice No. INV-2026-001", bbox=(0.1, 0.15, 0.5, 0.02)),
+        ]
+        if name in OCR_TOTALS:
+            lines.append(OcrLine(page=1, text=OCR_TOTALS[name], bbox=(0.8, 0.34, 0.12, 0.02)))
+        return OcrResult(file=key, lines=lines)
+
+    monkeypatch.setattr(worker, "render_pages", fake_render)
+    monkeypatch.setattr(worker, "ocr_document", fake_ocr)
+    monkeypatch.setattr(handler, "store_object", lambda key, data, content_type: seen["stored"].__setitem__(key, content_type))
+    return seen
+
 
 
 class FakeTable:
@@ -190,7 +220,7 @@ def test_post_then_worker_shows_mismatch(fakes, lambda_client):
     # 불일치 칸은 다시 확인한다 (B8): 상업송장·포장명세서 총중량
     # 끝나면 화물 기록 한 줄 (E3). 이 서류에는 선하증권이 없어 쓰지 않았다는 줄이다
     assert [s["tool"] for s in job["steps"]] == [
-        "read_document", "read_document", "cross_check", "reread_field", "reread_field", "record_shipment",
+        "read_document", "read_document", "cross_check", "reread_field", "reread_field", "ocr_document", "record_shipment",
     ]
     assert "B/L 번호가 없어" in job["steps"][-1]["summary"]
     [issue] = job["result"]["issues"]
@@ -1138,7 +1168,10 @@ def test_job_files_give_original_url_and_read_fields(fakes, lambda_client, class
     assert [f.file_name for f in res.files] == ["invoice.pdf", "packing_list.pdf"]
     inv = res.files[0]
     assert (inv.doc_type, inv.classified_by, inv.content_type) == ("commercial_invoice", "model", "application/pdf")
-    assert inv.url.startswith("https://s3.test/uploads/s1/invoice.pdf") and inv.pages == [] and inv.marks == []
+    assert inv.url.startswith("https://s3.test/uploads/s1/invoice.pdf")
+    # PDF 는 처리 Lambda가 그려 둔 쪽 그림(F10 #188)과, OCR 에서 찾은 칸 위치가 있다
+    assert [(p.width, p.height) for p in inv.pages] == [(1240, 1754)] and inv.pages[0].url.startswith("https://s3.test/uploads/s1/invoice.pdf.p1.jpg")
+    assert {m.field for m in inv.marks if m.kind == "field"} == {"doc_no", "total_gross_kg"}
     fields = {f.field: f for f in inv.fields}
     assert fields["total_gross_kg"].raw == "6,250.00 KGS" and fields["total_gross_kg"].label == "총중량"
     assert fields["doc_no"].raw == "INV-2026-001"
@@ -1192,3 +1225,37 @@ def test_presign_view_is_regional_get_with_inline(monkeypatch):
     assert parts.netloc == "team06-docs-test.s3.ap-northeast-2.amazonaws.com"
     assert query["response-content-type"] == ["application/pdf"] and query["response-content-disposition"] == ["inline"]
     assert query["X-Amz-Expires"] == [str(handler.VIEW_SECONDS)]
+
+
+
+# ---------------------------------------------------------------------------
+# GET /jobs/{id}/files 의 쪽 그림·칸 위치 (F10 #188). OCR 은 위 ocr 픽스처가 가짜로 준다
+# ---------------------------------------------------------------------------
+def test_files_marks_and_pdf_pages_after_real_run(fakes, lambda_client, classifier, monkeypatch):
+    monkeypatch.setattr(handler, "presign_view", lambda key, content_type: f"https://s3.test/{key}")
+    job_id = post_untyped("invoice.pdf", "packing_list.pdf")
+    process(lambda_client)
+
+    status, body = call("GET", f"/api/jobs/{job_id}/files")
+
+    assert status == 200
+    res = JobFilesResponse.model_validate(body)
+    invoice, packing = res.files
+    # PDF 는 처리 Lambda가 그려 둔 쪽 그림을 준다
+    assert [(p.url, p.width, p.height) for p in invoice.pages] == [("https://s3.test/uploads/s1/invoice.pdf.p1.jpg", 1240, 1754)]
+    marks = {(m.kind, m.field): m for m in invoice.marks}
+    # 분류 근거의 제목과 읽은 칸(송장 번호·총중량)의 위치. 총수량 '100 PCS' 는 OCR 에 없어 빠진다
+    assert set(marks) == {("title", None), ("field", "doc_no"), ("field", "total_gross_kg")}
+    assert marks[("field", "total_gross_kg")].bbox == pytest.approx([0.8, 0.34, 0.12, 0.02])
+    assert marks[("field", "total_gross_kg")].label == "총중량" and marks[("title", None)].text == "COMMERCIAL INVOICE"
+    assert {m.field for m in packing.marks if m.kind == "field"} == {"doc_no", "total_gross_kg"}
+
+
+def test_files_without_ocr_have_no_marks(fakes, lambda_client, classifier, monkeypatch, ocr):
+    monkeypatch.setattr(handler, "presign_view", lambda key, content_type: f"https://s3.test/{key}")
+    monkeypatch.setattr(worker, "ocr_document", lambda *a, **k: (_ for _ in ()).throw(TimeoutError("Textract")))
+    job_id = post_untyped("invoice.pdf")
+    process(lambda_client)
+
+    [invoice] = JobFilesResponse.model_validate(call("GET", f"/api/jobs/{job_id}/files")[1]).files
+    assert invoice.marks == [] and len(invoice.pages) == 1  # 쪽 그림은 OCR 과 따로 남는다

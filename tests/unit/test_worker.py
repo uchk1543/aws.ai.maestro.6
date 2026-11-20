@@ -16,10 +16,40 @@ import tools.report as report
 import tools.wms as wms
 from tests.unit.fakes import MemoryHSHistory, MemoryWms
 from tests.unit.test_report_shipment import TODAY, MemoryWriter
-from tools.models import Cell, ExtractedDocument, Job, JobResult, Shipment, Step
+from tools.models import Cell, ExtractedDocument, Job, JobResult, OcrLine, OcrResult, Shipment, Step
+from tools.ocr import PageImage
 
 JOB = "job-0000f003"
 FILES = [{"key": "uploads/s1/invoice.pdf", "doc_type": "commercial_invoice"}]
+OCR_TOTALS: dict[str, str] = {}
+
+@pytest.fixture(autouse=True)
+def ocr(monkeypatch):
+    """Textract·PDF 그리기·S3 쓰기 대신 (F10 #188). PDF는 한 쪽 그림(가짜)을 만들고, OCR 은 서류마다 줄을 돌려준다.
+
+    반환: 부른 기록 {"ocr": [키], "stored": {S3 키: 형식}}.
+    """
+    seen = {"ocr": [], "stored": {}}
+
+    def fake_render(data, *, max_pages=None):
+        return [PageImage(data=b"jpeg-page-1", width=1240, height=1754)]
+
+    def fake_ocr(key, data, *, client=None, pages=None):
+        seen["ocr"].append(key)
+        name = key.rsplit("/", 1)[-1]
+        lines = [
+            OcrLine(page=1, text="COMMERCIAL INVOICE", bbox=(0.25, 0.05, 0.5, 0.04)),
+            OcrLine(page=1, text="Invoice No. INV-2026-001", bbox=(0.1, 0.15, 0.5, 0.02)),
+        ]
+        if name in OCR_TOTALS:
+            lines.append(OcrLine(page=1, text=OCR_TOTALS[name], bbox=(0.8, 0.34, 0.12, 0.02)))
+        return OcrResult(file=key, lines=lines)
+
+    monkeypatch.setattr(worker, "render_pages", fake_render)
+    monkeypatch.setattr(worker, "ocr_document", fake_ocr)
+    monkeypatch.setattr(handler, "store_object", lambda key, data, content_type: seen["stored"].__setitem__(key, content_type))
+    return seen
+
 
 
 @pytest.fixture(autouse=True)
@@ -88,7 +118,8 @@ def test_queued_job_runs_and_saves_progress(table, monkeypatch):
 
     assert seen == {"job_id": JOB, "files": FILES, "data": FILES[0]["key"].encode()}
     assert statuses(table) == ["running", "running", "running", "done"]
-    assert [len(j.steps) for j in table.puts] == [0, 1, 2, 2]
+    assert [len(j.steps) for j in table.puts] == [0, 1, 2, 3]  # 마지막 저장에 OCR 단계 한 줄 (F10)
+    assert saved(table).steps[-1].tool == "ocr_document" and saved(table).steps[-1].ok
     assert saved(table).result == JobResult()
 
 
@@ -105,7 +136,7 @@ def test_run_job_crash_is_failed_and_keeps_steps(table, monkeypatch):
     assert worker.lambda_handler({"job_id": JOB, "files": FILES}, None) == {"job_id": JOB, "status": "failed"}
     job = saved(table)
     assert (job.status, job.error) == ("failed", "RuntimeError: 터짐")
-    assert [s.tool for s in job.steps] == ["read_document"]
+    assert [s.tool for s in job.steps] == ["read_document", "ocr_document"]
 
 
 @pytest.mark.parametrize("status", ["waiting_approval", "done", "failed"])
@@ -373,3 +404,78 @@ def test_other_columns_of_the_row_are_kept(table, monkeypatch):
 
     assert (table.items[JOB]["docs"], table.items[JOB]["importer"]) == ("[]", "ACME")
     assert saved(table).status == "done"
+
+
+# ---------------------------------------------------------------------------
+# Textract OCR 매번 호출, PDF 쪽 그림 (F10 #188)
+# ---------------------------------------------------------------------------
+def done_run_job(job_id, files, fetch, **_):
+    return Job(job_id=job_id, status="done", result=JobResult())
+
+
+def test_every_file_is_ocred_and_pdf_pages_are_stored(table, monkeypatch, ocr):
+    put_job(table)
+    files = [*FILES, {"key": "uploads/s1/scan.jpg", "doc_type": None}]
+    monkeypatch.setattr(document_agent, "run_job", done_run_job)
+
+    worker.lambda_handler({"job_id": JOB, "files": files}, None)
+
+    assert sorted(ocr["ocr"]) == sorted(f["key"] for f in files)
+    item = table.items[JOB]
+    saved_ocr = json.loads(item["ocr"])
+    assert set(saved_ocr) == {f["key"] for f in files}
+    assert OcrResult.model_validate(saved_ocr["uploads/s1/scan.jpg"]).lines[0].text == "COMMERCIAL INVOICE"
+    # PDF만 쪽 그림을 그려 원본 옆에 둔다. 이미지는 원본을 그대로 쓴다
+    assert ocr["stored"] == {"uploads/s1/invoice.pdf.p1.jpg": "image/jpeg"}
+    assert json.loads(item["pages"]) == {"uploads/s1/invoice.pdf": [{"key": "uploads/s1/invoice.pdf.p1.jpg", "width": 1240, "height": 1754}]}
+
+
+def test_ocr_failure_skips_only_that_file(table, monkeypatch):
+    put_job(table)
+
+    def flaky(key, data, *, client=None, pages=None):
+        if key.endswith("scan.jpg"):
+            raise TimeoutError("Textract 5초")
+        return OcrResult(file=key, lines=[])
+
+    monkeypatch.setattr(worker, "ocr_document", flaky)
+    monkeypatch.setattr(document_agent, "run_job", done_run_job)
+
+    files = [*FILES, {"key": "uploads/s1/scan.jpg", "doc_type": None}]
+    assert worker.lambda_handler({"job_id": JOB, "files": files}, None)["status"] == "done"
+    assert set(json.loads(table.items[JOB]["ocr"])) == {FILES[0]["key"]}
+    step = saved(table).steps[-1]
+    assert (step.tool, step.ok) == ("ocr_document", False) and "1/2장" in step.summary
+
+
+def test_broken_pdf_render_skips_ocr_for_that_file(table, monkeypatch):
+    put_job(table)
+
+    def broken(data, *, max_pages=None):
+        raise ValueError("깨진 PDF")
+
+    monkeypatch.setattr(worker, "render_pages", broken)
+    monkeypatch.setattr(document_agent, "run_job", done_run_job)
+
+    assert worker.lambda_handler({"job_id": JOB, "files": FILES}, None)["status"] == "done"
+    assert "ocr" not in table.items[JOB] and "pages" not in table.items[JOB]
+
+
+def test_rereader_gets_that_files_ocr(table, monkeypatch):
+    """다시 확인은 그 서류의 OCR 결과를 두 번째 근거로 받는다 (agent-design.md 4번)."""
+    put_job(table)
+    got = {}
+
+    def fake_reread(doc, field, data, *, ocr=None, **_):
+        got.update(file=doc.file, ocr=ocr)
+
+    monkeypatch.setattr(worker, "reread_field", fake_reread)
+
+    def fake_run_job(job_id, files, fetch, *, rereader=None, **_):
+        rereader(ExtractedDocument(doc_type="commercial_invoice", file=files[0]["key"]), "total_gross_kg", b"pdf")
+        return Job(job_id=job_id, status="done", result=JobResult())
+
+    monkeypatch.setattr(document_agent, "run_job", fake_run_job)
+    worker.lambda_handler({"job_id": JOB, "files": FILES}, None)
+
+    assert got["file"] == FILES[0]["key"] and got["ocr"].lines[0].text == "COMMERCIAL INVOICE"
