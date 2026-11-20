@@ -86,11 +86,12 @@ def _has(needle: str, hays: tuple[str, ...]) -> bool:
     return any(pattern.search(hay) for hay in hays)
 
 
-def find_in_text(raw: str, text: str) -> str | None:
+def find_in_text(raw: str, text: str, field: str | None = None) -> str | None:
     """판독한 raw가 문서 글자에 그대로 있는지 본다. 있으면 찾은 글자, 없으면 None.
 
     raw 전체가 있으면 raw. 없으면 raw 안의 숫자(적힌 그대로, 예 '6,520.00')가 있으면 그 숫자.
     행을 더한 raw('a + b')는 조각이 모두 있어야 한다. 더 긴 숫자의 일부로만 있으면 없는 것으로 본다.
+    field(칸 경로)를 주면 다른 칸의 값인지도 본다 (_other_field, #147). 예: 총중량 칸의 6,000이 'Net Weight' 바로 뒤에만 있으면 None.
     """
     squashed = _squash(text)
     if not squashed:
@@ -107,7 +108,80 @@ def find_in_text(raw: str, text: str) -> str | None:
             found.append(" ".join(numbers))
             continue
         return None
+    if field in LABELS and len(parts) == 1 and _other_field(raw, hays, LABELS[field]):
+        print(f"[reread] {field} 값 {raw!r}은 다른 칸 이름표 바로 뒤에만 있다 → 못 찾음")
+        return None
     return " + ".join(found)
+
+
+# 칸마다 (그 칸 이름표, 맞서는 칸 이름표). 띄어쓰기를 지운 대문자로 적는다 (#147).
+# 찾은 값 앞 LABEL_WINDOW자 안에서 가장 가까운 이름표가 맞서는 칸의 것이면 그 값은 다른 칸 값으로 보고 '못 찾음'이다.
+# 이름표가 없거나 그 칸의 이름표가 더 가까우면 지금처럼 찾은 것으로 본다 (포장명세서 합계 줄은 머리글이 멀어 이름표가 없다).
+# 서류 아무 데나 있으면 '같음'으로 보던 것 중 다른 칸 값을 옮긴 판독만 거른다. 좌표로 더 좁히는 것은 B4(Textract) 뒤에 한다
+LABEL_WINDOW = 60
+_GROSS = ("GROSS", "G.W", "G/W")
+_NET = ("NETWEIGHT", "NET-WEIGHT", "NETWT", "N.W", "N/W", "TOTALNET")
+_QTY = ("QUANTITY", "QTY", "Q'TY")
+_PACKAGES = ("PACKAGE", "PKGS", "CARTONS")
+_INVOICE_NO = ("INVOICENO", "INVOICENUMBER", "INV.NO", "INVNO", "OFINVOICE")
+_OTHER_NO = ("P.O.NO", "PONO", "P/ONO", "ORDERNO", "CONTRACTNO", "REFERENCENO", "REF.NO", "P/LNO", "PACKINGLISTNO")
+LABELS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    "total_gross_kg": (_GROSS, _NET),
+    "total_qty": (_QTY, _PACKAGES),
+    "doc_no": (_INVOICE_NO, _OTHER_NO),
+}
+
+
+def _positions(needle: str, hay: str) -> list[int]:
+    """needle이 hay에 나오는 자리들. 숫자로 시작·끝나면 더 긴 숫자의 일부는 뺀다 (_has와 같은 경계)."""
+    if not needle:
+        return []
+    head = r"(?<![\d.,])" if needle[0].isdigit() else ""
+    tail = r"(?![\d]|[.,]\d)" if needle[-1].isdigit() else ""
+    return [m.start() for m in re.finditer(head + re.escape(needle) + tail, hay)]
+
+
+def _last(window: str, labels: tuple[str, ...]) -> int:
+    return max((window.rfind(label) for label in labels), default=-1)
+
+
+def _other_field(raw: str, hays: tuple[str, ...], labels: tuple[tuple[str, ...], tuple[str, ...]]) -> bool:
+    """raw 값이 나오는 모든 자리에서 맞서는 칸 이름표가 그 칸 이름표보다 가까운지. 한 자리라도 아니면 False.
+
+    자리는 raw의 첫 숫자(숫자가 없으면 꼬리표를 뗀 글자)로 찾는다. raw가 이름표를 품고 있으면('TOTAL G.W. : 21,683.10')
+    그 이름표가 숫자 바로 앞에 있으므로 그대로 찾은 것이 된다.
+    """
+    own, rival = labels
+    numbers = _NUMBER_TOKEN.findall(raw)
+    needle, where = (numbers[0], hays) if numbers else (_text_core(raw), hays[:1])
+    spots = [(hay, pos) for hay in where for pos in _positions(needle, hay)]
+    if not spots:
+        return False
+    for hay, pos in spots:
+        window = _squash(hay[max(0, pos - LABEL_WINDOW):pos])
+        if _last(window, rival) <= _last(window, own):
+            return False
+    return True
+
+
+# 글자층이 믿을 만한지 견줄 칸 (#147). 판독한 값 중 최대 MAX_PROBES개가 글자층에 하나라도 있으면 믿는다
+_PROBES = ("doc_no", "consignee_name", "exporter_name", "shipper_name", "total_amount")
+MAX_PROBES = 3
+
+
+def _text_layer_ok(doc: ExtractedDocument, field: str, text: str) -> bool:
+    """판독한 다른 칸(송장 번호·수하인 등, 다시 확인하는 칸과 못 읽은 칸은 뺀다)이 PDF 글자층에 하나라도 있는지.
+
+    하나도 없으면 스캐너가 붙인 품질 낮은 OCR 글자층이나 폰트 매핑이 깨진 글자층으로 보고 False(다음 방법으로).
+    견줄 칸이 없으면 판단할 수 없어 True(지금처럼 글자층을 쓴다).
+    """
+    raws = [raw for name in _PROBES if name != field and (raw := field_raw(doc, name))][:MAX_PROBES]
+    squashed = _squash(text)
+    # 값 전체(앞 꼬리표를 뗀 것도)가 그대로 있어야 한다. 숫자 조각('QDT/26/0289'의 26)은 깨진 글자층에도 우연히 남는다
+    if not raws or any(_has(_squash(raw), (squashed,)) or _has(_text_core(raw), (squashed,)) for raw in raws):
+        return True
+    print(f"[reread] PDF 글자층에 판독한 다른 칸 {len(raws)}개가 하나도 없음 → 깨진 글자층으로 보고 다음 방법 ({doc.file})")
+    return False
 
 
 def _field_prompt(doc: ExtractedDocument, field: str) -> str:
@@ -169,20 +243,22 @@ def reread_field(
     if first is None:  # 첫 판독에서 못 읽은 칸은 대조가 '확인 필요'로 낸다. 다시 확인할 raw가 없다
         return RereadResult(doc=doc.doc_type, field=field, first_raw=None, second_raw=None, checked_by="none", same=False)
 
-    # 1. 텍스트 PDF
+    # 1. 텍스트 PDF. 글자층이 판독한 다른 칸과 하나도 맞지 않으면(깨진 글자층) 믿지 않고 다음 방법으로 (#147)
     if PurePath(doc.file).suffix.lower() == ".pdf":
         text = (pdf_text or _pypdf_text)(data)
-        if text.strip():
-            found = find_in_text(first, text)
+        if text.strip() and _text_layer_ok(doc, field, text):
+            found = find_in_text(first, text, field)
             return RereadResult(
                 doc=doc.doc_type, field=field, first_raw=first, second_raw=found, checked_by="pdf_text", same=found is not None
             )
     # 2. 저장해 둔 Textract 글자
     if ocr is not None and ocr.lines:
-        found = find_in_text(first, "\n".join(line.text for line in ocr.lines))
+        found = find_in_text(first, "\n".join(line.text for line in ocr.lines), field)
         return RereadResult(
             doc=doc.doc_type, field=field, first_raw=first, second_raw=found, checked_by="textract", same=found is not None
         )
+    if ocr is not None:  # Textract가 글자를 하나도 못 찾았다. 근거가 약한 모델 다시 읽기로 가는 이유를 남긴다 (#147)
+        print(f"[reread] OCR 글자 없음 → model_reread ({doc.file} {field})")
     # 3. 칸 하나만 모델에게 두 번
     reader = reader or extract._strands_reader  # 부를 때 찾는다 (테스트가 extract._strands_reader를 바꿔 끼움)
     blocks, prompt = content_blocks(doc.file, data), _field_prompt(doc, field)
