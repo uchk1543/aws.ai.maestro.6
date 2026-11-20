@@ -131,6 +131,17 @@ describe("HsPicker", () => {
     expect(screen.getByLabelText("1행 HS 직접 입력")).toBeInTheDocument();
   });
 
+  it("HS가 미확정인 품목이 있으면 'HS 확인 요청서 받기' 링크를 보인다 (X2 #260)", () => {
+    renderWithQuery(<HsPicker jobId="job-7c1e" jobStatus="waiting_approval" results={[needsHuman, confirmed]} />);
+    expect(screen.getByRole("link", { name: "HS 확인 요청서 받기" })).toHaveAttribute("href", "/api/jobs/job-7c1e/hs-request");
+    expect(screen.getByText("관세사에게 전달할 문서입니다 (품목 1개)")).toBeInTheDocument();
+  });
+
+  it("미확정 품목이 없으면 링크가 없다", () => {
+    renderWithQuery(<HsPicker jobId="job-7c1e" jobStatus="waiting_approval" results={[confirmed]} />);
+    expect(screen.queryByRole("link", { name: "HS 확인 요청서 받기" })).not.toBeInTheDocument();
+  });
+
   it("manualHs · lineTitle", () => {
     expect([manualHs("8507609000"), manualHs("8507.60-9000"), manualHs("8507 60 9000"), manualHs("850760"), manualHs("85076090ab")]).toEqual([
       "8507609000",

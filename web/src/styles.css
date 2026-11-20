@@ -3028,6 +3028,20 @@ video.port-media.on {
   background: var(--red);
 }
 
+.hs-request {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 10px;
+}
+
+.hs-request-link {
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: underline;
+}
+
 .wms-certificate {
   display: flex;
   align-items: baseline;

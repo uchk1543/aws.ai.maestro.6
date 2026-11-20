@@ -81,6 +81,10 @@ export function chooseHs(jobId: string, choices: HSChoice[]): Promise<ChooseHsRe
 export function approveJob(jobId: string, approver: string): Promise<ApproveResponse> {
   return request("POST", `/api/jobs/${encodeURIComponent(jobId)}/approve`, { approver });
 }
+/** HS 확인 요청서 PDF 내려받기 주소 (GET /api/jobs/{id}/hs-request, X2 #260). HS가 '사람 확인 필요'로 남은 품목이 있을 때 받는다 */
+export function hsRequestUrl(jobId: string): string {
+  return `/api/jobs/${encodeURIComponent(jobId)}/hs-request`;
+}
 /** 검수 완료서 PDF 내려받기 주소 (GET /api/jobs/{id}/certificate, X1 #258). 사람이 승인해 등록한 작업만 받을 수 있다 */
 export function certificateUrl(jobId: string): string {
   return `/api/jobs/${encodeURIComponent(jobId)}/certificate`;

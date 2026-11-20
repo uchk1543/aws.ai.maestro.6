@@ -47,6 +47,7 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 | `GET /api/documents?doc_type=<종류>&cursor=<다음 쪽>` | - | `docs/examples/documents.json` (문서 분류 내역, #143) |
 | `GET /api/jobs/{id}/files` | - | `docs/examples/job_files.json` (서류 보기: 원본 주소 + 읽은 칸, #156) |
 | `GET /api/jobs/{id}/notice?format=md\|html` | - | 불일치 통지 문서 파일 (`content-disposition: attachment`, `notice-<B/L 또는 작업 ID>.md\|html`, 기본 html). 처리 중이면 409 (#155, 문서는 C7 `NoticeDocument`) |
+| `GET /api/jobs/{id}/hs-request` | - | HS 확인 요청서 PDF (`application/pdf`, `content-disposition: attachment`, `hs-request-<작업 ID>.pdf`). HS가 '사람 확인 필요'로 남은 품목을 서류별 값·후보 3개·미확정 사유와 함께 담아 관세사에게 전달한다. 없는 작업 404, 사람이 확인할 HS 품목이 없으면 409 `{"error"}` (X2 #260) |
 | `GET /api/jobs/{id}/certificate` | - | 검수 완료서 PDF (`application/pdf`, `content-disposition: attachment`, `certificate-<작업 ID>.pdf`). 사람 승인으로 등록된 작업만. 없는 작업 404, 승인 대기·자동 등록·옛 작업은 409 `{"error"}` (X1 #258) |
 | `GET /api/jobs/{id}/notice?format=md\|html` | - | 불일치 통지 문서 내려받기 (F9 #155, 아직 없음. 문서 내용은 아래 `NoticeDocument`, 예시 `docs/examples/notice.json`, C7 #158) |
 | `GET /api/stats` | - | `docs/examples/stats.json` (대시보드 통계, F11 #195) |
