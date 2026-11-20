@@ -3191,3 +3191,44 @@ video.port-media.on {
     box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.18);
   }
 }
+
+/* G18 #255: 할 일 카드는 같은 줄에서 높이가 같다 (설명이 두 줄로 넘어가도) */
+.todo-tiles {
+  grid-auto-rows: 1fr; /* 줄이 여럿이어도(모바일·태블릿) 모든 카드 높이를 같게 */
+}
+
+.todo-tile-wrap {
+  display: flex;
+}
+
+.todo-tile-wrap > .todo-tile {
+  height: 100%;
+}
+
+/* 통관 지연 줄: 작업이 있으면 줄 전체가 작업 화면으로 */
+.delayed-row.go {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  border: 0;
+  cursor: pointer;
+}
+
+.delayed-row.go:hover {
+  background: var(--fill);
+}
+
+.delayed-row.go svg {
+  margin-left: auto;
+}
+
+.delayed-row .delayed-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.auto-box {
+  margin-bottom: 4px;
+}
