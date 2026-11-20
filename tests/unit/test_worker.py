@@ -12,12 +12,24 @@ import agent.document_agent as document_agent
 import api.handler as handler
 import api.worker as worker
 import tools.hs as hs
+import tools.report as report
 import tools.wms as wms
 from tests.unit.fakes import MemoryHSHistory, MemoryWms
-from tools.models import Cell, ExtractedDocument, Job, JobResult, Step
+from tests.unit.test_report_shipment import TODAY, MemoryWriter
+from tools.models import Cell, ExtractedDocument, Job, JobResult, Shipment, Step
 
 JOB = "job-0000f003"
 FILES = [{"key": "uploads/s1/invoice.pdf", "doc_type": "commercial_invoice"}]
+
+
+@pytest.fixture(autouse=True)
+def shipments(monkeypatch):
+    """화물 기록(team06-shipments) 대신 메모리판 (E3). 오늘(처리한 날)은 고정."""
+    store = MemoryWriter()
+    monkeypatch.setattr(worker, "dynamo_shipments", lambda: store)
+    monkeypatch.setattr(handler, "dynamo_shipments", lambda: store)
+    monkeypatch.setattr(report, "_today", lambda: TODAY)
+    return store
 
 
 class RecordingTable:
@@ -196,8 +208,9 @@ def call(method, path, body):
     return res["statusCode"], json.loads(res["body"])
 
 
-def test_docs_and_importer_are_saved_then_hs_and_approve_are_200(api_fakes, monkeypatch):
-    """끝난 기준: 처리 Lambda가 저장한 docs·importer로 /hs·/approve가 409 대신 200을 낸다."""
+def test_docs_and_importer_are_saved_then_hs_and_approve_are_200(api_fakes, monkeypatch, shipments):
+    """끝난 기준: 처리 Lambda가 저장한 docs·importer로 /hs·/approve가 409 대신 200을 낸다.
+    화물 기록은 처리 끝에 '입항'으로 쓰고, 승인으로 WMS에 등록되면 '수입신고'로 고친다 (E3)."""
     table, history, memory = api_fakes
     put_job(table)
     seen = {}
@@ -210,6 +223,8 @@ def test_docs_and_importer_are_saved_then_hs_and_approve_are_200(api_fakes, monk
     assert row["importer"] == IMPORTER  # 앞뒤 공백만 뗀 raw
     assert [d.file for d in handler._DOCS.validate_json(row["docs"])] == [d.file for d in docs]
     assert seen["hs_recommender"] is worker.recommend_line
+    row = shipments.rows[BL]
+    assert (row.customs_status, row.arrived_at, row.job_id, row.consignee) == ("입항", TODAY, JOB, IMPORTER)
 
     status, body = call("POST", f"/api/jobs/{JOB}/hs", {"choices": [{"line": 1, "hs": "8507600000"}]})
     assert status == 200 and "declaration_draft" in body
@@ -220,6 +235,76 @@ def test_docs_and_importer_are_saved_then_hs_and_approve_are_200(api_fakes, monk
     [(_, record)] = memory.records.values()
     assert (record.bl_no, record.consignee, record.by) == (BL, IMPORTER, "human")
     assert saved(table).status == "done"
+    assert (shipments.rows[BL].customs_status, shipments.rows[BL].arrived_at) == ("수입신고", TODAY)
+    assert [s.tool for s in saved(table).steps][-2:] == ["push_to_wms", "mark_registered"]
+
+
+# ---------------------------------------------------------------------------
+# E3 화물 기록 쓰기 (#31)
+# ---------------------------------------------------------------------------
+def run_with(table, monkeypatch, docs, status="waiting_approval"):
+    """on_docs로 docs를 넘기고 status로 끝나는 가짜 run_job으로 처리한다."""
+    put_job(table)
+
+    def fake(job_id, files, fetch, *, on_docs=None, **_):
+        on_docs(docs)
+        steps = [Step(tool="cross_check", summary="문제 없음", ok=True)]
+        return Job(job_id=job_id, status=status, steps=steps, result=JobResult())
+
+    monkeypatch.setattr(document_agent, "run_job", fake)
+    return worker.lambda_handler({"job_id": JOB, "files": FILES}, None)
+
+
+@pytest.mark.parametrize("status", ["waiting_approval", "done"])
+def test_finished_job_writes_shipment_row_as_last_step(table, monkeypatch, shipments, status):
+    """입항일 = 처리한 날(한국 시간), 상태 '입항'. 단계 기록 끝에 record_shipment 한 줄이 마지막 저장에 들어간다."""
+    assert run_with(table, monkeypatch, read_docs(), status)["status"] == status
+
+    [row] = shipments.rows.values()
+    assert (row.bl_no, row.customs_status, row.arrived_at, row.last_event_at, row.job_id) == (BL, "입항", TODAY, TODAY, JOB)
+    job = saved(table)
+    assert job.status == status
+    assert job.steps[-1] == Step(tool="record_shipment", summary=f"화물 기록 B/L {BL}: 입항, 입항일 {TODAY.isoformat()}", ok=True)
+
+
+def test_failed_job_writes_no_shipment(table, monkeypatch, shipments):
+    """실패한 작업은 서류를 읽었어도 화물 기록을 쓰지 않는다."""
+    assert run_with(table, monkeypatch, read_docs(), "failed")["status"] == "failed"
+    assert shipments.rows == {}
+    assert "record_shipment" not in [s.tool for s in saved(table).steps]
+
+
+def test_no_bl_writes_no_shipment(table, monkeypatch, shipments):
+    """B/L 번호가 없으면 쓰지 않는다. 이유는 단계 기록에 남고 작업은 그대로 끝난다."""
+    assert run_with(table, monkeypatch, read_docs()[:2])["status"] == "waiting_approval"
+    assert shipments.rows == {}
+    last = saved(table).steps[-1]
+    assert (last.tool, last.ok) == ("record_shipment", True) and "B/L 번호가 없어" in last.summary
+
+
+def test_seed_shipment_is_not_overwritten(table, monkeypatch, shipments):
+    """같은 B/L의 미리 넣은 가상 기록(job_id 없음)은 덮어쓰지 않는다."""
+    seed = Shipment(bl_no=BL, consignee="샘플", item="운동화", arrived_at=TODAY.replace(day=1),
+                    customs_status="반출", last_event_at=TODAY.replace(day=2))
+    shipments.rows[BL] = seed
+
+    assert run_with(table, monkeypatch, read_docs())["status"] == "waiting_approval"
+    assert shipments.rows[BL] == seed and shipments.puts == 0
+    assert "덮어쓰지 않음" in saved(table).steps[-1].summary
+
+
+def test_shipments_store_failure_does_not_stop_the_job(table, monkeypatch):
+    """화물 기록 저장소를 못 만들어도(SHIPMENTS_TABLE 없음 등) 작업은 끝난 상태로 저장된다. running으로 남지 않는다."""
+
+    def broken():
+        raise KeyError("SHIPMENTS_TABLE")
+
+    monkeypatch.setattr(worker, "dynamo_shipments", broken)
+
+    assert run_with(table, monkeypatch, read_docs())["status"] == "waiting_approval"
+    job = saved(table)
+    assert job.status == "waiting_approval" and table.items[JOB]["docs"]
+    assert job.steps[-1] == Step(tool="record_shipment", summary="화물 기록을 쓰지 못함: KeyError", ok=False)
 
 
 def test_without_consignee_docs_saved_but_no_importer(api_fakes, monkeypatch):

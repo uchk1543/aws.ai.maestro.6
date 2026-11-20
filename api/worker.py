@@ -6,7 +6,8 @@ API Lambda(api/handler.py의 POST /jobs)가 작업을 queued로 저장한 뒤 �
             끝나면 waiting_approval · done · failed로 저장한다.
             HS는 recommend_hs(C1·C2)로 품목마다 추천한다 (모델 없이 품명 검색, 확정 이력은 team06-hs-history).
             마지막 저장 때 읽은 서류(docs)와 수입자(importer)를 같은 줄에 넣는다. HS 선택(C3)·승인(D3)이 읽는다 (#122).
-제한 시간 300초. 환경 변수: JOBS_TABLE, DOCS_BUCKET, MODEL_ID, HS_HISTORY_TABLE (도구에 따라 WMS_TABLE)
+            waiting_approval·done이면 마지막 저장 직전에 화물 기록(team06-shipments)에 한 줄을 쓴다 (E3, #31).
+제한 시간 300초. 환경 변수: JOBS_TABLE, DOCS_BUCKET, MODEL_ID, HS_HISTORY_TABLE, SHIPMENTS_TABLE (도구에 따라 WMS_TABLE)
 
 비동기 호출은 함수가 오류·시간 초과로 끝나면 Lambda가 같은 이벤트를 다시 보낸다. 그래서 저장된 상태를 보고 한 번만 처리한다.
     queued   → 처리한다
@@ -18,8 +19,9 @@ import time
 from functools import cache
 
 from api import handler
-from tools import hs
-from tools.models import ExtractedDocument, HSResult, Job
+from tools import hs, report
+from tools.models import ExtractedDocument, HSResult, Job, Step
+from tools.query import dynamo_shipments
 
 INTERRUPTED = "처리가 중간에 멈췄습니다 (시간 초과 등). 서류를 다시 올려 주세요"
 
@@ -92,6 +94,22 @@ def _docs_columns(docs: list[ExtractedDocument]) -> dict:
     return columns
 
 
+def _record_shipment(job_id: str, docs: list[ExtractedDocument]) -> Step:
+    """작업이 끝나면 화물 기록에 한 줄을 쓰고 그 단계 한 줄을 돌려준다 (E3, tools/report.record_shipment).
+
+    언제: 마지막 저장 직전, 작업이 waiting_approval·done이고 읽은 서류가 있을 때.
+    반환: Step. 예외를 내지 않는다. 저장소를 못 만들어도(SHIPMENTS_TABLE 없음 등) ok=False 한 줄만 남기고,
+      작업은 그대로 끝난다 (여기서 예외가 나면 마지막 저장을 못 해 running으로 남는다).
+    처리 Lambda의 자동 등록(D2, finish_report 직후)이 생기면 그때 registered=True로 넘긴다.
+    """
+    try:
+        store = dynamo_shipments()
+    except Exception as exc:
+        print(f"[error] {report.RECORD_TOOL} job={job_id} {type(exc).__name__}: {exc}")
+        return Step(tool=report.RECORD_TOOL, summary=f"화물 기록을 쓰지 못함: {type(exc).__name__}", ok=False)
+    return report.record_shipment(job_id, docs, store)
+
+
 def lambda_handler(event, context):
     """작업 하나를 처리한다.
 
@@ -144,6 +162,8 @@ def lambda_handler(event, context):
         print(f"[error] worker job={job_id} {type(exc).__name__}: {exc}")
         result = Job(job_id=job_id, status="failed", steps=latest.steps, error=f"{type(exc).__name__}: {exc}")
     print(f"[job] {job_id} status={result.status} {time.perf_counter() - started:.1f}초")
+    if result.status in ("waiting_approval", "done") and read:  # 실패한 작업은 화물 기록을 쓰지 않는다
+        result.steps.append(_record_shipment(job_id, read))
     columns = _docs_columns(read)
     print(f"[worker] job={job_id} 서류 기록 docs={len(read)} importer={'있음' if 'importer' in columns else '없음'}")
     _save(result, {**item, **columns})

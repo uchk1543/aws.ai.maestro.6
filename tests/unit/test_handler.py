@@ -15,11 +15,25 @@ import api.worker as worker
 import tools.declaration as declaration
 import tools.extract as extract
 import tools.hs as hs
+import tools.report as report
 import tools.wms as wms
 from tests.unit.fakes import MemoryHSHistory, MemoryWms
-from tools.models import Cell, DeclarationDraft, DeclarationField, ExtractedDocument, Issue, Job, RawDocument, WmsState
+from tests.unit.test_report_shipment import TODAY, MemoryWriter
+from tools.models import (
+    Cell, DeclarationDraft, DeclarationField, ExtractedDocument, Issue, Job, RawDocument, Shipment, WmsState,
+)
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "docs" / "examples"
+
+
+@pytest.fixture(autouse=True)
+def shipments(monkeypatch):
+    """화물 기록(team06-shipments) 대신 메모리판 (E3). 처리 Lambda·승인·자동 등록이 여기에 쓴다. 오늘은 고정."""
+    store = MemoryWriter()
+    monkeypatch.setattr(handler, "dynamo_shipments", lambda: store)
+    monkeypatch.setattr(worker, "dynamo_shipments", lambda: store)
+    monkeypatch.setattr(report, "_today", lambda: TODAY)
+    return store
 
 TOTALS = {"invoice.pdf": "6,250.00 KGS", "packing_list.pdf": "6,520.00 KGS", "pl_ok.pdf": "6,250 KG"}
 
@@ -174,7 +188,11 @@ def test_post_then_worker_shows_mismatch(fakes, lambda_client):
     Job.model_validate(job)  # 약속 2 형식
     assert job["status"] == "waiting_approval"
     # 불일치 칸은 다시 확인한다 (B8): 상업송장·포장명세서 총중량
-    assert [s["tool"] for s in job["steps"]] == ["read_document", "read_document", "cross_check", "reread_field", "reread_field"]
+    # 끝나면 화물 기록 한 줄 (E3). 이 서류에는 선하증권이 없어 쓰지 않았다는 줄이다
+    assert [s["tool"] for s in job["steps"]] == [
+        "read_document", "read_document", "cross_check", "reread_field", "reread_field", "record_shipment",
+    ]
+    assert "B/L 번호가 없어" in job["steps"][-1]["summary"]
     [issue] = job["result"]["issues"]
     assert issue["grade"] == "불일치" and issue["rule_id"] == "X-WT-01"
 
@@ -620,8 +638,54 @@ def test_approve_registers_by_human_and_saves_wms(wms_fakes):
     Job.model_validate(job)
     assert job["status"] == "done"
     assert job["result"]["wms"] == {"status": "등록됨", "by": "human", "wms_id": "wms-0001"}
-    assert job["steps"][-1] == {"tool": "push_to_wms", "summary": "사람 승인(김 담당)으로 WMS 등록: wms-0001", "ok": True}
+    assert job["steps"][-2] == {"tool": "push_to_wms", "summary": "사람 승인(김 담당)으로 WMS 등록: wms-0001", "ok": True}
+    assert job["steps"][-1]["tool"] == "mark_registered"  # 화물 기록 상태 고치기 (E3). 여기서는 줄이 없다
     assert table.items[APPROVE_JOB]["importer"] == IMPORTER and table.items[APPROVE_JOB]["docs"]
+
+
+def shipment(bl_no=BL, *, job_id=APPROVE_JOB, status="입항") -> Shipment:
+    return Shipment(bl_no=bl_no, consignee=IMPORTER, item="품명", arrived_at=TODAY.replace(day=1),
+                    customs_status=status, last_event_at=TODAY.replace(day=1), job_id=job_id)
+
+
+def test_approve_marks_shipment_registered(wms_fakes, shipments):
+    """승인으로 WMS에 등록되면 이 작업이 쓴 화물 기록을 '수입신고'로 고친다 (E3). 입항일은 그대로다."""
+    table, _ = wms_fakes
+    put_approve_job(table, grade="확인 필요")
+    shipments.rows[BL] = shipment()
+
+    assert post_approve()[0] == 200
+
+    row = shipments.rows[BL]
+    assert (row.customs_status, row.arrived_at, row.last_event_at) == ("수입신고", TODAY.replace(day=1), TODAY)
+    _, job = call("GET", f"/jobs/{APPROVE_JOB}")
+    assert job["steps"][-1] == {"tool": "mark_registered", "summary": f"화물 기록 B/L {BL}: 입항 → 수입신고", "ok": True}
+
+
+def test_approve_leaves_seed_shipment_alone(wms_fakes, shipments):
+    """같은 B/L의 미리 넣은 가상 기록(job_id 없음)은 고치지 않는다."""
+    table, _ = wms_fakes
+    put_approve_job(table, grade="확인 필요")
+    shipments.rows[BL] = seed = shipment(job_id=None)
+
+    assert post_approve()[0] == 200
+    assert shipments.rows[BL] == seed and shipments.puts == 0
+
+
+def test_approve_still_done_when_shipments_store_fails(wms_fakes, monkeypatch):
+    """화물 기록 저장소를 못 만들어도 WMS 등록과 작업 저장은 그대로 끝난다. 단계에만 실패로 남는다."""
+    table, memory = wms_fakes
+    put_approve_job(table, grade="확인 필요")
+
+    def broken():
+        raise KeyError("SHIPMENTS_TABLE")
+
+    monkeypatch.setattr(handler, "dynamo_shipments", broken)
+
+    assert post_approve() == (200, {"wms": {"status": "등록됨", "wms_id": "wms-0001"}})
+    _, job = call("GET", f"/jobs/{APPROVE_JOB}")
+    assert job["status"] == "done" and len(memory.records) == 1
+    assert job["steps"][-1] == {"tool": "mark_registered", "summary": "화물 기록 상태를 고치지 못함: KeyError", "ok": False}
 
 
 def test_approve_with_mismatch_is_409_and_changes_nothing(wms_fakes):
@@ -860,10 +924,12 @@ def put_ready_job(table, *, lines=(1,), issues=(), docs=None):
     )
 
 
-def test_hs_choice_registers_to_wms_when_nothing_is_left(hs_fakes, wms_memory):
-    """끝난 기준: '참고'만 남은 작업에서 마지막 품목의 HS를 고르면 승인 없이 바로 등록한다 (by=auto)."""
+def test_hs_choice_registers_to_wms_when_nothing_is_left(hs_fakes, wms_memory, shipments):
+    """끝난 기준: '참고'만 남은 작업에서 마지막 품목의 HS를 고르면 승인 없이 바로 등록한다 (by=auto).
+    화물 기록도 '수입신고'로 고친다 (E3)."""
     table, _, _ = hs_fakes
     put_ready_job(table, issues=[example_issue("참고")])
+    shipments.rows[BL] = shipment(job_id=HS_JOB)
 
     status, body = call("POST", f"/jobs/{HS_JOB}/hs", CHOOSE_1)
 
@@ -876,7 +942,9 @@ def test_hs_choice_registers_to_wms_when_nothing_is_left(hs_fakes, wms_memory):
     Job.model_validate(job)
     assert job["status"] == "done"
     assert job["result"]["wms"] == {"status": "등록됨", "by": "auto", "wms_id": wms_id}
-    assert job["steps"][-1] == {"tool": "push_to_wms", "summary": f"WMS 자동 등록: {wms_id}", "ok": True}
+    assert job["steps"][-2] == {"tool": "push_to_wms", "summary": f"WMS 자동 등록: {wms_id}", "ok": True}
+    assert job["steps"][-1] == {"tool": "mark_registered", "summary": f"화물 기록 B/L {BL}: 입항 → 수입신고", "ok": True}
+    assert shipments.rows[BL].customs_status == "수입신고"
     # 등록이 끝난 작업은 HS를 다시 고를 수 없고, 승인을 눌러도 다시 등록하지 않는다 (D3)
     assert call("POST", f"/jobs/{HS_JOB}/hs", CHOOSE_1)[0] == 409
     assert call("POST", f"/jobs/{HS_JOB}/approve", {"approver": "김담당"}) == (

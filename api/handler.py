@@ -28,8 +28,9 @@ from functools import cache
 from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import TypeAdapter
 
-from tools import declaration, hs, wms
+from tools import declaration, hs, report, wms
 from tools.models import DOC_TYPE_KO, DocType, DocumentRecord, DocumentsResponse, ExtractedDocument, Job, Step, WmsState
+from tools.query import dynamo_shipments
 
 ALLOWED_DOC_TYPES = {"commercial_invoice", "packing_list", "bill_of_lading", "certificate_of_origin"}  # 약속 1의 4종 (#129)
 JOB_ID = re.compile(r"^job-[0-9a-f]{8}$")
@@ -173,6 +174,21 @@ class DynamoHSHistory:
         self.table.put_item(
             Item={"importer": importer, "item_key": item_key, "hs": hs, "job_id": job_id, "updated_at": int(time.time())}
         )
+
+
+def _mark_registered(job_id: str, bl_no: str) -> Step:
+    """WMS에 등록된 뒤 그 작업의 화물 기록 상태를 '수입신고'로 고치고 단계 한 줄을 돌려준다 (E3, report.mark_registered).
+
+    언제: 사람 승인(D3)이나 HS 선택 뒤 자동 등록(D2)으로 push_to_wms가 성공한 뒤, save_job 전.
+    반환: Step. 예외를 내지 않는다. 저장소를 못 만들어도(SHIPMENTS_TABLE 없음 등) ok=False 한 줄만 남기고,
+      WMS 등록 결과는 그대로 저장한다.
+    """
+    try:
+        store = dynamo_shipments()
+    except Exception as exc:
+        print(f"[error] {report.REGISTER_TOOL} job={job_id} {type(exc).__name__}: {exc}")
+        return Step(tool=report.REGISTER_TOOL, summary=f"화물 기록 상태를 고치지 못함: {type(exc).__name__}", ok=False)
+    return report.mark_registered(job_id, bl_no, store)
 
 
 @cache
@@ -369,6 +385,7 @@ def get_job(job_id: str) -> dict:
 def choose_hs(job_id: str, body) -> dict:
     """POST /jobs/{id}/hs. 사람이 고른 HS로 확정하고, 확정 이력에 저장하고, 신고서 초안을 다시 채운다.
     그다음 자동 등록 조건을 다시 검사해, 다 채우면 바로 가상 WMS에 등록하고(by=auto) 작업을 done으로 끝낸다 (D2).
+    등록하면 화물 기록 상태도 '수입신고'로 고친다 (E3).
 
     언제: 화면에서 '사람 확인 필요' 품목의 HS를 고른 뒤 (agent-design.md 6·8번). 모델 호출 없음.
     받는 것: {"choices": [{"line", "hs"}]}. line은 이 작업의 HS 결과에 있는 행, hs는 10자리.
@@ -424,6 +441,7 @@ def choose_hs(job_id: str, body) -> dict:
     if state.status == "등록됨" and (before is None or before.status != "등록됨"):
         job.status = "done"  # 사람이 승인할 것이 남지 않았다 (D3 승인과 같다). HS를 다시 고르면 409
         job.steps.append(Step(tool="push_to_wms", summary=f"WMS 자동 등록: {state.wms_id}", ok=True))
+        job.steps.append(_mark_registered(job_id, wms._bl_no(docs)))  # 등록됐으니 B/L 번호는 하나다
     elif reason:
         job.steps.append(Step(tool="push_to_wms", summary=f"WMS 자동 등록 못 함: {reason}", ok=False))
     if state != before or reason:
@@ -446,7 +464,7 @@ def approve_job(job_id: str, body) -> dict:
       / 409 {"error"}: 불일치가 남음, 승인 대기 중이 아님, 서류 기록이 없음, B/L 번호·수하인이 없어 기록을 못 만듦
       / 502 가상 WMS 저장 실패 (작업은 그대로라 다시 승인하면 된다).
     이미 등록된 작업이면 다시 등록하지 않고 그 상태를 돌려준다. WMS 쪽도 멱등 키라 재시도해도 한 번만 들어간다.
-    저장: result.wms = {등록됨, human, wms_id}, status = done, steps에 push_to_wms 한 줄.
+    저장: result.wms = {등록됨, human, wms_id}, status = done, steps에 push_to_wms 한 줄과 mark_registered 한 줄(E3).
       화면은 승인 뒤 GET /jobs/{id}를 다시 불러 result.wms(by 포함)를 쓴다.
     """
     if not JOB_ID.match(job_id):
@@ -484,6 +502,7 @@ def approve_job(job_id: str, body) -> dict:
     job.result.wms = state
     job.status = "done"
     job.steps.append(Step(tool="push_to_wms", summary=f"사람 승인({approver})으로 WMS 등록: {state.wms_id}", ok=True))
+    job.steps.append(_mark_registered(job_id, record.bl_no))
     save_job(job, keep=item)
     return _response(200, _wms_body(state))
 
