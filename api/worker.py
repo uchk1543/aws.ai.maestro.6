@@ -4,7 +4,8 @@ API Lambda(api/handler.py의 POST /jobs)가 작업을 queued로 저장한 뒤 �
     받는 이벤트: {"job_id": "job-xxxxxxxx", "files": [{"key", "doc_type"}]}
     하는 일: running으로 바꾸고 run_job을 돌린다. 단계가 늘 때마다 저장해 화면 진행 단계에 보이고,
             끝나면 waiting_approval · done · failed로 저장한다.
-            HS는 recommend_hs(C1·C2)로 품목마다 추천한다 (모델 없이 품명 검색, 확정 이력은 team06-hs-history).
+            HS는 recommend_hs(C1·C2)로 품목마다 추천한다 (확정 이력은 team06-hs-history. 이력이 없으면 모델이 검색어를 뽑고
+            후보 안에서 고른다, #132).
             마지막 저장 때 읽은 서류(docs)와 수입자(importer)를 같은 줄에 넣는다. HS 선택(C3)·승인(D3)이 읽는다 (#122).
             waiting_approval·done이고 읽은 서류가 있으면 마지막 저장 직전에 차례로 한다 (#154):
               1. 신고서 초안을 채운다 (C5 draft_declaration). 문제가 남은 칸과 확정 안 된 HS 칸은 비운다
@@ -90,13 +91,18 @@ def _hs_table() -> hs.CsvHSTable:
 def recommend_line(docs: list[ExtractedDocument], line: int) -> HSResult:
     """run_job에 넘기는 hs_recommender. 품목 한 행의 HS를 recommend_hs로 추천한다.
 
-    언제: run_job이 품목 행마다 부른다. 모델(terms_reader·picker)은 넘기지 않아 품명 검색만 한다.
+    언제: run_job이 품목 행마다 부른다.
     받는 것: docs(읽은 서류, files 순서), line(품목 행).
     반환: HSResult. 수입자를 알면 그 수입자의 확정 이력(team06-hs-history)을 쓰고, 모르면 빈 이력으로 부른다.
+    이력이 없으면 모델이 품명에서 검색어를 뽑고(bedrock_terms_reader), 코드가 찾은 후보 안에서 모델이 고른다
+    (bedrock_picker, #132). 품목 행마다 모델 호출이 두 번 늘고, 모델이 실패하면 recommend_hs가 품명 검색으로 대신한다.
     """
     importer = importer_of(docs)
     history = handler._hs_history() if importer else _NoHistory()
-    return hs.recommend_hs(docs, line, importer or "", history=history, table=_hs_table())
+    return hs.recommend_hs(
+        docs, line, importer or "", history=history, table=_hs_table(),
+        terms_reader=hs.bedrock_terms_reader, picker=hs.bedrock_picker,
+    )
 
 
 def _docs_columns(docs: list[ExtractedDocument]) -> dict:

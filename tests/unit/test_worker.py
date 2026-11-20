@@ -18,7 +18,8 @@ import tools.wms as wms
 from tests.unit.fakes import MemoryHSHistory, MemoryWms
 from tests.unit.test_report_shipment import TODAY, MemoryWriter
 from tools.models import (
-    Cell, DeclarationDraft, ExtractedDocument, HSResult, Issue, Job, JobResult, OcrLine, OcrResult, Shipment, Step, WmsState,
+    Cell, DeclarationDraft, ExtractedDocument, HSPick, HSResult, HSSearchTerms, Issue, Job, JobResult, OcrLine, OcrResult,
+    Shipment, Step, WmsState,
 )
 from tools.ocr import PageImage
 
@@ -409,7 +410,46 @@ def test_no_docs_writes_no_columns(table, monkeypatch):
     assert "docs" not in table.items[JOB] and "importer" not in table.items[JOB]
 
 
-def test_recommend_line_uses_importer_history_or_empty_history(monkeypatch):
+@pytest.fixture
+def fake_hs_models(monkeypatch):
+    """recommend_line이 넘기는 모델(검색어 뽑기·후보 고르기)을 가짜로 바꾼다. Bedrock을 부르지 않는다.
+
+    검색어는 가구 낱말을 내고, 고르기는 후보 중 9401(의자)로 시작하는 것을 1순위로 고른다. 받은 인자를 기록한다.
+    """
+    calls: dict[str, list] = {"terms": [], "pick": []}
+
+    def terms_reader(name):
+        calls["terms"].append(name)
+        return HSSearchTerms(terms=["의자", "chair", "furniture"])
+
+    def picker(name, candidates):
+        calls["pick"].append((name, [c.hs for c in candidates]))
+        chairs = [c for c in candidates if c.hs.startswith("9401")]
+        return HSPick(picks=chairs[:3])
+
+    monkeypatch.setattr(hs, "bedrock_terms_reader", terms_reader)
+    monkeypatch.setattr(hs, "bedrock_picker", picker)
+    return calls
+
+
+def test_recommend_line_passes_model_terms_and_picker(monkeypatch, fake_hs_models):
+    """확정 이력이 없으면 모델이 뽑은 검색어로 HS부호 표를 찾고, 모델이 후보 안에서 고른 것을 낸다 (#132 4번).
+
+    배포본에서 품명 그대로 검색하면 'KNOCK-DOWN'의 'DOWN'(깃털) 같은 낱말에 끌려가 가구가 후보에 없었다.
+    """
+    monkeypatch.setattr(handler, "_hs_history", lambda: MemoryHSHistory())
+
+    got = worker.recommend_line(read_docs(), 1)
+
+    assert len(fake_hs_models["terms"]) == 1 and len(fake_hs_models["pick"]) == 1
+    name, shown = fake_hs_models["pick"][0]
+    assert name == fake_hs_models["terms"][0]  # 같은 품명으로 검색어를 뽑고 고른다
+    assert any(c.startswith("9401") for c in shown)  # 모델 검색어로 찾은 후보에 의자가 있다
+    assert got.status == "사람 확인 필요" and got.candidates
+    assert all(c.hs.startswith("9401") for c in got.candidates)
+
+
+def test_recommend_line_uses_importer_history_or_empty_history(monkeypatch, fake_hs_models):
     """수입자를 알면 그 수입자 이력으로 자동 확정, 모르면 이력을 찾지 않는다 (빈 키·다른 수입자와 섞임 방지)."""
     history = MemoryHSHistory()
     monkeypatch.setattr(handler, "_hs_history", lambda: history)
