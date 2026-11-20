@@ -119,3 +119,35 @@ export interface ChooseHsResponse {
 export interface ApproveResponse {
   wms: { status: WmsStatus; wms_id: string | null };
 }
+
+// POST /api/chat (docs/examples/chat_response.json)
+export type Period = "today" | "this_week" | "last_week" | "range";
+export interface ChatRequest {
+  session_id: string;
+  message: string;
+}
+export interface ChatFilters {
+  status: string | null;
+  period: Period | null;
+  date_from?: string | null;
+  date_to?: string | null;
+}
+export interface PeriodResolved {
+  from: string;
+  to: string;
+}
+export interface Shipment {
+  bl_no: string;
+  consignee: string;
+  item: string;
+  arrived_at: string;
+  customs_status: string;
+  last_event_at: string;
+  job_id: string | null;
+}
+export interface ChatResponse {
+  answer: string;
+  filters: ChatFilters;
+  period_resolved: PeriodResolved | null;
+  rows: Shipment[];
+}

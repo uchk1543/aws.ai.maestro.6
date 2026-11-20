@@ -461,3 +461,65 @@ h3 {
 .wms-conflict p {
   margin: 0.3rem 0 0;
 }
+/* 현황 채팅 */
+.chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  min-height: 320px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.chat-user {
+  align-self: flex-end;
+  max-width: 70%;
+  background: var(--primary);
+  color: #fff;
+  border-radius: 12px 12px 2px 12px;
+  padding: 0.55rem 0.9rem;
+}
+
+.chat-answer {
+  align-self: flex-start;
+  max-width: 100%;
+  background: #f0f2f5;
+  border-radius: 12px 12px 12px 2px;
+  padding: 0.7rem 0.9rem;
+}
+
+.chat-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.chat-conditions {
+  margin: 0.4rem 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.chat-input {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.chat-input input {
+  flex: 1;
+  font: inherit;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+button.link {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--primary);
+  text-decoration: underline;
+}
