@@ -192,7 +192,8 @@ def _field_prompt(doc: ExtractedDocument, field: str) -> str:
     )
 
 
-_NUMERIC = ("gross_kg", "net_kg", "qty")
+# 숫자로 비교하는 칸 (끝 이름). packages·cbm은 B12 #228 새 칸과 total_packages·total_cbm
+_NUMERIC = ("gross_kg", "net_kg", "qty", "packages", "cbm")
 
 
 def _text_core(raw: str) -> str:
@@ -214,7 +215,8 @@ def same_value(field: str, a: str | None, b: str | None) -> bool:
         for x, y in zip(parts_a, parts_b):
             if parse_number(x) is None or parse_number(x) != parse_number(y):
                 return False
-            ux, uy = _unit_after_number(x), _unit_after_number(y)
+            ux, uy = (_unit_after_number(u) for u in (x, y))
+            ux, uy = (extract._QTY_UNITS.get(u, u) if u else u for u in (ux, uy))  # CTNS·CARTONS = CTN
             if ux and uy and ux.rstrip("S") != uy.rstrip("S"):  # KG·KGS는 같고 KG·LBS는 다르다
                 return False
         return True
