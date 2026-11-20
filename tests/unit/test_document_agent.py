@@ -20,7 +20,9 @@ CLASSES = {
     "packing.pdf": ("packing_list", "제목 PACKING LIST, N.W./G.W. 칸, 단가 칸 없음"),
     "memo.png": ("unknown", "제목 없음, 칸만으로 종류를 정할 수 없음"),
     "bl.pdf": ("bill_of_lading", "제목 BILL OF LADING, Vessel/Voyage·Freight 칸"),
+    "co.pdf": ("certificate_of_origin", "제목 CERTIFICATE OF ORIGIN, Origin criterion 칸"),
 }
+CO = "uploads/s1/co.pdf"
 # 송장 번호·총수량은 같고 총중량만 다르다 → cross_check(B7)는 X-WT-01 불일치 하나
 RAWS = {
     "invoice.pdf": {
@@ -122,15 +124,25 @@ def test_user_unknown_also_asks_human():
     assert job.result.issues[0].rule_id == "DOC-UNKNOWN" and job.status == "waiting_approval"
 
 
-def test_p1_doc_types_are_classified_but_not_read_yet():
-    """B/L·원산지증명서 읽기(B2 P1) 전에는 분류만 하고 '참고'로 알린다. 대조와 등급에는 넣지 않는다."""
-    m = Models(raws={**RAWS, "packing.pdf": RAWS["invoice.pdf"]})
-    job = run_job("job-1", files(INV, PL, BL), fetch, reader=m.reader, classifier=m.classifier)
+def test_bill_of_lading_is_read_and_origin_is_not_yet():
+    """선하증권은 읽어서 대조(X-WT-01 3자)에 넣고, 원산지증명서는 칸이 들어오기 전까지 분류만 하고 '참고'로 알린다 (#110)."""
+    bl = {"doc_no": {"raw": "BL-1"}, "total_gross_kg": {"raw": "6,250 KGS"}, "consignee_name": {"raw": "EXAMPLE CO., LTD."}}
+    m = Models(raws={**RAWS, "packing.pdf": RAWS["invoice.pdf"], "bl.pdf": bl})
+    job = run_job("job-1", files(INV, PL, BL, CO), fetch, reader=m.reader, classifier=m.classifier)
     assert job.steps[2].summary == "bl.pdf → 선하증권 (제목 BILL OF LADING, Vessel/Voyage·Freight 칸)"
-    assert sorted(m.read) == ["invoice.pdf", "packing.pdf"]
+    assert sorted(m.read) == ["bl.pdf", "invoice.pdf", "packing.pdf"]
     [note] = job.result.issues
-    assert (note.rule_id, note.grade, note.cells[0].doc) == ("DOC-LATER", "참고", "bill_of_lading")
+    assert (note.rule_id, note.grade, note.cells[0].doc) == ("DOC-LATER", "참고", "certificate_of_origin")
     assert job.status == "done"
+
+
+def test_bill_of_lading_weight_joins_the_majority_check():
+    """총중량이 셋이면 다수결로 다른 쪽을 짚는다 (agent-design.md 3번): 송장·B/L 6,250, 포장명세서 6,520 → 포장명세서."""
+    bl = {"doc_no": {"raw": "BL-1"}, "total_gross_kg": {"raw": "6,250 KGS"}}
+    m = Models(raws={**RAWS, "bl.pdf": bl})
+    job = run_job("job-1", files(INV, PL, BL), fetch, reader=m.reader, classifier=m.classifier)
+    [issue] = [i for i in job.result.issues if i.rule_id == "X-WT-01"]
+    assert issue.grade == "불일치" and issue.suspect == "packing_list"
 
 
 def test_classify_failure_is_not_ok_and_not_read():

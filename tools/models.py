@@ -120,6 +120,13 @@ class ExtractedDocument(_Strict):
             "합계가 찍혀 있지 않으면 줄 값을 더하지 말고 비워 둔다. 예: 'TOTAL: 2,650 PCS'"
         ),
     )
+    consignee_name: Cell | None = Field(
+        default=None,
+        description=(
+            "수하인(Consignee, 수입자) 칸의 회사 이름. 주소·전화·담당자 줄은 뺀다. Notify Party·Shipper·Exporter와 다르다. "
+            "HS 확정 이력과 WMS 등록의 수입자로 쓴다 (#110). 예: 'EXAMPLE HOME LIVING CO., LTD.'"
+        ),
+    )
 
 
 # 모델이 실제로 채우는 모양: raw와 못 읽은 이유만 낸다 (value는 코드가 푼다)
@@ -156,6 +163,18 @@ class RawDocument(_Strict):
         default=None, description=ExtractedDocument.model_fields["total_gross_kg"].description
     )
     total_qty: RawCell | None = Field(default=None, description=ExtractedDocument.model_fields["total_qty"].description)
+    consignee_name: RawCell | None = Field(
+        default=None, description=ExtractedDocument.model_fields["consignee_name"].description
+    )
+
+    # Bedrock 구조화 출력은 필수가 아닌 속성을 전체 12개까지만 받는다 (agent-design.md 10번).
+    # 지금까지 12개라서 새 칸은 스키마에서 필수(null 허용)로 둔다. 파이썬에서는 기본값 None이라 기존 가짜 응답도 그대로 검증된다.
+    model_config = {
+        **_Strict.model_config,
+        "json_schema_extra": lambda schema: schema.update(
+            required=sorted({*schema.get("required", []), "consignee_name"})
+        ),
+    }
 
 
 class Classification(_Strict):

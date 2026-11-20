@@ -10,6 +10,9 @@
 - `doc_no`: 서류끼리 맞춰 보는 번호. 상업송장은 송장 번호, **포장명세서는 거기 적힌 송장 번호**(Packing List No.가 아니다), B/L은 B/L No.
   X-INV-01은 상업송장 `doc_no`와 포장명세서 `doc_no`를 비교한다. 포장명세서 번호 자체는 지금 담지 않는다 (#89).
 - `total_qty`: 합계로 찍힌 **품목 수량**의 합계. 포장 개수의 합계(CTNS 등)가 아니다. 합계가 찍혀 있지 않으면 비우고, 대조 코드가 줄 값을 더한다.
+- `consignee_name`: 수하인(Consignee, 수입자) 칸의 회사 이름 한 줄. 주소·전화는 뺀다. 상업송장 값이 HS 확정 이력과 WMS 등록의 수입자다 (#110). 칸이 없으면 null.
+  모델 스키마(`RawDocument`)에서는 필수 + null 허용이다 (Bedrock 구조화 출력의 선택 속성 12개 한도).
+- 읽는 종류: 상업송장·포장명세서·선하증권. 원산지증명서는 칸이 들어오기 전까지 분류만 하고 '참고'(DOC-LATER)로 알린다.
 - 예시: `docs/examples/extract_packing_list.json`
 ## 약속 2. 작업 API (화면 ↔ Lambda)
 주소: 화면과 같은 CloudFront 주소의 `/api/…`. CloudFront가 `/api/*`를 API Gateway(HTTP API)로 보낸다. 같은 주소라 CORS 설정이 필요 없다.
