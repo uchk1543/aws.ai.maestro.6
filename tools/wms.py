@@ -1,12 +1,15 @@
 """push_to_wms (에이전트 도구 아님). 담당: 서버. 규칙: .kiro/steering/agent-design.md 8번, 형식: docs/schema.md
 
 에이전트 도구 목록에 넣지 않는다. 외부 시스템에 쓰는 일은 코드만 한다.
-작업: e2e-plan.md D1·D2·D3 (P1). 실제 WMS로 바꿀 때는 WmsAdapter 구현만 바꾼다.
+작업: e2e-plan.md D1·D2·D3 (P1), D4 ERP용 CSV (P2). 실제 WMS로 바꿀 때는 WmsAdapter 구현만 바꾼다.
 """
 
+import csv
+import io
 import os
 import time
 import uuid
+from collections.abc import Iterable
 from functools import cache
 from typing import Protocol
 
@@ -114,6 +117,50 @@ def _items(docs: list[ExtractedDocument], hs: list[HSResult]) -> list[dict]:
     return [rows[line] for line in sorted(rows)]
 
 
+# ERP용 CSV 칸 (D4). 한 줄 = 품목 한 행. 앞 넷은 건(WmsRecord) 칸, 나머지는 ITEM_KEYS. bl_no + job_id + line은 겹치지 않는다.
+ERP_CSV_COLUMNS = ("bl_no", "job_id", "consignee", "by", *ITEM_KEYS)
+# 엑셀 같은 스프레드시트가 수식으로 읽는 첫 글자 (OWASP CSV Injection). 서류에서 읽은 글자는 데이터로만 다룬다.
+_FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
+
+
+def export_erp_csv(records: Iterable[WmsRecord]) -> str:
+    """ERP에 넘길 CSV 글자를 만든다. WMS에 올린 것과 같은 검증 데이터(WmsRecord)로 만든다 (agent-design.md 8번).
+
+    언제: 가상 WMS에 등록한 건을 ERP로 넘길 때. 모델은 쓰지 않는다.
+    받는 것: records(WmsRecord 목록. make_record로 만들어 push_to_wms에 넘긴 기록 그대로).
+    반환: 머리줄이 ERP_CSV_COLUMNS인 CSV 글자(RFC 4180, 줄 끝 CRLF). 품목 한 행이 한 줄이고 빈 값은 빈칸이다.
+      hs_code는 기록에 든 확정 HS뿐이다. 품목이 없는 건도 건 칸만 채운 한 줄로 남긴다.
+      같은 멱등 키가 또 오면 처음 것만 쓴다 (WMS처럼 같은 건이 두 번 들어가지 않게).
+      글자 칸이 = + - @ 로 시작하면 앞에 '를 붙인다 (스프레드시트에서 수식으로 실행되지 않게). 숫자 칸은 그대로다.
+      파일로 저장할 때는 utf-8-sig로 써야 엑셀에서 한글이 깨지지 않는다.
+    """
+    out = io.StringIO()
+    writer = csv.DictWriter(out, fieldnames=ERP_CSV_COLUMNS)
+    writer.writeheader()
+    seen: set[str] = set()
+    lines = 0
+    for record in records:
+        if record.idempotency_key in seen:
+            continue
+        seen.add(record.idempotency_key)
+        head = {"bl_no": record.bl_no, "job_id": record.job_id, "consignee": record.consignee, "by": record.by}
+        for item in record.items or [{}]:
+            row = head | {key: item.get(key) for key in ITEM_KEYS}
+            writer.writerow({key: _csv_cell(value) for key, value in row.items()})
+            lines += 1
+    print(f"[wms] ERP CSV {len(seen)}건 {lines}줄")
+    return out.getvalue()
+
+
+def _csv_cell(value: str | int | float | None) -> str | int | float:
+    """CSV 칸 하나. None은 빈칸, 수식으로 읽힐 글자는 앞에 '를 붙인다."""
+    if value is None:
+        return ""
+    if isinstance(value, str) and value.startswith(_FORMULA_START):
+        return "'" + value
+    return value
+
+
 class DynamoWms:
     """WmsAdapter의 가상 WMS판 (DynamoDB team06-wms). 칸 약속은 infra/README.md "테이블".
 
@@ -179,5 +226,16 @@ def push_to_wms(record: WmsRecord, *, adapter: WmsAdapter) -> WmsState:
 
 
 def approve(result: JobResult, by: WmsBy = "human") -> None:
-    """사람 승인 전 검사. 불일치가 남았으면 ApprovalRefused."""
-    raise NotImplementedError("D3: 승인 검사 (서버 담당)")
+    """사람 승인 전 검사 (agent-design.md 8번 예외).
+
+    언제: POST /jobs/{id}/approve에서 make_record·push_to_wms를 부르기 전.
+    받는 것: result(문제 목록), by(승인 경로. 지금은 human만 부른다).
+    반환: 없음. 확인 필요·참고만 남았으면 통과한다 (사람이 보고 승인했으므로).
+    실패: 불일치가 하나라도 남았으면 ApprovalRefused. 승인해도 등록하지 않고, 서류를 고쳐 다시 올려야 한다.
+    """
+    left = [i for i in result.issues if i.grade == "불일치"]
+    if left:
+        rules = ", ".join(dict.fromkeys(i.rule_id for i in left))
+        raise ApprovalRefused(
+            f"불일치 {len(left)}건({rules})이 남아 있어 WMS에 등록할 수 없습니다. 서류를 고쳐 다시 올려 주세요"
+        )

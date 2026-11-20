@@ -1,11 +1,11 @@
-"""tools/wms.py 가상 WMS(D1) 단위 테스트. DynamoDB는 가짜 테이블로 바꾼다 (AWS 호출 없음)."""
+"""tools/wms.py 가상 WMS(D1)·승인 검사(D3) 단위 테스트. DynamoDB는 가짜 테이블로 바꾼다 (AWS 호출 없음)."""
 
 import pytest
 from botocore.exceptions import ClientError
 
 from tests.unit.fakes import MemoryWms
 from tools import wms
-from tools.models import Cell, ExtractedDocument, ExtractedItem, HSResult, WmsRecord, WmsState
+from tools.models import Cell, ExtractedDocument, ExtractedItem, HSResult, Issue, IssueCell, JobResult, WmsRecord, WmsState
 
 JOB = "job-0000d001"
 BL = "BL-2026-0001"
@@ -182,3 +182,26 @@ def test_push_to_wms_with_dynamo_wms():
     table = FakeWmsTable()
     state = wms.push_to_wms(record(), adapter=wms.DynamoWms(table))
     assert state.status == "등록됨" and state.wms_id == table.items[f"{BL}#{JOB}"]["wms_id"]
+
+
+# ---------------------------------------------------------------------------
+# approve: 사람 승인 전 검사 (D3)
+# ---------------------------------------------------------------------------
+def issue(rule_id: str, grade: str) -> Issue:
+    cell = IssueCell(doc="packing_list", field="total_gross_kg", raw="6,520.00 KGS")
+    return Issue(rule_id=rule_id, grade=grade, cells=[cell], evidence="근거 문장")
+
+
+def test_approve_passes_when_only_check_needed_or_notes_left():
+    wms.approve(JobResult(issues=[issue("READ-FAIL", "확인 필요"), issue("X-INV-01", "참고")], hs=HS))
+    wms.approve(JobResult())
+
+
+def test_approve_refuses_when_mismatch_left():
+    result = JobResult(issues=[issue("X-WT-01", "불일치"), issue("X-QTY-01", "불일치"), issue("X-WT-01", "불일치"),
+                               issue("READ-FAIL", "확인 필요")])
+    with pytest.raises(wms.ApprovalRefused) as refused:
+        wms.approve(result)
+    assert str(refused.value) == (
+        "불일치 3건(X-WT-01, X-QTY-01)이 남아 있어 WMS에 등록할 수 없습니다. 서류를 고쳐 다시 올려 주세요"
+    )

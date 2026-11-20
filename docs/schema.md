@@ -34,7 +34,60 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 처리 Lambda가 비동기로 `run_job`을 돌려 `running` → `waiting_approval`·`done`·`failed`로 바꾼다. 화면은 `GET /api/jobs/{id}`를 2초마다 부른다.
 ## 화물 기록 (team06-shipments 한 줄)
 - 예시: `docs/examples/shipment.json`
-- `customs_status` 값 목록과 "통관 지연" 기준(입항 뒤 며칠)은 검증 담당이 정해 여기에 적는다.
+- `customs_status` 값은 아래 6개만 쓴다 (진행 순서). 검사 중은 심사 중 뒤에 거치는 선택 단계다.
+  `입항` → `수입신고` → `심사 중` → `검사 중` → `수리` → `반출`
+- 통관이 끝난 상태: `수리`, `반출`.
+- "통관 지연"은 상태 값이 아니다. `customs_status`에 넣지 않고, 아래 규칙으로 코드가 계산한다.
+  - 통관 지연 = (오늘 − `arrived_at`) ≥ **3일** 이고 `customs_status`가 `수리`·`반출`이 아님.
+  - 입항일 당일이 0일이다. 입항일이 11/17이면 11/20부터 지연이다.
+  - 오늘은 한국 시간(Asia/Seoul) 날짜다. 지연 일수 `DELAY_DAYS = 3`은 코드 한 곳에 상수로 둔다.
+  - 3일은 데모용으로 정한 값이다. 법령이나 관세청 기준이 아니다. 바꿀 때는 이 문서와 `DELAY_DAYS`, 현황 질문 정답(`eval/queries.csv`)을 함께 고친다.
+  - 답에는 쓴 규칙을 함께 보여 준다 (`ChatResponse.rule`, 예: "입항 후 3일 지나도 수리·반출 아님").
+- 기간 조건(`today` · `this_week` · `last_week` · `range`)은 `arrived_at`(입항일) 기준이다. 주는 월요일부터 일요일까지이고, 날짜 계산은 코드가 한국 시간으로 한다.
+## 신고서 초안 칸 (declaration_draft)
+- 간이 양식이다. 코드가 템플릿에 값을 채우고 모델은 쓰지 않는다 (agent-design.md 7번). 초안에는 "사람 검토 전 초안"을 적고 신고 전송은 하지 않는다.
+- `fields[]`: `{"name": 신고서 칸 이름, "value": 채운 값, "source": 출처}`. `source`는 `서류.칸`이고, 품목 칸은 `items[0]`처럼 줄 번호 − 1을 쓴다 (1번 줄 = `items[0]`).
+- `blank_fields[]`: 비워 둔 칸. 아래 표의 `field`(칸 키)로 적는다. 서류 전체 칸은 `total_gross_kg`, 품목 칸은 `items[0].qty`처럼 쓴다 (줄 번호 − 1). 수량과 단위처럼 출처가 같은 칸도 키로 구분한다.
+- 칸 목록은 `eval/declarations.csv`(정답지)의 `field`·`label`·`source`와 같다. 바꾸면 정답지도 함께 바꾼다.
+- "읽기 칸"은 지금 `tools/models.py`의 `ExtractedDocument`에 이 출처가 있는지다. 없음인 칸은 읽기 칸(B2, 1번 담당)이 늘어야 채울 수 있고, 그 전에는 비워 두고 blank_fields에 적는다.
+
+서류 전체 칸 (줄 번호 없음)
+| field | 신고서 칸 | 출처 | 읽기 칸 |
+|---|---|---|---|
+| `bl_no` | B/L 번호 | `bill_of_lading.bl_no` (= `doc_no`) | 있음 |
+| `vessel` | 선기명 | `bill_of_lading.vessel_voyage` | 없음 |
+| `importer` | 수입자 | `commercial_invoice.consignee_name` | 없음 |
+| `supplier` | 해외공급자 | `commercial_invoice.exporter_name` | 없음 |
+| `export_country` | 적출국 | `bill_of_lading.port_loading` | 없음 |
+| `total_gross_kg` | 총중량(kg) | `packing_list.total_gross_kg` | 있음 |
+| `total_packages` | 총포장갯수 | `packing_list.total_packages` | 없음 |
+| `package_kind` | 포장종류 | `packing_list` (포장 단위에서 코드가 정함) | 없음 |
+| `incoterms` | 인도조건 | `commercial_invoice.incoterms` | 없음 |
+| `currency` | 통화 | `commercial_invoice` (금액 칸의 통화) | 없음 |
+| `total_amount` | 결제금액 | `commercial_invoice.total_amount` | 없음 |
+| `payment` | 결제방법 | `commercial_invoice.payment_term` | 없음 |
+| `co_present` | 원산지증명서 유무 | `certificate_of_origin` (서류가 올라왔는지, Y/N) | 있음 |
+
+품목 칸 (줄마다 하나씩)
+| field | 신고서 칸 | 출처 | 읽기 칸 |
+|---|---|---|---|
+| `description` | 품명 | `commercial_invoice.items[0].name` | 있음 |
+| `hs_code` | 세번부호 | `hs[0].hs_code` (recommend_hs 결과. 확정 전이면 비움) | 있음 |
+| `qty` | 수량 | `commercial_invoice.items[0].qty` | 있음 |
+| `unit` | 단위 | `commercial_invoice.items[0].qty` (칸의 `unit`) | 있음 |
+| `net_kg` | 순중량(kg) | `packing_list.items[0].net_kg` | 있음 |
+| `unit_price` | 단가 | `commercial_invoice.items[0].unit_price` | 없음 |
+| `amount` | 금액 | `commercial_invoice.items[0].amount` | 없음 |
+| `origin` | 원산지 | `commercial_invoice.origin` | 없음 |
+| `fta` | 협정 | `certificate_of_origin` (서류 양식에서 코드가 정함) | 없음 |
+| `origin_criterion` | 원산지결정기준 | `certificate_of_origin.items[0].origin_criterion` | 없음 |
+
+비우는 규칙 (코드가 정한다)
+- 불일치·확인 필요 `issues`의 `cells`가 칸의 출처와 같은 서류·칸을 짚으면 그 칸을 비운다. 참고는 비우지 않는다.
+- `hs_code`는 그 줄의 HS가 `사람 확인 필요`면 비운다 (`자동 확정`·`사람 확정`이면 채운다).
+- 읽기 칸이 없거나 못 읽은 칸(raw가 null)도 추측하지 않고 비운다.
+- 비운 칸은 `fields`에 넣지 않고 `blank_fields`에만 적는다. 틀린 값과 비운 칸은 평가에서 따로 센다.
+
 ## 약속 3. 정답지 (eval/answers.csv)
 ```csv
 set_id,split,doc,field,planted_value,original_value,error_type,expected_rule_id,line,phase,variant

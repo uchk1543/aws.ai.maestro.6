@@ -1,13 +1,18 @@
-"""Lambda 진입점 (Function URL, 이벤트 형식 2.0). 담당: 서버. 형식: docs/schema.md 약속 2
+"""API Lambda team06-api 진입점 (API Gateway HTTP API, 이벤트 형식 2.0). 담당: 서버. 형식: docs/schema.md 약속 2
 
-뼈대 경로
-    GET  /               → {"ok": true}            (S4 배포 확인)
-    POST /jobs           → {"job_id"}              (S5, 안에서 끝까지 처리)
-    GET  /jobs/{id}      → Job                     (S5)
-    POST /jobs/{id}/hs   → {"declaration_draft"}   (C3, 사람이 고른 HS 반영)
-나머지 경로(/uploads, /jobs/{id}/approve, /chat)는 501을 돌려준다. Spec 2·3에서 채운다.
+CloudFront가 /api/*를 API Gateway로 보내고, rawPath에 /api가 붙어 온다 (/api/jobs). 앞의 /api를 떼고 나눈다.
+옮기는 동안 /api 없는 경로(/jobs)도 같은 곳으로 간다.
+    GET  /api/               → {"ok": true}            (배포 확인)
+    POST /api/uploads        → {"uploads"}             (F2, 파일마다 S3에 직접 PUT할 미리 서명된 URL)
+    POST /api/jobs           → {"job_id"}              (F3, queued로 저장하고 처리 Lambda를 비동기로 부른 뒤 바로 응답)
+    GET  /api/jobs/{id}      → Job                     (화면이 2초마다)
+    POST /api/jobs/{id}/hs   → {"declaration_draft"}   (C3, 사람이 고른 HS 반영)
+    POST /api/jobs/{id}/approve → {"wms"}              (D3, 사람 승인으로 WMS 등록. 불일치가 남았으면 409)
+    POST /api/chat           → ChatResponse            (E5, 현황 조회. 1번 agent.query_agent)
+서류 처리(run_job)는 처리 Lambda team06-worker(api/worker.py)가 한다. API Gateway는 요청 하나를 30초 안에 끝내야 한다.
 
-환경 변수: JOBS_TABLE(team06-jobs), DOCS_BUCKET(team06-docs-...), MODEL_ID, HS_HISTORY_TABLE(team06-hs-history)
+환경 변수: JOBS_TABLE(team06-jobs), DOCS_BUCKET(team06-docs-...), MODEL_ID, HS_HISTORY_TABLE(team06-hs-history),
+WMS_TABLE(team06-wms), SHIPMENTS_TABLE(team06-shipments), WORKER_FUNCTION(team06-worker, API Lambda에만)
 """
 
 import base64
@@ -15,18 +20,27 @@ import json
 import os
 import re
 import time
+import unicodedata
 import uuid
 from functools import cache
 
+from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import TypeAdapter
 
-from tools import declaration, hs
-from tools.models import ExtractedDocument, Job, Step
+from tools import declaration, hs, wms
+from tools.models import ExtractedDocument, Job, Step, WmsState
 
 ALLOWED_DOC_TYPES = {"commercial_invoice", "packing_list"}  # 뼈대 범위 (S2)
 JOB_ID = re.compile(r"^job-[0-9a-f]{8}$")
 HS_CODE = re.compile(r"^[0-9]{10}$")  # 10자리 HSK
+APPROVER_MAX = 50  # 승인자 이름 길이. 화면 입력칸(WmsPanel maxLength)과 같다
 KEY_PREFIX = "uploads/"
+API_PREFIX = "/api"  # CloudFront → API Gateway가 rawPath 앞에 붙여 보낸다
+# 올릴 수 있는 형식 (화면 web/src/pages/UploadPage.tsx ACCEPT와 같다). 읽기(tools/extract.py)는 확장자로 PDF·이미지를 가른다
+UPLOAD_TYPES = {".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
+UNKNOWN_TYPE = "application/octet-stream"  # 브라우저가 type을 모를 때 화면이 보내는 값 (web/src/api.ts contentTypeOf)
+UPLOAD_SECONDS = 300  # 미리 서명된 URL 유효 시간. 약속 2 "몇 분 뒤 만료"
+NAME_MAX = 80  # S3 키에 넣는 파일 이름(확장자 뺀) 길이
 _DOCS = TypeAdapter(list[ExtractedDocument])
 
 
@@ -45,13 +59,64 @@ def _s3():
     import boto3
     from botocore.config import Config
 
-    return boto3.client("s3", config=Config(connect_timeout=5, read_timeout=5, retries={"max_attempts": 2}))
+    # s3v4 + virtual: 미리 서명된 URL이 지역 주소(<버킷>.s3.ap-northeast-2.amazonaws.com)로 나온다.
+    # 기본값은 전역 주소(<버킷>.s3.amazonaws.com)라 새 버킷이면 307로 돌려보내고, 브라우저의 CORS 사전 요청이 실패한다.
+    config = Config(
+        signature_version="s3v4",
+        s3={"addressing_style": "virtual"},
+        connect_timeout=5,
+        read_timeout=5,
+        retries={"max_attempts": 2},
+    )
+    return boto3.client("s3", config=config)
+
+
+@cache
+def _lambda():
+    import boto3
+    from botocore.config import Config
+
+    return boto3.client("lambda", config=Config(connect_timeout=5, read_timeout=5, retries={"max_attempts": 2}))
 
 
 def fetch_object(key: str) -> bytes:
     """DOCS_BUCKET에서 파일을 받는다."""
     print(f"[tool] s3_get key={key}")
     return _s3().get_object(Bucket=os.environ["DOCS_BUCKET"], Key=key)["Body"].read()
+
+
+def presign_upload(key: str, content_type: str) -> str:
+    """DOCS_BUCKET의 key에 PUT할 미리 서명된 URL을 만든다. S3를 부르지 않고 서명만 한다.
+
+    언제: POST /uploads에서 파일마다.
+    받는 것: key(uploads/로 시작), content_type. content-type도 서명에 들어가서, PUT할 때 같은 헤더를 보내야 한다.
+    반환: UPLOAD_SECONDS초 동안 쓸 수 있는 URL. URL에 서명이 들어 있어 로그에는 남기지 않는다.
+    """
+    print(f"[tool] s3_presign_put key={key} content_type={content_type}")
+    return _s3().generate_presigned_url(
+        "put_object",
+        Params={"Bucket": os.environ["DOCS_BUCKET"], "Key": key, "ContentType": content_type},
+        ExpiresIn=UPLOAD_SECONDS,
+        HttpMethod="PUT",
+    )
+
+
+def invoke_worker(job_id: str, files: list[dict]) -> None:
+    """처리 Lambda(WORKER_FUNCTION)를 비동기로 부른다. 기다리지 않는다.
+
+    언제: POST /jobs가 작업을 queued로 저장한 직후 (F3).
+    받는 것: job_id, files([{"key", "doc_type"}], 검사를 마친 값). 처리 Lambda가 받는 이벤트가 이 둘이다 (#36 약속).
+    반환: 없음. Lambda가 이벤트를 받지 않았으면(202가 아니면) RuntimeError, 호출 오류는 botocore 예외를 그대로 낸다.
+    """
+    function = os.environ["WORKER_FUNCTION"]
+    print(f"[api] invoke_worker function={function} job={job_id} files={len(files)}")
+    res = _lambda().invoke(
+        FunctionName=function,
+        InvocationType="Event",
+        Payload=json.dumps({"job_id": job_id, "files": files}, ensure_ascii=False).encode("utf-8"),
+    )
+    if res.get("StatusCode") != 202:
+        raise RuntimeError(f"처리 Lambda가 이벤트를 받지 않았습니다 (StatusCode={res.get('StatusCode')})")
 
 
 def save_job(job: Job, keep: dict | None = None) -> None:
@@ -139,6 +204,46 @@ def _body(event: dict):
     return json.loads(raw) if raw else {}
 
 
+def _safe_name(name: str) -> str | None:
+    """화면이 보낸 파일 이름을 S3 키에 넣을 이름으로 바꾼다. 올릴 수 없는 형식이면 None.
+
+    경로(/, \\)는 버리고, 글자·숫자·_·- 밖의 문자는 _로 바꾼다. 한글은 남긴다 (단계 기록에 파일 이름이 보인다).
+    점도 바뀌므로 '..'이 남지 않는다 (POST /jobs의 key 검사). 확장자는 소문자로 둔다.
+    """
+    base = re.split(r"[\\/]", unicodedata.normalize("NFC", name))[-1].strip()
+    stem, suffix = os.path.splitext(base)
+    suffix = suffix.lower()
+    if suffix not in UPLOAD_TYPES:
+        return None
+    stem = re.sub(r"[^\w-]+", "_", stem).strip("_")[:NAME_MAX] or "file"
+    return stem + suffix
+
+
+def _validate_uploads(body) -> tuple[list[tuple[str, str]] | None, str | None]:
+    """POST /uploads 요청 검사. ([(키에 넣을 파일 이름, content_type)], 오류 메시지)"""
+    files = body.get("files") if isinstance(body, dict) else None
+    if not isinstance(files, list) or not files:
+        return None, "files 목록이 비어 있습니다"
+    from agent.document_agent import MAX_FILES
+
+    if len(files) > MAX_FILES:
+        return None, f"서류는 한 번에 {MAX_FILES}개까지입니다"
+    clean = []
+    for f in files:
+        name = f.get("name") if isinstance(f, dict) else None
+        content_type = f.get("content_type") if isinstance(f, dict) else None
+        if not isinstance(name, str) or not name.strip():
+            return None, "name(파일 이름)이 필요합니다"
+        safe = _safe_name(name)
+        if safe is None:
+            return None, f"PDF, PNG, JPG만 올릴 수 있습니다 ({name[:NAME_MAX]})"
+        expected = UPLOAD_TYPES[os.path.splitext(safe)[1]]
+        if content_type not in (expected, UNKNOWN_TYPE):
+            return None, f"{safe}의 content_type은 {expected}여야 합니다"
+        clean.append((safe, content_type))
+    return clean, None
+
+
 def _validate_files(body) -> tuple[list[dict] | None, str | None]:
     """POST /jobs 요청 검사. (files, 오류 메시지)"""
     files = body.get("files") if isinstance(body, dict) else None
@@ -181,6 +286,17 @@ def _validate_choices(body, lines: set[int]) -> tuple[dict[int, str] | None, str
     return picked, None
 
 
+def _validate_approver(body) -> tuple[str | None, str | None]:
+    """POST /jobs/{id}/approve 요청 검사. 공백을 한 칸으로 줄인 승인자 이름. (승인자, 오류 메시지)"""
+    approver = body.get("approver") if isinstance(body, dict) else None
+    if not isinstance(approver, str) or not approver.strip():
+        return None, "approver(승인자 이름)가 필요합니다"
+    approver = " ".join(approver.split())
+    if len(approver) > APPROVER_MAX:
+        return None, f"approver는 {APPROVER_MAX}자까지입니다"
+    return approver, None
+
+
 def _line_doc(docs: list[ExtractedDocument], line: int) -> ExtractedDocument | None:
     """확정 이력 키를 만들 서류. 그 행이 있는 상업송장을 먼저, 없으면 그 행이 있는 첫 서류."""
     having = [d for d in docs if any(i.line == line for i in d.items)]
@@ -190,22 +306,48 @@ def _line_doc(docs: list[ExtractedDocument], line: int) -> ExtractedDocument | N
 # ---------------------------------------------------------------------------
 # 경로
 # ---------------------------------------------------------------------------
+def create_uploads(body) -> dict:
+    """POST /uploads. 파일마다 화면이 S3에 직접 PUT할 미리 서명된 URL을 준다 (F2).
+
+    언제: 업로드 화면(G2)에서 '업로드'를 누를 때. 화면은 받은 url로 파일을 PUT한 뒤 key로 POST /jobs를 부른다.
+      파일이 API를 거치지 않아 API Gateway·Lambda 요청 크기 한도에 걸리지 않는다.
+    받는 것: {"files": [{"name", "content_type"}]}. PDF·PNG·JPG, 10개까지.
+      content_type은 확장자에 맞는 값이거나 application/octet-stream. PUT할 때 같은 content-type 헤더를 보내야 한다.
+    반환: 200 {"uploads": [{"key", "url"}]} (요청 순서대로) / 400 요청 형식.
+      key는 uploads/<묶음 ID>/<순번>-<파일 이름>이라 같은 이름을 여러 번 올려도 겹치지 않는다. url은 UPLOAD_SECONDS초 뒤 만료.
+    """
+    files, problem = _validate_uploads(body)
+    if problem:
+        return _error(400, problem)
+    batch = uuid.uuid4().hex
+    uploads = []
+    for n, (name, content_type) in enumerate(files, start=1):
+        key = f"{KEY_PREFIX}{batch}/{n}-{name}"
+        uploads.append({"key": key, "url": presign_upload(key, content_type)})
+    print(f"[api] uploads batch={batch} files={len(uploads)}")
+    return _response(200, {"uploads": uploads})
+
+
 def create_job(body) -> dict:
+    """POST /jobs. 작업을 queued로 저장하고 처리 Lambda를 비동기로 부른 뒤 job_id를 바로 돌려준다 (F3).
+
+    언제: 화면이 서류를 S3에 올린 뒤. 서류 처리는 처리 Lambda(api/worker.py)가 하고, 화면은 GET /jobs/{id}로 진행을 본다.
+    받는 것: {"files": [{"key", "doc_type"}]}.
+    반환: 200 {"job_id"} / 400 요청 형식 / 502 처리 Lambda를 부르지 못함 (작업은 failed로 남긴다).
+    """
     files, problem = _validate_files(body)
     if problem:
         return _error(400, problem)
-    from agent.document_agent import run_job
 
     job_id = f"job-{uuid.uuid4().hex[:8]}"
-    save_job(Job(job_id=job_id, status="running"))
-    started = time.perf_counter()
+    save_job(Job(job_id=job_id, status="queued"))  # 처리 Lambda보다 먼저 저장해야 바로 오는 GET이 작업을 찾는다
     try:
-        job = run_job(job_id, files, fetch_object)
-    except Exception as exc:  # 예상 못 한 오류도 작업 상태로 남긴다
-        print(f"[error] job={job_id} {type(exc).__name__}: {exc}")
-        job = Job(job_id=job_id, status="failed", error=f"{type(exc).__name__}: {exc}")
-    print(f"[job] {job_id} status={job.status} {time.perf_counter() - started:.1f}초")
-    save_job(job)
+        invoke_worker(job_id, files)
+    except Exception as exc:  # 권한·이름·제한 오류. queued로 두면 화면이 끝없이 기다리므로 failed로 바꾼다
+        print(f"[error] invoke_worker job={job_id} {type(exc).__name__}: {exc}")
+        save_job(Job(job_id=job_id, status="failed", error=f"처리를 시작하지 못했습니다 ({type(exc).__name__})"))
+        return _error(502, "서류 처리를 시작하지 못했습니다. 잠시 뒤 다시 올려 주세요")
+    print(f"[job] {job_id} status=queued files={len(files)}")
     return _response(200, {"job_id": job_id})
 
 
@@ -264,12 +406,88 @@ def choose_hs(job_id: str, body) -> dict:
     return _response(200, {"declaration_draft": draft.model_dump(mode="json")})
 
 
+def _wms_body(state: WmsState) -> dict:
+    """승인 응답 (약속 2). by는 넣지 않는다. 화면은 GET /jobs/{id}의 result.wms에서 by를 읽는다."""
+    return {"wms": {"status": state.status, "wms_id": state.wms_id}}
+
+
+def approve_job(job_id: str, body) -> dict:
+    """POST /jobs/{id}/approve. 사람이 승인하면 가상 WMS에 등록하고(by=human) 작업을 끝낸다.
+
+    언제: '확인 필요'가 남은 건을 사람이 화면에서 보고 승인할 때 (agent-design.md 8번 예외). 모델 호출 없음.
+    받는 것: {"approver"}: 승인자 이름. 공백만이면 안 되고 50자까지. 단계 기록에 남긴다.
+    반환: 200 {"wms": {"status", "wms_id"}} / 400 요청 형식 / 404 없는 작업
+      / 409 {"error"}: 불일치가 남음, 승인 대기 중이 아님, 서류 기록이 없음, B/L 번호·수하인이 없어 기록을 못 만듦
+      / 502 가상 WMS 저장 실패 (작업은 그대로라 다시 승인하면 된다).
+    이미 등록된 작업이면 다시 등록하지 않고 그 상태를 돌려준다. WMS 쪽도 멱등 키라 재시도해도 한 번만 들어간다.
+    저장: result.wms = {등록됨, human, wms_id}, status = done, steps에 push_to_wms 한 줄.
+      화면은 승인 뒤 GET /jobs/{id}를 다시 불러 result.wms(by 포함)를 쓴다.
+    """
+    if not JOB_ID.match(job_id):
+        return _error(404, "작업을 찾을 수 없습니다")
+    item = _load_item(job_id)
+    if item is None:
+        return _error(404, "작업을 찾을 수 없습니다")
+    approver, problem = _validate_approver(body)
+    if problem:
+        return _error(400, problem)
+    job = Job.model_validate_json(item["data"])
+    if job.result is not None and job.result.wms is not None and job.result.wms.status == "등록됨":
+        return _response(200, _wms_body(job.result.wms))
+    if job.status != "waiting_approval" or job.result is None:
+        return _error(409, f"승인은 승인 대기 중인 작업에서만 할 수 있습니다 (지금: {job.status})")
+    try:
+        wms.approve(job.result, "human")
+    except wms.ApprovalRefused as exc:
+        return _error(409, str(exc))
+    context = load_job_docs(item)
+    if context is None:
+        return _error(409, "이 작업에는 저장된 서류 기록이 없어 WMS에 올릴 기록을 만들 수 없습니다")
+    docs, importer = context
+    try:
+        record = wms.make_record(job_id, docs, job.result.hs, importer, "human")
+    except wms.RecordNotReady as exc:
+        return _error(409, str(exc))
+
+    print(f"[api] approve job={job_id}")
+    try:
+        state = wms.push_to_wms(record, adapter=wms.dynamo_wms())
+    except (BotoCoreError, ClientError) as exc:
+        print(f"[error] WMS 등록 실패 job={job_id} {type(exc).__name__}: {exc}")
+        return _error(502, "가상 WMS에 등록하지 못했습니다. 잠시 뒤 다시 승인해 주세요 (같은 건은 한 번만 들어갑니다)")
+    job.result.wms = state
+    job.status = "done"
+    job.steps.append(Step(tool="push_to_wms", summary=f"사람 승인({approver})으로 WMS 등록: {state.wms_id}", ok=True))
+    save_job(job, keep=item)
+    return _response(200, _wms_body(state))
+
+
+MAX_QUESTION = 500  # 현황 질문 길이 한도
+
+
+def chat(body) -> dict:
+    """POST /chat. 현황 질문에 답한다 (E5, 1번 agent.query_agent). 형식: docs/examples/chat_response.json
+
+    받는 것: {"session_id", "message"}. message는 비지 않은 글자 500자까지, session_id는 글자(없으면 '-').
+    반환: 200 ChatResponse / 400 요청 형식. 조회·건수는 코드가 하고 모델은 질문을 조건으로만 바꾼다.
+    """
+    message = body.get("message") if isinstance(body, dict) else None
+    session_id = body.get("session_id") if isinstance(body, dict) else None
+    if not isinstance(message, str) or not message.strip():
+        return _error(400, "message가 비어 있습니다")
+    if len(message) > MAX_QUESTION:
+        return _error(400, f"message는 {MAX_QUESTION}자까지입니다")
+    if session_id is not None and not isinstance(session_id, str):
+        return _error(400, "session_id는 글자입니다")
+    from agent.query_agent import answer
+    from tools.query import dynamo_shipments
+
+    res = answer(message.strip(), session_id or "-", store=dynamo_shipments())
+    return _response(200, res.model_dump(mode="json", by_alias=True))
+
+
 # 약속 2에 있지만 아직 없는 경로 → 작업 ID (e2e-plan.md). 만들면 여기서 지운다.
-_PLANNED = {
-    ("POST", "/uploads"): "F2",
-    ("POST", "/jobs/{id}/approve"): "D3",
-    ("POST", "/chat"): "E5",
-}
+_PLANNED: dict[tuple[str, str], str] = {}
 
 
 def _planned_route(method: str, path: str) -> str | None:
@@ -279,14 +497,27 @@ def _planned_route(method: str, path: str) -> str | None:
     return _PLANNED.get((method, path))
 
 
+def _route_path(raw_path: str | None) -> str:
+    """rawPath에서 앞의 /api와 끝의 /를 뗀다. '/api/jobs/' → '/jobs', '/api' → '/', '/jobs' → '/jobs'.
+
+    /api로 시작해도 '/apix'처럼 다음 글자가 '/'가 아니면 떼지 않는다.
+    """
+    path = (raw_path or "/").rstrip("/") or "/"
+    if path == API_PREFIX or path.startswith(API_PREFIX + "/"):
+        path = path[len(API_PREFIX):] or "/"
+    return path
+
+
 def lambda_handler(event, context):
-    """Function URL 요청을 경로별로 나눈다."""
+    """API Gateway HTTP API(페이로드 2.0) 요청을 경로별로 나눈다. /api 없는 옛 경로도 받는다."""
     http = event.get("requestContext", {}).get("http", {})
-    method, path = http.get("method", "GET"), event.get("rawPath", "/").rstrip("/") or "/"
-    print(f"[api] {method} {path}")
+    method, path = http.get("method", "GET"), _route_path(event.get("rawPath"))
+    print(f"[api] {method} {event.get('rawPath')} → {path}")
     try:
         if method == "GET" and path == "/":
             return _response(200, {"ok": True})
+        if method == "POST" and path == "/uploads":
+            return create_uploads(_body(event))
         if method == "POST" and path == "/jobs":
             return create_job(_body(event))
         if method == "GET" and path.startswith("/jobs/") and path.count("/") == 2:
@@ -294,6 +525,10 @@ def lambda_handler(event, context):
         parts = path.split("/")
         if method == "POST" and len(parts) == 4 and parts[1] == "jobs" and parts[3] == "hs":
             return choose_hs(parts[2], _body(event))
+        if method == "POST" and len(parts) == 4 and parts[1] == "jobs" and parts[3] == "approve":
+            return approve_job(parts[2], _body(event))
+        if method == "POST" and path == "/chat":
+            return chat(_body(event))
         planned = _planned_route(method, path)
         if planned:
             return _error(501, f"아직 만들지 않은 경로입니다 ({planned}). 형식은 docs/schema.md 약속 2")
