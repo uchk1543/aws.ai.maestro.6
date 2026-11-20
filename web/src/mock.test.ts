@@ -1,5 +1,6 @@
 // mock.ts: 가짜 서버가 약속 2의 모양으로 답하는지
 import { describe, expect, it } from "vitest";
+import chatExample from "../../docs/examples/chat_response.json";
 import jobExample from "../../docs/examples/job_waiting_approval.json";
 import { ApiError } from "./api";
 import { clearMockMismatches, mockJobAt, mockRequest, resetMock } from "./mock";
@@ -81,6 +82,12 @@ describe("mockRequest", () => {
 
     const res = await mockRequest("POST", `/api/jobs/${id}/approve`, { approver: "김담당" });
     expect(res).toEqual({ wms: { status: "등록됨", wms_id: "WMS-MOCK-0001" } });
+  });
+
+  it("POST /api/chat 은 예시 답을 주고, session_id·message 가 없으면 400", async () => {
+    const res = await mockRequest("POST", "/api/chat", { session_id: "s-1", message: "이번 주 통관 지연 건은?" });
+    expect(res).toEqual(chatExample);
+    await expect(mockRequest("POST", "/api/chat", { session_id: "s-1", message: " " })).rejects.toMatchObject({ status: 400 });
   });
 
   it("가짜 응답이 없는 경로는 404", async () => {

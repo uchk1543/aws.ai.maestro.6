@@ -1,10 +1,13 @@
 // 가짜 서버 (npm run dev 전용). docs/examples/ 의 예시로 /api 에 답한다.
 // 예시를 직접 읽으므로 예시가 바뀌면 가짜 응답도 같이 바뀐다.
 // 판정·신고서 채우기는 흉내 내지 않는다. 사람이 고른 값을 상태에 반영하는 것만 한다.
+import chatExample from "../../docs/examples/chat_response.json";
 import jobExample from "../../docs/examples/job_waiting_approval.json";
 import { ApiError } from "./api";
 import type {
   ApproveResponse,
+  ChatRequest,
+  ChatResponse,
   ChooseHsResponse,
   CreateJobResponse,
   HSChoice,
@@ -103,6 +106,12 @@ export async function mockRequest(method: string, path: string, body: unknown): 
     resetMock();
     const res: CreateJobResponse = { job_id: example.job_id };
     return res;
+  }
+  if (method === "POST" && path === "/api/chat") {
+    const req = body as Partial<ChatRequest> | undefined;
+    if (!req?.session_id || !req.message?.trim()) throw new ApiError(400, "session_id와 message가 필요합니다");
+    // 가짜는 질문과 상관없이 예시 답을 준다
+    return copy(chatExample as ChatResponse);
   }
   const route = path.match(/^\/api\/jobs\/([^/]+)(?:\/([a-z]+))?$/);
   if (route) {

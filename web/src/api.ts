@@ -3,6 +3,8 @@
 // npm run dev(모드 mock)에서는 mock.ts 가 docs/examples/ 로 대신 답한다. 빌드에는 들어가지 않는다.
 import type {
   ApproveResponse,
+  ChatRequest,
+  ChatResponse,
   ChooseHsResponse,
   CreateJobResponse,
   HSChoice,
@@ -70,6 +72,11 @@ export function chooseHs(jobId: string, choices: HSChoice[]): Promise<ChooseHsRe
 /** 사람이 승인해 WMS 에 등록한다. 불일치가 남은 작업은 서버가 409 로 거절한다. */
 export function approveJob(jobId: string, approver: string): Promise<ApproveResponse> {
   return request("POST", `/api/jobs/${encodeURIComponent(jobId)}/approve`, { approver });
+}
+
+/** 현황 채팅에 질문을 보낸다. session_id 로 서버가 대화를 이어 간다. */
+export function sendChat(req: ChatRequest): Promise<ChatResponse> {
+  return request("POST", "/api/chat", req);
 }
 
 /** 브라우저가 type 을 모르는 파일은 이 값으로 보낸다. */
