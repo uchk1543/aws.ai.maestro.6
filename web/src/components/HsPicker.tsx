@@ -4,7 +4,7 @@
 //         HS부호 표에 있는 코드인지는 서버가 검사한다 (#209). 화면은 숫자 10자리인지만 본다.
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { chooseHs } from "../api";
+import { chooseHs, hsRequestUrl } from "../api";
 import type { HSBy, HSResult, JobStatus } from "../types";
 
 const BY_KO: Record<HSBy, string> = {
@@ -131,6 +131,13 @@ export function HsPicker({ jobId, jobStatus, results }: { jobId: string; jobStat
 
       {pending.length > 0 && (
         <div className="hs-actions">
+          {/* HS를 서류에서 확정하지 못한 품목을 관세사에게 알릴 PDF (X2 #260). 서버가 만든다 */}
+          <p className="hs-request">
+            <a className="hs-request-link" href={hsRequestUrl(jobId)} download>
+              HS 확인 요청서 받기
+            </a>
+            <span className="hint">관세사에게 전달할 문서입니다 (품목 {pending.length}개)</span>
+          </p>
           {!canChoose && <p className="hint">HS는 승인 대기 중인 작업에서만 고를 수 있습니다.</p>}
           {mutation.error && (
             <p className="error" role="alert">

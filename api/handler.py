@@ -36,7 +36,7 @@ from functools import cache
 from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import TypeAdapter
 
-from tools import certificate, declaration, hs, report, wms
+from tools import certificate, declaration, hs, hs_request, report, wms
 from tools.models import (
     DOC_TYPE_KO,
     Cell,
@@ -737,6 +737,32 @@ def job_certificate(job_id: str) -> dict:
         print(f"[error] 검수 완료서 만들기 실패 job={job_id} {type(exc).__name__}: {exc}")
         return _error(500, "검수 완료서를 만들지 못했습니다")
     return _pdf_response(data, f"certificate-{job_id}.pdf")
+def job_hs_request(job_id: str) -> dict:
+    """GET /jobs/{id}/hs-request. HS를 사람이 확인해야 하는 품목을 담은 HS 확인 요청서(PDF)를 돌려준다 (X2 #260).
+    언제: 화면의 'HS 확인 요청서 받기'. 관세사에게 전달할 문서다. 파일은 저장하지 않고 부를 때마다 저장된 작업에서 만든다. 모델·S3 호출 없음.
+    반환: 200 application/pdf(attachment, hs-request-<작업 ID>.pdf) / 404 없는 작업
+      / 409 {"error"}: 사람이 확인해야 하는 HS 품목이 없음 (확정됐거나 아직 처리 전)
+      / 500 {"error"} PDF를 만들지 못함 (작업은 바뀌지 않는다).
+    서류 기록이 없으면 서류 값 칸은 비워 두고 작업 결과의 품명·서류 HS·후보만 담는다.
+    """
+    if not JOB_ID.match(job_id):
+        return _error(404, "작업을 찾을 수 없습니다")
+    item = _load_item(job_id)
+    if item is None:
+        return _error(404, "작업을 찾을 수 없습니다")
+    job = Job.model_validate_json(item["data"])
+    try:
+        hs_request.check_requestable(job)
+    except hs_request.NothingToRequest as exc:
+        return _error(409, str(exc))
+    context = load_job_docs(item)
+    docs, importer = context if context is not None else ([], None)
+    try:
+        data = hs_request.make_hs_request(job, docs, importer=importer)
+    except Exception as exc:
+        print(f"[error] HS 확인 요청서 만들기 실패 job={job_id} {type(exc).__name__}: {exc}")
+        return _error(500, "HS 확인 요청서를 만들지 못했습니다")
+    return _pdf_response(data, f"hs-request-{job_id}.pdf")
 MAX_QUESTION = 500  # 현황 질문 길이 한도
 # fullmatch로 쓴다('$'는 끝 줄바꿈 앞에서도 맞는다). 첫 글자는 영문·숫자: '-' 하나는 answer·로그의 익명 표시다
 SESSION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,63}")
@@ -1468,6 +1494,8 @@ def lambda_handler(event, context):
             return job_notice(parts[2], event.get("queryStringParameters"))
         if method == "GET" and len(parts) == 4 and parts[1] == "jobs" and parts[3] == "certificate":
             return job_certificate(parts[2])
+        if method == "GET" and len(parts) == 4 and parts[1] == "jobs" and parts[3] == "hs-request":
+            return job_hs_request(parts[2])
         if method == "POST" and len(parts) == 4 and parts[1] == "jobs" and parts[3] == "hs":
             return choose_hs(parts[2], _body(event))
         if method == "POST" and len(parts) == 4 and parts[1] == "jobs" and parts[3] == "approve":
