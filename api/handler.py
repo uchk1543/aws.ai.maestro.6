@@ -2,7 +2,7 @@
 
 CloudFront가 /api/*를 API Gateway로 보내고, rawPath에 /api가 붙어 온다 (/api/jobs). 앞의 /api를 떼고 나눈다.
 옮기는 동안 /api 없는 경로(/jobs)도 같은 곳으로 간다.
-    GET  /api/               → {"ok": true}            (배포 확인)
+    GET  /api/               → {"ok": true, "version"} (배포 확인. version은 배포한 커밋 GIT_SHA, FB17 #174)
     POST /api/uploads        → {"uploads"}             (F2, 파일마다 S3에 직접 PUT할 미리 서명된 URL)
     POST /api/jobs           → {"job_id"}              (F3, queued로 저장하고 처리 Lambda를 비동기로 부른 뒤 바로 응답)
     GET  /api/jobs/{id}      → Job                     (화면이 2초마다)
@@ -16,7 +16,8 @@ CloudFront가 /api/*를 API Gateway로 보내고, rawPath에 /api가 붙어 온�
 서류 처리(run_job)는 처리 Lambda team06-worker(api/worker.py)가 한다. API Gateway는 요청 하나를 30초 안에 끝내야 한다.
 
 환경 변수: JOBS_TABLE(team06-jobs), DOCS_BUCKET(team06-docs-...), MODEL_ID, HS_HISTORY_TABLE(team06-hs-history),
-WMS_TABLE(team06-wms), SHIPMENTS_TABLE(team06-shipments), WORKER_FUNCTION(team06-worker, API Lambda에만)
+WMS_TABLE(team06-wms), SHIPMENTS_TABLE(team06-shipments), WORKER_FUNCTION(team06-worker, API Lambda에만),
+GIT_SHA(배포한 커밋. infra/deploy.sh가 넣는다, #174)
 """
 
 import base64
@@ -70,6 +71,7 @@ UPLOAD_TYPES = {".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/j
 UNKNOWN_TYPE = "application/octet-stream"  # 브라우저가 type을 모를 때 화면이 보내는 값 (web/src/api.ts contentTypeOf)
 UPLOAD_SECONDS = 300  # 미리 서명된 URL 유효 시간. 약속 2 "몇 분 뒤 만료"
 NAME_MAX = 80  # S3 키에 넣는 파일 이름(확장자 뺀) 길이
+UNKNOWN_VERSION = "unknown"  # GIT_SHA가 없을 때(로컬, deploy.sh가 넣기 전). 커밋을 지어내지 않는다
 _DOCS = TypeAdapter(list[ExtractedDocument])
 
 
@@ -990,7 +992,7 @@ def lambda_handler(event, context):
     print(f"[api] {method} {event.get('rawPath')} → {path}")
     try:
         if method == "GET" and path == "/":
-            return _response(200, {"ok": True})
+            return _response(200, {"ok": True, "version": os.environ.get("GIT_SHA") or UNKNOWN_VERSION})
         if method == "POST" and path == "/uploads":
             return create_uploads(_body(event))
         if method == "POST" and path == "/jobs":
