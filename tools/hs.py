@@ -171,6 +171,15 @@ def load_hs_table(path: Path = DEFAULT_HS_CSV) -> CsvHSTable:
     return CsvHSTable(rows)
 
 
+def is_known_hs(hs: str, table: HSTable) -> bool:
+    """사람이 직접 넣은 HS가 관세청 HS부호 표에 있는 10자리 코드인지 본다.
+    언제: 사람이 후보 밖 코드를 직접 넣었을 때. 서버(POST /jobs/{id}/hs)가 이 결과가 거짓이면 400으로 돌려보낸다.
+    받는 것: hs(입력한 코드), table(HS부호 표).
+    반환: 10자리 숫자이고 표에 있으면 True, 아니면 False. 공백과 점이 섞인 글자는 False다(화면이 숫자만 보낸다).
+    """
+    return re.fullmatch(r"[0-9]{10}", hs) is not None and table.exists(hs)
+
+
 def keep_in_candidates(picks: list[HSCandidate], candidates: list[HSCandidate]) -> list[HSCandidate]:
     """모델이 고른 것 중 후보 목록 안의 코드만 남긴다. 언제: recommend_hs 4단계 직후.
     받는 것: picks(모델 선택, 1순위부터), candidates(코드가 낸 후보).
@@ -240,6 +249,15 @@ def item_key(doc: ExtractedDocument, line: int) -> str:
     raise ValueError(f"{line}행이 서류에 없음")
 
 
+def _doc_hs_text(items: list[tuple[ExtractedDocument, ExtractedItem]]) -> str | None:
+    """서류에 적힌 HS를 적힌 그대로(점 포함) 꺼낸다. 서류 우선순위대로 처음 있는 것. 없으면 None."""
+    for _, it in items:
+        text = _cell_text(it.hs_code)
+        if text:
+            return text
+    return None
+
+
 def _hs_digits(cell: Cell | None) -> str | None:
     """서류에 적힌 HS를 숫자만 남겨 꺼낸다. 없으면 None."""
     text = _cell_text(cell)
@@ -273,15 +291,15 @@ def recommend_hs(
     print(f"[tool] recommend_hs line={line} importer={importer}")
     items = _items_at(docs, line)
     key = next((k for _, it in items if (k := _item_key_of(it))), None)
+    name = next((t for _, it in items if (t := _cell_text(it.name))), "")
+    shown_info = {"item_name": name or None, "doc_hs_code": _doc_hs_text(items)}  # 화면이 '1행 · 품명 (서류 HS)'로 보여 준다
 
     # 1. 확정 이력. 이력의 코드가 HS부호 표에 없으면 믿지 않고 다음 단계로 간다.
     if key is not None:
         saved = history.get(importer, key)
         if saved and table.exists(saved):
             print(f"[hs] 확정 이력 사용 key={key} hs={saved}")
-            return HSResult(line=line, status="자동 확정", by="history", hs_code=saved, candidates=[])
-
-    name = next((t for _, it in items if (t := _cell_text(it.name))), "")
+            return HSResult(line=line, status="자동 확정", by="history", hs_code=saved, candidates=[], **shown_info)
 
     # 2. 모델이 검색어를 뽑는다. 못 하면 품명을 그대로 쓴다.
     terms = [name] if name else []
@@ -314,8 +332,8 @@ def recommend_hs(
     # 5. 자동 확정: 서류에 적힌 10자리가 모두 같고, 표에 있고, 모델 1순위와 같을 때만
     same = len(set(doc_hs)) == 1 and len(doc_hs[0]) == 10
     if same and table.exists(doc_hs[0]) and picks and picks[0].hs == doc_hs[0]:
-        return HSResult(line=line, status="자동 확정", by="auto_match", hs_code=doc_hs[0], candidates=picks)
-    return HSResult(line=line, status="사람 확인 필요", by=None, hs_code=None, candidates=shown)
+        return HSResult(line=line, status="자동 확정", by="auto_match", hs_code=doc_hs[0], candidates=picks, **shown_info)
+    return HSResult(line=line, status="사람 확인 필요", by=None, hs_code=None, candidates=shown, **shown_info)
 
 
 def confirm_by_human(result: HSResult, hs: str, importer: str, key: str, job_id: str, *, history: HSHistory) -> HSResult:
@@ -329,4 +347,7 @@ def confirm_by_human(result: HSResult, hs: str, importer: str, key: str, job_id:
     if not re.fullmatch(r"\d{10}", hs):
         raise ValueError(f"HS는 10자리 숫자여야 함: {hs!r}")
     history.put(importer, key, hs, job_id)
-    return HSResult(line=result.line, status="사람 확정", by="human", hs_code=hs, candidates=result.candidates)
+    return HSResult(
+        line=result.line, status="사람 확정", by="human", hs_code=hs, candidates=result.candidates,
+        item_name=result.item_name, doc_hs_code=result.doc_hs_code,
+    )

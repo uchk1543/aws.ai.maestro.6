@@ -59,6 +59,7 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 - `grade`: `불일치` | `확인 필요` | `참고`
 - `checked_by`: `pdf_text` | `textract` | `model_reread` | `none`
 - `hs[].status`: `자동 확정` | `사람 확인 필요` | `사람 확정`, `hs[].by`: `history` | `auto_match` | `human` | null
+- `hs[].item_name`: 그 행의 품명(서류에 적힌 글자, 못 읽었으면 null). `hs[].doc_hs_code`: 서류에 적힌 HS를 적힌 그대로(예: `8507.60`, 없으면 null). 화면이 "1행 · 품명 (서류 HS)"로 보여 준다 (FB07 #164)
 - `wms.status`: `승인 대기` | `등록됨`, `wms.by`: `auto` | `human` | null
 - `suspect`: 서류가 셋 이상일 때 다수결로 고른 서류 종류, 둘뿐이면 null
 처리 방식: API Gateway는 요청 하나를 30초 안에 끝내야 해서, `POST /api/jobs`는 작업을 `queued`로 저장하고 `job_id`를 바로 돌려준다.
