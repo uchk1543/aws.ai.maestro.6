@@ -6,7 +6,7 @@ import jobExample from "../../../docs/examples/job_waiting_approval.json";
 import * as api from "../api";
 import { renderWithQuery } from "../test-utils";
 import type { HSResult, Job } from "../types";
-import { formatHs, HsPicker } from "./HsPicker";
+import { formatHs, HsPicker, lineTitle, manualHs } from "./HsPicker";
 
 vi.mock("../api", async (importOriginal) => {
   const real = await importOriginal<typeof import("../api")>();
@@ -57,7 +57,7 @@ describe("HsPicker", () => {
 
     const submit = screen.getByRole("button", { name: "고른 HS 확정 (0/1)" });
     expect(submit).toBeDisabled();
-    expect(screen.getAllByRole("radio")).toHaveLength(3);
+    expect(screen.getAllByRole("radio")).toHaveLength(4); // 후보 3개 + 직접 입력
 
     await user.click(screen.getByRole("radio", { name: /8507\.80-0000/ }));
     await user.click(screen.getByRole("button", { name: "고른 HS 확정 (1/1)" }));
@@ -89,5 +89,56 @@ describe("HsPicker", () => {
   it("formatHs 는 10자리만 읽기 쉽게 바꾼다", () => {
     expect(formatHs("8507600000")).toBe("8507.60-0000");
     expect(formatHs("850760")).toBe("850760");
+  });
+
+  it("행 제목에 품명과 서류 HS 를 서버 값 그대로 보이고, 없으면 N행만 (FB07-c)", () => {
+    const { unmount } = renderWithQuery(<HsPicker jobId="job-7c1e" jobStatus="waiting_approval" results={exampleHs} />);
+    expect(screen.getByText("1행 · LITHIUM-ION BATTERY PACK (서류 HS 8507.60)")).toBeInTheDocument();
+    unmount();
+    renderWithQuery(<HsPicker jobId="job-7c1e" jobStatus="waiting_approval" results={[needsHuman]} />);
+    expect(screen.getByText("1행")).toBeInTheDocument();
+  });
+
+  it("후보가 모두 틀리면 10자리를 직접 넣어 보낸다. 10자리가 아니면 보내기를 막는다 (FB07-c)", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.chooseHs).mockResolvedValue({ declaration_draft: { fields: [], blank_fields: [], pdf_url: null } });
+    renderWithQuery(<HsPicker jobId="job-7c1e" jobStatus="waiting_approval" results={[needsHuman]} />);
+
+    const input = screen.getByLabelText("1행 HS 직접 입력");
+    await user.type(input, "8507.60-90");
+    expect(screen.getByRole("radio", { name: /직접 입력/ })).toBeChecked();
+    expect(screen.getByText("숫자 10자리로 적어 주세요")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "고른 HS 확정 (1/1)" })).toBeDisabled();
+
+    await user.type(input, "00");
+    await user.click(screen.getByRole("button", { name: "고른 HS 확정 (1/1)" }));
+    await waitFor(() => expect(api.chooseHs).toHaveBeenCalledWith("job-7c1e", [{ line: 1, hs: "8507609000" }]));
+  });
+
+  it("직접 넣은 코드를 서버가 400 으로 거절하면 그 문장을 그대로 보인다", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.chooseHs).mockRejectedValue(new api.ApiError(400, "HS부호 표에 없는 코드입니다: 1234567890"));
+    renderWithQuery(<HsPicker jobId="job-7c1e" jobStatus="waiting_approval" results={[needsHuman]} />);
+
+    await user.type(screen.getByLabelText("1행 HS 직접 입력"), "1234567890");
+    await user.click(screen.getByRole("button", { name: /고른 HS 확정/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("HS부호 표에 없는 코드입니다: 1234567890");
+  });
+
+  it("후보가 없어도 직접 입력 칸은 있다", () => {
+    renderWithQuery(<HsPicker jobId="job-7c1e" jobStatus="waiting_approval" results={[{ ...needsHuman, candidates: [] }]} />);
+    expect(screen.getByText(/후보가 없습니다/)).toBeInTheDocument();
+    expect(screen.getByLabelText("1행 HS 직접 입력")).toBeInTheDocument();
+  });
+
+  it("manualHs · lineTitle", () => {
+    expect([manualHs("8507609000"), manualHs("8507.60-9000"), manualHs("8507 60 9000"), manualHs("850760"), manualHs("85076090ab")]).toEqual([
+      "8507609000",
+      "8507609000",
+      "8507609000",
+      null,
+      null,
+    ]);
+    expect(lineTitle({ ...needsHuman, item_name: "CHAIR", doc_hs_code: null })).toBe("1행 · CHAIR");
   });
 });
