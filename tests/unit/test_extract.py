@@ -240,3 +240,35 @@ def test_classify_unsupported_format_does_not_call_model():
     with pytest.raises(ReadError):
         classify_document("note.docx", b"x", reader=reader)
     assert reader.calls == []
+
+
+# ---------------------------------------------------------------------------
+# 수입자 칸과 선하증권 (#110)
+# ---------------------------------------------------------------------------
+def _optional_count(node) -> int:
+    """JSON 스키마에서 필수가 아닌 속성 수 (Bedrock 구조화 출력 한도 12개, agent-design.md 10번)."""
+    if isinstance(node, list):
+        return sum(_optional_count(v) for v in node)
+    if not isinstance(node, dict):
+        return 0
+    own = len(set(node.get("properties", {})) - set(node.get("required", [])))
+    return own + sum(_optional_count(v) for v in node.values())
+
+
+def test_raw_document_schema_stays_within_bedrock_limit():
+    schema = RawDocument.model_json_schema()
+    assert _optional_count(schema) <= 12
+    assert "consignee_name" in schema["required"]  # 필수지만 null을 허용한다
+    assert RawDocument.model_validate({}).consignee_name is None  # 기존 가짜 응답(칸 없음)도 그대로 받는다
+
+
+def test_consignee_name_is_copied_as_written():
+    raw = {**FAKE_RAW, "consignee_name": {"raw": "EXAMPLE HOME LIVING CO., LTD."}}
+    doc = read_document("uploads/s1/invoice.pdf", b"%PDF", "commercial_invoice", reader=lambda b, p: RawDocument.model_validate(raw), no_cache=True)
+    assert doc.consignee_name.raw == "EXAMPLE HOME LIVING CO., LTD."
+
+
+def test_prompts_name_consignee_and_bl_number():
+    assert "consignee_name" in system_prompt("commercial_invoice")
+    bl = system_prompt("bill_of_lading")
+    assert "B/L No." in bl and "Gross Weight" in bl

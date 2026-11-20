@@ -19,6 +19,7 @@ from collections import Counter
 from pathlib import Path
 
 from agent.document_agent import READ_TYPES, run_job
+from tools.models import DOC_TYPE_KO
 
 ROOT = Path(__file__).resolve().parent.parent
 DEV = ROOT / "samples" / "dev"
@@ -27,7 +28,7 @@ ANSWERS = ROOT / "eval" / "answers.csv"
 
 
 def load_sets(only: list[str]) -> dict[str, list[tuple[str, str]]]:
-    """세트 → [(파일 키, 정답 종류)]. P0에서 읽는 종류(상업송장·포장명세서)만."""
+    """세트 → [(파일 키, 정답 종류)]. run_job이 읽는 종류(READ_TYPES)만."""
     found: dict[str, list[tuple[str, str]]] = {}
     with SETS.open(encoding="utf-8", newline="") as fh:
         for r in csv.DictReader(fh):
@@ -127,7 +128,7 @@ def main() -> None:
     print(f"  시간: 평균 {statistics.mean(times):.1f}초, 최대 {max(times):.1f}초 (세트 하나, 서류 {len(docs)}장)")
 
 
-DOC_KO = {"commercial_invoice": "상업송장", "packing_list": "포장명세서"}
+DOC_KO = DOC_TYPE_KO  # 단계 기록의 서류 이름 (4종, B2 P1)
 
 if __name__ == "__main__":
     main()

@@ -67,6 +67,9 @@ package_and_upload() {
     --python-platform x86_64-manylinux_2_28 --python-version 3.13 --only-binary=:all: \
     -r "${BUILD}/requirements.txt"
   cp -R "${ROOT}/agent" "${ROOT}/tools" "${ROOT}/api" "${BUILD}/pkg/"
+  # 처리 Lambda의 HS 추천이 data/hs/hs_codes.csv를 읽는다 (tools/hs.py DEFAULT_HS_CSV, #127·#129)
+  mkdir -p "${BUILD}/pkg/data"
+  cp -R "${ROOT}/data/hs" "${BUILD}/pkg/data/"
   find "${BUILD}/pkg" -name "__pycache__" -type d -prune -exec rm -rf {} +
   (cd "${BUILD}/pkg" && zip -qr "../team06-lambda.zip" .)
   echo "[deploy] zip 크기: $(du -h "${BUILD}/team06-lambda.zip" | cut -f1)"

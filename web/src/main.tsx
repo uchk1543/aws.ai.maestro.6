@@ -2,6 +2,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+// 글꼴: Pretendard(OFL). 빌드에 글꼴 파일이 함께 들어가고, 브라우저는 쓰는 글자 조각만 받는다.
+import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 import { App } from "./App";
 import "./styles.css";
 

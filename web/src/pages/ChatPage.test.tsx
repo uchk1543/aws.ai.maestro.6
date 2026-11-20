@@ -1,4 +1,4 @@
-// G8 현황 채팅: 답·조건·표, session_id 유지, 오류 표시
+// G8·G9 현황 채팅: 답·조건·표, 예시 질문, session_id 유지, 오류 표시
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -6,7 +6,7 @@ import chatExample from "../../../docs/examples/chat_response.json";
 import * as api from "../api";
 import { renderWithQuery } from "../test-utils";
 import type { ChatResponse } from "../types";
-import { ChatPage, chatSessionId, describeFilters } from "./ChatPage";
+import { ChatPage, chatSessionId, describeFilters, EXAMPLES } from "./ChatPage";
 
 vi.mock("../api", async (importOriginal) => {
   const real = await importOriginal<typeof import("../api")>();
@@ -26,12 +26,13 @@ describe("ChatPage", () => {
     vi.mocked(api.sendChat).mockResolvedValue(example);
     renderWithQuery(<ChatPage />);
 
-    await user.type(screen.getByLabelText("질문"), "이번 주 통관 지연 건은?");
+    await user.type(screen.getByLabelText("질문"), "이번 주 지연 건 알려줘");
     await user.click(screen.getByRole("button", { name: "보내기" }));
 
     expect(await screen.findByText(example.answer)).toBeInTheDocument();
-    expect(screen.getByText("이번 주 통관 지연 건은?")).toBeInTheDocument();
-    expect(screen.getByText(/조회 조건: 상태: 통관 지연 · 기간: 이번 주 \(2026-11-16 ~ 2026-11-22\) · 1건/)).toBeInTheDocument();
+    expect(screen.getByText("이번 주 지연 건 알려줘")).toBeInTheDocument();
+    const conds = within(screen.getByRole("list", { name: "조회 조건" })).getAllByRole("listitem");
+    expect(conds.map((c) => c.textContent)).toEqual(["상태: 통관 지연", "기간: 이번 주 (2026-11-16 ~ 2026-11-22)", "1건"]);
 
     const rows = within(screen.getByRole("table")).getAllByRole("row").slice(1);
     expect(rows).toHaveLength(1);
@@ -97,8 +98,33 @@ describe("ChatPage", () => {
     await user.type(screen.getByLabelText("질문"), "이번 주 통관 지연");
     await user.click(screen.getByRole("button", { name: "보내기" }));
 
-    expect(await screen.findByText(/· 0건/)).toBeInTheDocument();
+    expect(await screen.findByText("0건")).toBeInTheDocument();
+    expect(screen.getByText("상태: 통관 지연")).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
+
+  it("예시 질문을 누르면 그 질문을 바로 보낸다", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.sendChat).mockResolvedValue(example);
+    renderWithQuery(<ChatPage />);
+
+    const examples = within(screen.getByRole("list", { name: "예시 질문" })).getAllByRole("button");
+    expect(examples.map((b) => b.textContent)).toEqual(EXAMPLES);
+    await user.click(examples[0]);
+
+    await waitFor(() => expect(api.sendChat).toHaveBeenCalledWith({ session_id: chatSessionId(), message: EXAMPLES[0] }));
+    expect(await screen.findByText(example.answer)).toBeInTheDocument();
+  });
+
+  it("조건이 없으면 '조건 없음'", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.sendChat).mockResolvedValue({ ...example, filters: { status: null, period: null }, period_resolved: null });
+    renderWithQuery(<ChatPage />);
+
+    await user.type(screen.getByLabelText("질문"), "전체 화물");
+    await user.click(screen.getByRole("button", { name: "보내기" }));
+
+    expect(await screen.findByText("조건 없음")).toBeInTheDocument();
   });
 });
 

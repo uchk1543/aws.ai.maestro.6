@@ -59,7 +59,14 @@ CONTRACTS = [
     Contract("tools.report:finish_report", P("state"), ReportCheck, "1번 판독", "1번 에이전트 루프, 4번 WMS 조건"),
     Contract("tools.query:query_shipments", P("filters", kw=("store", "today")), QueryResult, "1번 판독", "1번 현황 Agent"),
     Contract("tools.query:resolve_period", P("filters", "today"), PeriodResolved | None, "1번 판독", "1번 현황 Agent"),
-    Contract("agent.document_agent:run_job", P("job_id", "files", "fetch", kw=("reader",)), Job, "1번 판독", "4번 API"),
+    Contract(
+        "agent.document_agent:run_job",
+        P("job_id", "files", "fetch", kw=("reader", "classifier", "on_step", "rereader", "hs_recommender", "agent_model", "on_docs")),
+        Job, "1번 판독", "4번 처리 Lambda (on_step·hs_recommender·on_docs를 넘김, #122)",
+    ),
+    # 두 Lambda 진입점. 이름은 infra/create.sh의 --handler와 같다 (api.handler.lambda_handler, api.worker.lambda_handler)
+    Contract("api.handler:lambda_handler", P("event", "context"), None, "4번 서버", "PM 배포 (API Lambda team06-api)"),
+    Contract("api.worker:lambda_handler", P("event", "context"), None, "4번 서버", "PM 배포 (처리 Lambda team06-worker)"),
     Contract("agent.query_agent:answer", P("question", "session_id", kw=("store",)), ChatResponse, "1번 판독", "4번 API"),
     # 2번 검증이 만들고, 1번·4번이 부른다
     Contract("tools.validate:cross_check", P("docs"), list[Issue], "2번 검증", "1번 에이전트 루프"),
