@@ -4,6 +4,8 @@
 AWS 자격 증명을 쓰지 않고 공개 주소(CloudFront)만 부른다. 화면이 하는 일과 같다.
 
 실행: uv run python -m scripts.e2e_upload https://<CloudFront 주소> samples/dev/D003/doc_a.pdf samples/dev/D003/doc_b.pdf
+  --choose            사람 확인 필요 HS 행마다 후보 1순위를 사람이 고른 것처럼 POST /api/jobs/{id}/hs
+  --approve <이름>    이어서 POST /api/jobs/{id}/approve (WMS 등록)
 """
 import json
 import sys
@@ -32,8 +34,27 @@ def _put(url: str, data: bytes, content_type: str) -> int:
         return res.status
 
 
+def _after(base: str, job: dict, choose: bool, approver: str | None) -> None:
+    """HS 고르기(C3)와 승인(D3)을 화면처럼 부른다."""
+    job_id, hs = job["job_id"], (job.get("result") or {}).get("hs", [])
+    if choose:
+        picks = [{"line": h["line"], "hs": h["candidates"][0]["hs"]} for h in hs if h["status"] == "사람 확인 필요" and h["candidates"]]
+        if picks:
+            status, body = _call("POST", f"{base}/api/jobs/{job_id}/hs", {"choices": picks})
+            filled = len((body.get("declaration_draft") or {}).get("fields", []))
+            print(f"[e2e] POST /hs {picks} → {status} {body.get('error') or f'신고서 초안 {filled}칸'}")
+    if approver:
+        status, body = _call("POST", f"{base}/api/jobs/{job_id}/approve", {"approver": approver})
+        print(f"[e2e] POST /approve → {status} {body.get('error') or body.get('wms')}")
+        print(f"[e2e] 작업 상태 → {_call('GET', f'{base}/api/jobs/{job_id}')[1].get('status')}")
+
+
 def main() -> None:
-    base, paths = sys.argv[1].rstrip("/"), [Path(p) for p in sys.argv[2:]]
+    args = sys.argv[1:]
+    choose = "--choose" in args
+    approver = args[args.index("--approve") + 1] if "--approve" in args else None
+    args = [a for a in args if a not in ("--choose", "--approve", approver)]
+    base, paths = args[0].rstrip("/"), [Path(p) for p in args[1:]]
     files = [{"name": p.name, "content_type": CONTENT_TYPES[p.suffix.lower()]} for p in paths]
     status, body = _call("POST", f"{base}/api/uploads", {"files": files})
     print(f"[e2e] POST /api/uploads → {status}")
@@ -64,6 +85,8 @@ def main() -> None:
         print(f"  [HS] {h['line']}행 {h['status']} {h.get('hs_code') or [c['hs'] for c in h.get('candidates', [])]}")
     if job.get("error"):
         print(f"  [오류] {job['error']}")
+    if last == "waiting_approval":
+        _after(base, job, choose, approver)
 
 
 if __name__ == "__main__":
