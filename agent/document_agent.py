@@ -43,6 +43,9 @@ MAX_BYTES = 4_500_000  # Bedrock 문서 블록 한도 (4.5MB)
 READ_TYPES = {"commercial_invoice", "packing_list", "bill_of_lading", "certificate_of_origin"}
 MAX_WORKERS = 4
 MAX_REASON = 80  # 단계 기록에 넣는 분류 근거 길이. 지시는 60자인데 실제로 86자까지 나왔다 (#18)
+# 분류 못 함·분류 실패 때 사람에게 하는 안내. 화면에 종류 고르기가 아직 없어 지금 할 수 있는 행동만 적는다 (#183).
+# 종류 고르기(#167)가 들어오면 "종류를 골라 다시 올려 주세요."로 되돌릴지 PM이 정한다
+RETRY_HINT = "다른 파일로 다시 올려 주세요."
 MAX_TURNS = 12  # 에이전트 루프의 모델 호출 한도 (Strands limits)
 AGENT_SECONDS = 150  # 에이전트 루프 시간 한도. 처리 Lambda 300초 안에 코드가 마무리할 시간을 남긴다
 
@@ -58,6 +61,14 @@ NOTHING_READ = "서류를 하나도 읽지 못했습니다"
 _NOT_READ_KO = {
     "DOC-UNKNOWN": "종류를 정하지 못함", "CLASSIFY-FAIL": "분류 실패", "READ-FAIL": "읽기 실패", "DOC-LATER": "읽지 않는 종류",
 }
+# 꼭 있어야 하는 서류와 빠졌을 때의 안내 (#168, agent-design.md 1번 '빠진 서류'). 대조 규칙은 두 서류 이상이어야 돌고,
+# WMS 등록에는 B/L 번호가 있어야 한다. 원산지증명서는 FTA 특혜를 받을 때만 내므로 빠져도 묻지 않는다
+_REQUIRED_DOCS: dict[DocType, str] = {
+    "commercial_invoice": "상업송장이 없습니다. 함께 올려 주세요.",
+    "packing_list": "포장명세서가 없습니다. 함께 올려 주세요.",
+    "bill_of_lading": "선하증권(B/L)이 없습니다. WMS 등록에 B/L 번호가 필요합니다. 함께 올려 주세요.",
+}
+MISSING_TOOL = "check_missing_docs"  # 빠진 서류 단계 기록의 이름 (에이전트가 부르는 도구는 아니다. 코드가 남긴다)
 
 
 def _name(key: str) -> str:
@@ -110,6 +121,7 @@ class _Run:
         self.on_step = on_step
         self.handed_over: set[str] = set()  # 분류·읽기에 실패해 사람에게 넘긴 파일
         self.handover: dict[str, Issue] = {}  # 파일별로 사람에게 넘긴 문제 (모름 · 분류 실패 · 읽기 실패)
+        self.missing: list[Issue] | None = None  # 빠진 서류(DOC-MISSING). 분류가 모두 끝난 뒤 한 번 정한다 (#168)
         self.checked: list[Issue] = []  # 마지막 cross_check 결과 (다시 확인 반영 전)
         self.skip = {name for name, tool in (("reread_field", rereader), ("recommend_hs", hs_recommender)) if tool is None}
         self.agent = None  # 에이전트 루프일 때 Strands Agent
@@ -122,7 +134,7 @@ class _Run:
             if doc_type == "unknown":  # 사용자가 unknown으로 올린 파일도 사람에게 묻는다
                 self._hand_over(
                     key, "DOC-UNKNOWN", "unknown", "doc_type",
-                    f"{_name(key)}의 서류 종류를 정하지 못했습니다. 종류를 골라 다시 올려 주세요.", failed=False,
+                    f"{_name(key)}의 서류 종류를 정하지 못했습니다. {RETRY_HINT}", failed=False,
                 )
             elif doc_type not in READ_TYPES:
                 self._not_read_yet(key, doc_type)
@@ -191,7 +203,7 @@ class _Run:
             self.step("classify_document", f"{name} 분류 실패: {error}", ok=False)
             self._hand_over(
                 key, "CLASSIFY-FAIL", "unknown", "doc_type",
-                f"{name}의 서류 종류를 알아내지 못했습니다. 다시 올리거나 종류를 골라 올려 주세요.", failed=True,
+                f"{name}의 서류 종류를 알아내지 못했습니다. {RETRY_HINT}", failed=True,
             )
             return f"{key}: 분류 실패 ({error})"
         reason = _short(outcome.reason)
@@ -202,7 +214,7 @@ class _Run:
             self._clear(key)
             self._hand_over(
                 key, "DOC-UNKNOWN", "unknown", "doc_type",
-                f"{name}의 서류 종류를 정하지 못했습니다({reason}). 종류를 골라 다시 올려 주세요.", failed=False,
+                f"{name}의 서류 종류를 정하지 못했습니다({reason}). {RETRY_HINT}", failed=False,
             )
             return f"{key}: unknown ({reason}). 읽지 않는다 (사람에게 묻도록 기록함)"
         self._clear(key)
@@ -261,8 +273,32 @@ class _Run:
             return f"{key}: 이미 읽었다 (품목 {len(self.state.docs[key].items)}행)"
         return self._read_record(key, doc_type, self._read_work(key, doc_type))
 
+    # -- 빠진 서류 (#168) ------------------------------------------------------
+    def check_missing(self) -> str | None:
+        """분류가 모두 끝났으면 빠진 서류를 '확인 필요'(DOC-MISSING)로 한 번 남긴다. 있는 서류끼리의 대조는 그대로 한다.
+
+        언제: 고정 순서는 분류 바로 뒤, 에이전트 루프는 분류가 끝난 뒤 처음 cross_check를 부를 때.
+        종류를 아는 서류가 하나도 없으면(모두 unknown·분류 실패) 묻지 않는다. 그 파일들의 문제가 먼저다.
+        반환: 빠진 것이 있으면 단계 요약("빠진 서류: 포장명세서, 선하증권"), 없거나 아직 정할 때가 아니면 None.
+        """
+        with self.lock:
+            if self.missing is not None:
+                return None
+            if any(k not in self.state.doc_types and k not in self.handed_over for k in self.state.files):
+                return None  # 아직 분류하지 않은 파일이 있다
+            have = set(self.state.doc_types.values())
+            gone = [t for t in _REQUIRED_DOCS if t not in have] if have & READ_TYPES else []
+            # 칸은 비운다(REPORT-INCOMPLETE와 같다). 올라온 파일이 없어 화면이 짚을 칸이 없다
+            self.missing = [Issue(rule_id="DOC-MISSING", grade="확인 필요", cells=[], evidence=_REQUIRED_DOCS[t]) for t in gone]
+        if not gone:
+            return None
+        summary = "빠진 서류: " + ", ".join(DOC_TYPE_KO[t] for t in gone)
+        self.step(MISSING_TOOL, summary)
+        return summary
+
     # -- cross_check ---------------------------------------------------------
     def check(self) -> str:
+        note = self.check_missing()  # 에이전트 루프가 부를 때. 고정 순서는 분류 뒤에 이미 정해서 None이다
         with self.lock:
             docs = [self.state.docs[k] for k in self.state.files if k in self.state.docs]
             seq = self.state.read_seq
@@ -280,6 +316,8 @@ class _Run:
         details = [
             f"- {i.grade} {i.rule_id}: " + ", ".join(f"{c.doc}.{c.field}" for c in i.cells) for i in found
         ]
+        if note:  # 에이전트에게 알린다. 요청 문장은 코드가 문제 목록에 남겼다
+            details.append(f"{note} (사람에게 함께 올려 달라고 기록함)")
         return "\n".join([summary, *details])
 
     def _applied(self, issues: list[Issue]) -> list[Issue]:
@@ -350,7 +388,9 @@ class _Run:
         if not self.state.docs:
             return self._nothing_read()
         check = self.report()
+        # 화면 문제 목록 순서: 파일 문제(모름·실패) → 대조 결과 → 빠진 서류 (#168)
         issues = [self.handover[k] for k in self.state.files if k in self.handover] + list(self.state.issues)
+        issues += self.missing or []
         if not check.ok:
             self.step("finish_report", "다 못 채움: " + "; ".join(check.missing), ok=False)
             issues.append(
@@ -374,8 +414,9 @@ class _Run:
         )
 
     def _nothing_read(self) -> Job:
-        """failed Job. error는 '서류를 하나도 읽지 못했습니다: 파일 이유, …'. 파일마다 넘긴 문제는 result.issues에 그대로 둔다."""
-        issues = [self.handover[k] for k in self.state.files if k in self.handover]
+        """failed Job. error는 '서류를 하나도 읽지 못했습니다: 파일 이유, …'. 파일마다 넘긴 문제는 result.issues에 그대로 두고,
+        빠진 서류(#168)가 있으면 그 뒤에 둔다 (다시 올릴 때 함께 올릴 서류를 알 수 있게)."""
+        issues = [self.handover[k] for k in self.state.files if k in self.handover] + (self.missing or [])
         reasons = [
             f"{_name(k)} {_NOT_READ_KO.get(self.handover[k].rule_id, '처리하지 못함') if k in self.handover else '처리하지 못함'}"
             for k in self.state.files
@@ -406,6 +447,8 @@ def _run_fixed(run: _Run) -> None:
     # 1. 분류: 종류가 없는 파일만
     todo = [(k,) for k in state.files if k not in state.doc_types and k not in run.handed_over]
     _in_order(run._classify_work, run._classify_record, todo)
+    # 1-2. 빠진 서류: 분류가 끝나면 한 번 (#168). 있는 서류끼리 읽고 대조하는 것은 그대로 한다
+    run.check_missing()
     # 2. 읽기: 서류마다 따로, 동시에 (다른 서류 값을 프롬프트에 넣지 않는다)
     todo = [
         (k, state.doc_types[k])
