@@ -41,7 +41,7 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 | `POST /api/jobs` | `{"files":[{"key","doc_type":null}]}` | `{"job_id"}` 바로 응답 (doc_type이 null이면 에이전트가 분류한다. 정해 보낼 때는 `unknown`을 뺀 4종만 받고, 그 밖의 값은 400) |
 | `GET /api/jobs/{id}` | - | 작업 상태 (`docs/examples/job_waiting_approval.json`) |
 | `POST /api/jobs/{id}/hs` | `{"choices":[{"line","hs"}]}` | `{"declaration_draft":{...}}` |
-| `POST /api/jobs/{id}/approve` | `{"approver"}` | `{"wms":{"status","wms_id"}}`, 불일치가 남았으면 409 |
+| `POST /api/jobs/{id}/approve` | `{"approver","override_reason"?}` | `{"wms":{"status","wms_id"}}`, 불일치가 남았는데 `override_reason`(판독 오류로 넘기는 사유, 200자까지)이 없으면 409 |
 | `POST /api/chat` | `{"session_id","message"}` | `docs/examples/chat_response.json`, 그래프가 있는 답 `docs/examples/chat_chart_response.json` (#257) |
 | `GET /api/chat/{session_id}` | - | `docs/examples/chat_history.json` (대화 기록 최근 50줄, 오래된 순. #157) |
 | `GET /api/documents?doc_type=<종류>&cursor=<다음 쪽>` | - | `docs/examples/documents.json` (문서 분류 내역, #143) |
@@ -96,9 +96,10 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 - `hs[].item_name`: 그 행의 품명(서류에 적힌 글자, 못 읽었으면 null). `hs[].doc_hs_code`: 서류에 적힌 HS를 적힌 그대로(예: `8507.60`, 없으면 null). 화면이 "1행 · 품명 (서류 HS)"로 보여 준다 (FB07 #164)
 - `wms.status`: `승인 대기` | `등록됨`, `wms.by`: `auto` | `human` | null
 - `wms.approver`: 검수자 이름(사람 승인으로 등록됐을 때 승인 입력의 `approver`), `wms.approved_at`: 승인 시각(한국 시간 ISO 8601, 예 `2026-11-21T09:30:12+09:00`). 자동 등록·승인 대기는 둘 다 null. 검수 완료서가 이 두 칸을 쓴다 (X1 #258)
+- `wms.override_reason`: 불일치가 남았는데 검수자가 원본을 보고 판독 오류로 판단해 승인했을 때 적은 사유. 그 밖은 null. 검수 완료서에 '예외 사유'로 찍힌다
 - `suspect`: 서류가 셋 이상일 때 다수결로 고른 서류 종류, 둘뿐이면 null
 - `next_action` (FB22 #178): `GET /api/jobs/{id}`가 응답 때마다 결과로 정하는 '지금 상태와 다음 할 일' 한 줄 `{kind, message, count}`. 저장하지 않는다 (`tools/wms.py`의 `next_action`)
-  - `kind`: `wait`(대기·처리 중) | `fix_docs`(불일치가 남음. 승인해도 409라 서류를 고쳐 다시 올림) | `choose_hs`(HS를 사람이 골라야 함) | `approve`(확인 필요만 남았거나 승인만 남음) | `none`(끝남) | `reupload`(실패)
+  - `kind`: `wait`(대기·처리 중) | `fix_docs`(불일치가 남음. 서류를 고쳐 다시 올리거나, 판독 오류면 사유를 적고 승인) | `choose_hs`(HS를 사람이 골라야 함) | `approve`(확인 필요만 남았거나 승인만 남음) | `none`(끝남) | `reupload`(실패)
   - 승인 대기는 이 순서로 가른다: 불일치 → 고를 HS → 확인 후 승인. 화면은 `message`를 작업 화면 맨 위에 그대로 보인다
 처리 방식: API Gateway는 요청 하나를 30초 안에 끝내야 해서, `POST /api/jobs`는 작업을 `queued`로 저장하고 `job_id`를 바로 돌려준다.
 처리 Lambda가 비동기로 `run_job`을 돌려 `running` → `waiting_approval`·`done`·`failed`로 바꾼다. 화면은 `GET /api/jobs/{id}`를 2초마다 부른다.

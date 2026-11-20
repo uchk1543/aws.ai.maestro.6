@@ -471,6 +471,10 @@ class WmsState(_Strict):
     approved_at: str | None = Field(
         default=None, description="승인 시각. 한국 시간 ISO 8601(예 2026-11-21T09:30:12+09:00). 사람 승인일 때만 (X1 #258)"
     )
+    override_reason: str | None = Field(
+        default=None,
+        description="불일치가 남았는데 검수자가 원본을 보고 판독 오류로 판단해 승인했을 때 적은 사유. 그 밖은 null",
+    )
 
 
 class JobResult(_Strict):
@@ -489,7 +493,7 @@ class NextAction(_Strict):
         description="wait 처리 중 · fix_docs 불일치가 남아 서류를 고쳐 다시 올려야 함 · choose_hs HS를 골라야 함 · "
         "approve 확인하고 승인 · none 할 일 없음(등록됨) · reupload 실패해 다시 올림"
     )
-    message: str = Field(description="화면에 그대로 보일 한 줄. 예: '불일치 1건: 서류를 고쳐 다시 올려야 등록할 수 있습니다'")
+    message: str = Field(description="화면에 그대로 보일 한 줄. 예: '불일치 1건: 서류를 고쳐 다시 올리거나, 원본을 확인해 판독 오류면 사유를 적고 승인하세요'")
     count: int | None = Field(default=None, description="불일치 건수·고를 HS 수·확인 필요 건수. 없으면 null")
 
 

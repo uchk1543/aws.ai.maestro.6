@@ -112,9 +112,11 @@ def make_certificate(job: Job, docs: list[ExtractedDocument], *, importer: str |
         ("수입자", importer or NONE_MARK),
         ("검수자", wms.approver),
         ("승인 시각", _approved_text(wms.approved_at or "")),
-        ("승인 방식", "사람 승인"),
+        ("승인 방식", "사람 승인 (불일치를 판독 오류로 확인)" if wms.override_reason else "사람 승인"),
         ("WMS 번호", wms.wms_id or NONE_MARK),
     ]
+    if wms.override_reason:
+        info.append(("예외 사유", wms.override_reason))
     story += [Paragraph("검수와 등록", section), grid([[p(k, bold), p(v)] for k, v in info], [36, 140], header=False)]
 
     # 2. 읽은 서류

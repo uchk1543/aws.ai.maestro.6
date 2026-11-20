@@ -3393,3 +3393,176 @@ video.port-media.on {
   border-radius: 10px;
   cursor: pointer;
 }
+
+/* 작업 화면 단계 표시줄: 처리 과정 → 서류 대조 → HS 코드 → 신고서 초안 → WMS 등록. 한 번에 한 단계만 보인다 */
+.stage-bar {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.stage {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 14px;
+  text-align: left;
+  color: var(--ink);
+  background: var(--fill-2);
+  border: 1.5px solid var(--line);
+  border-radius: 14px;
+  cursor: pointer;
+}
+
+.stage:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.stage-active {
+  background: #fff;
+  border-color: var(--ink);
+}
+
+.stage-mark {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 50%;
+  background: var(--fill);
+  color: var(--muted);
+}
+
+.stage-done .stage-mark {
+  background: var(--ink-2);
+  color: #fff;
+}
+
+.stage-todo .stage-mark,
+.stage-fail .stage-mark {
+  background: var(--red);
+  color: #fff;
+}
+
+.stage-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.stage-label {
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stage-note {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stage-todo .stage-note,
+.stage-fail .stage-note {
+  color: var(--red);
+  font-weight: 700;
+}
+
+/* 처리 과정: 도구 묶음마다 접고 펼친다 */
+.step-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.step-group {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 14px;
+}
+
+.step-group > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.step-group[open] > summary {
+  margin-bottom: 10px;
+}
+
+.step-group.has-fail {
+  border-color: var(--red);
+}
+
+.step-group.has-fail .step-group-mark {
+  color: var(--red);
+}
+
+/* 판독 오류로 넘기기: 불일치가 남은 승인 */
+.wms-override {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 12px;
+  padding: 12px 14px;
+  border: 1.5px solid var(--red);
+  border-radius: 12px;
+  background: #fdf0ee;
+}
+
+.wms-override legend {
+  padding: 0 4px;
+  font-weight: 700;
+  color: var(--red);
+}
+
+.wms-override-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.wms-override textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  resize: vertical;
+}
+
+.wms-override-note {
+  display: block;
+  width: 100%;
+  font-size: 13px;
+  color: var(--red);
+}
+
+@media (max-width: 767px) {
+  /* 휴대폰: 다섯 단계를 가로로 밀어 본다 (페이지는 가로로 밀리지 않는다) */
+  .stage-bar {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+  }
+  .stage {
+    flex: 0 0 auto;
+    max-width: 170px;
+    scroll-snap-align: start;
+  }
+}

@@ -7,7 +7,7 @@ CloudFront가 /api/*를 API Gateway로 보내고, rawPath에 /api가 붙어 온�
     POST /api/jobs           → {"job_id"}              (F3, queued로 저장하고 처리 Lambda를 비동기로 부른 뒤 바로 응답)
     GET  /api/jobs/{id}      → Job                     (화면이 2초마다)
     POST /api/jobs/{id}/hs   → {"declaration_draft"}   (C3, 사람이 고른 HS 반영. D2: 조건을 채우면 WMS 자동 등록)
-    POST /api/jobs/{id}/approve → {"wms"}              (D3, 사람 승인으로 WMS 등록. 불일치가 남았으면 409)
+    POST /api/jobs/{id}/approve → {"wms"}              (D3, 사람 승인으로 WMS 등록. 불일치가 남았는데 예외 사유가 없으면 409)
     POST /api/chat           → ChatResponse            (E5, 현황 조회. 1번 agent.query_agent. E6: session_id가 있으면 질문·답을 team06-chat에, 7일 보존)
     GET  /api/documents?doc_type=…&cursor=… → DocumentsResponse (G10 #143, 문서 분류 내역. team06-jobs Scan)
          거르기(F11 #195): job_status · grade · rule_id · hs=pending
@@ -479,6 +479,22 @@ def _validate_approver(body) -> tuple[str | None, str | None]:
     return approver, None
 
 
+OVERRIDE_REASON_MAX = 200  # 불일치 예외 승인 사유 길이 상한
+
+
+def _validate_override_reason(body) -> tuple[str | None, str | None]:
+    """POST /jobs/{id}/approve의 override_reason 검사. 없거나 null이면 (None, None). 공백을 한 칸으로 줄인다. (사유, 오류 메시지)"""
+    reason = body.get("override_reason") if isinstance(body, dict) else None
+    if reason is None:
+        return None, None
+    if not isinstance(reason, str) or not reason.strip():
+        return None, "override_reason(판독 오류로 넘기는 사유)는 비어 있지 않은 글자여야 합니다"
+    reason = " ".join(reason.split())
+    if len(reason) > OVERRIDE_REASON_MAX:
+        return None, f"override_reason은 {OVERRIDE_REASON_MAX}자까지입니다"
+    return reason, None
+
+
 def _line_doc(docs: list[ExtractedDocument], line: int) -> ExtractedDocument | None:
     """확정 이력 키를 만들 서류. 그 행이 있는 상업송장을 먼저, 없으면 그 행이 있는 첫 서류."""
     having = [d for d in docs if any(i.line == line for i in d.items)]
@@ -653,9 +669,11 @@ def approve_job(job_id: str, body) -> dict:
     """POST /jobs/{id}/approve. 사람이 승인하면 가상 WMS에 등록하고(by=human) 작업을 끝낸다.
 
     언제: '확인 필요'가 남은 건을 사람이 화면에서 보고 승인할 때 (agent-design.md 8번 예외). 모델 호출 없음.
-    받는 것: {"approver"}: 승인자 이름. 공백만이면 안 되고 50자까지. 단계 기록에 남긴다.
+      불일치가 남은 건은 검수자가 원본을 보고 판독 오류로 판단해 사유(override_reason)를 적었을 때만 등록한다.
+    받는 것: {"approver", "override_reason"?}: 승인자 이름(공백만이면 안 되고 50자까지), 불일치 예외 사유(200자까지, 없으면 생략).
+      둘 다 단계 기록에 남기고, 사유는 result.wms.override_reason에도 남는다 (검수 완료서가 찍는다).
     반환: 200 {"wms": {"status", "wms_id"}} / 400 요청 형식 / 404 없는 작업
-      / 409 {"error"}: 불일치가 남음, 승인 대기 중이 아님, 서류 기록이 없음, B/L 번호·수하인이 없어 기록을 못 만듦,
+      / 409 {"error"}: 불일치가 남았는데 사유가 없음, 승인 대기 중이 아님, 서류 기록이 없음, B/L 번호·수하인이 없어 기록을 못 만듦,
         같은 B/L이 다른 작업으로 이미 등록됨(#176. 이때만 단계 기록에 이유를 한 줄 남긴다. 같은 이유면 다시 남기지 않는다)
       / 502 가상 WMS 저장 실패 (작업은 그대로라 다시 승인하면 된다).
     이미 등록된 작업이면 다시 등록하지 않고 그 상태를 돌려준다. WMS 쪽도 멱등 키라 재시도해도 한 번만 들어간다.
@@ -670,13 +688,16 @@ def approve_job(job_id: str, body) -> dict:
     approver, problem = _validate_approver(body)
     if problem:
         return _error(400, problem)
+    override_reason, problem = _validate_override_reason(body)
+    if problem:
+        return _error(400, problem)
     job = Job.model_validate_json(item["data"])
     if job.result is not None and job.result.wms is not None and job.result.wms.status == "등록됨":
         return _response(200, _wms_body(job.result.wms))
     if job.status != "waiting_approval" or job.result is None:
         return _error(409, f"승인은 승인 대기 중인 작업에서만 할 수 있습니다 (지금: {job.status})")
     try:
-        wms.approve(job.result, "human")
+        wms.approve(job.result, "human", override_reason)
     except wms.ApprovalRefused as exc:
         return _error(409, str(exc))
     context = load_job_docs(item)
@@ -703,10 +724,23 @@ def approve_job(job_id: str, body) -> dict:
         print(f"[error] WMS 등록 실패 job={job_id} {type(exc).__name__}: {exc}")
         return _error(502, "가상 WMS에 등록하지 못했습니다. 잠시 뒤 다시 승인해 주세요 (같은 건은 한 번만 들어갑니다)")
     # 검수자 이름과 승인 시각(한국 시간)을 칸으로 남긴다. 검수 완료서가 읽는다 (X1 #258). Lambda 시계는 UTC라 +09:00으로 고쳐 적는다
-    state = state.model_copy(update={"approver": approver, "approved_at": datetime.now(KST_OFFSET).isoformat(timespec="seconds")})
+    # 불일치가 없으면 사유는 남기지 않는다 (예외로 넘긴 것이 없으므로)
+    mismatch = [i for i in job.result.issues if i.grade == "불일치"]
+    kept_reason = override_reason if mismatch else None
+    state = state.model_copy(
+        update={
+            "approver": approver,
+            "approved_at": datetime.now(KST_OFFSET).isoformat(timespec="seconds"),
+            "override_reason": kept_reason,
+        }
+    )
     job.result.wms = state
     job.status = "done"
-    job.steps.append(Step(tool="push_to_wms", summary=f"사람 승인({approver})으로 WMS 등록: {state.wms_id}", ok=True))
+    summary = f"사람 승인({approver})으로 WMS 등록: {state.wms_id}"
+    if kept_reason:
+        rules = ", ".join(dict.fromkeys(i.rule_id for i in mismatch))
+        summary += f" (불일치 {len(mismatch)}건({rules})을 판독 오류로 확인, 사유: {kept_reason})"
+    job.steps.append(Step(tool="push_to_wms", summary=summary, ok=True))
     job.steps.append(_mark_registered(job_id, record.bl_no))
     save_job(job, keep=item)
     return _response(200, _wms_body(state))

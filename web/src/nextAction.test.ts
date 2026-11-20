@@ -22,7 +22,7 @@ describe("nextActionOf", () => {
 
   it("불일치 → 고를 HS → 확인 필요 → 승인 순서로 가른다", () => {
     expect(nextActionOf(job([issue("불일치"), issue("확인 필요")], [pending])).message).toBe(
-      "불일치 1건: 서류를 고쳐 다시 올려야 등록할 수 있습니다",
+      "불일치 1건: 서류를 고쳐 다시 올리거나, 원본을 확인해 판독 오류면 사유를 적고 승인하세요",
     );
     expect(nextActionOf(job([issue("확인 필요")], [pending, { ...pending, line: 3 }])).message).toBe("HS 2개를 고르세요");
     expect(nextActionOf(job([issue("확인 필요"), issue("참고")], [done])).message).toBe("확인 필요 1건을 확인한 뒤 승인하세요");

@@ -253,5 +253,14 @@ def test_approve_refuses_when_mismatch_left():
     with pytest.raises(wms.ApprovalRefused) as refused:
         wms.approve(result)
     assert str(refused.value) == (
-        "불일치 3건(X-WT-01, X-QTY-01)이 남아 있어 WMS에 등록할 수 없습니다. 서류를 고쳐 다시 올려 주세요"
+        "불일치 3건(X-WT-01, X-QTY-01)이 남아 있어 WMS에 등록할 수 없습니다. "
+        "서류를 고쳐 다시 올리거나, 원본을 확인해 판독 오류면 사유를 적고 승인해 주세요"
     )
+
+
+def test_approve_passes_mismatch_with_override_reason():
+    """검수자가 원본을 보고 판독 오류라고 사유를 적으면 불일치가 남아도 통과한다. 공백뿐인 사유는 사유가 아니다."""
+    result = JobResult(issues=[issue("X-WT-01", "불일치")])
+    wms.approve(result, "human", "원본 확인, 판독 오류")
+    with pytest.raises(wms.ApprovalRefused):
+        wms.approve(result, "human", "   ")

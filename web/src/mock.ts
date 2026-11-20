@@ -86,15 +86,18 @@ function chooseHs(body: unknown): ChooseHsResponse {
   return { declaration_draft: copy(result.declaration_draft!) };
 }
 
-/** POST /api/jobs/{id}/approve: 약속 2대로 불일치가 남았으면 409, 아니면 사람 승인으로 등록. */
+/** POST /api/jobs/{id}/approve: 약속 2대로 불일치가 남았는데 판독 오류 사유가 없으면 409, 아니면 사람 승인으로 등록. */
 function approve(body: unknown): ApproveResponse {
   const approver = (body as { approver?: unknown } | undefined)?.approver;
+  const reason = (body as { override_reason?: unknown } | undefined)?.override_reason;
+  const overrideReason = typeof reason === "string" && reason.trim() ? reason.trim() : null;
   if (typeof approver !== "string" || approver.trim() === "") throw new ApiError(400, "approver가 필요합니다");
   const result = finalJob.result;
   if (finalJob.status !== "waiting_approval" || !result) {
     throw new ApiError(409, `승인 대기 중인 작업이 아닙니다 (지금: ${finalJob.status})`);
   }
-  if (result.issues.some((i) => i.grade === "불일치")) {
+  const mismatch = result.issues.some((i) => i.grade === "불일치");
+  if (mismatch && !overrideReason) {
     throw new ApiError(409, "불일치가 남아 있어 WMS에 등록할 수 없습니다");
   }
   result.wms = {
@@ -103,6 +106,7 @@ function approve(body: unknown): ApproveResponse {
     wms_id: "WMS-MOCK-0001",
     approver,
     approved_at: new Date().toISOString().slice(0, 19) + "+09:00",
+    override_reason: mismatch ? overrideReason : null,
   };
   finalJob.steps.push({ tool: "push_to_wms", summary: `사람 승인(${approver})으로 WMS 등록`, ok: true });
   return { wms: { status: "등록됨", wms_id: "WMS-MOCK-0001" } };

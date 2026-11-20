@@ -1,5 +1,6 @@
 // G3 진행 화면: 2초 폴링 규칙과 steps 표시
 import { act, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import jobExample from "../../../docs/examples/job_waiting_approval.json";
 import * as api from "../api";
@@ -8,7 +9,7 @@ import type { Job } from "../types";
 import { fileViewOf } from "../mockDocs";
 import draft from "../fixtures/documents.draft.json";
 import type { DocumentRecord } from "../types";
-import { elapsedText, JobPage, POLL_MS, pollInterval, SLOW_MS } from "./JobPage";
+import { defaultStage, elapsedText, groupSteps, JobPage, POLL_MS, pollInterval, SLOW_MS, stageInfo } from "./JobPage";
 
 vi.mock("../api", async (importOriginal) => {
   const real = await importOriginal<typeof import("../api")>();
@@ -54,11 +55,12 @@ describe("JobPage", () => {
     vi.mocked(api.getJob).mockResolvedValue(example);
     renderWithQuery(<JobPage jobId="job-7c1e" />);
 
+    await userEvent.setup().click(await screen.findByRole("tab", { name: /처리 과정/ }));
     expect(await screen.findByText("bl.jpg → 선하증권")).toBeInTheDocument();
-    const items = within(screen.getByRole("list", { name: "진행 단계" })).getAllByRole("listitem");
+    const items = within(screen.getByRole("tabpanel")).getAllByRole("listitem");
     expect(items).toHaveLength(example.steps.length);
-    expect(items[2]).toHaveTextContent("불일치 1건");
-    expect(items[2]).toHaveTextContent("cross_check");
+    const cross = items.find((li) => li.textContent?.includes("cross_check"))!;
+    expect(cross).toHaveTextContent("불일치 1건");
     expect(screen.getByText("승인 대기", { selector: ".status" })).toBeInTheDocument();
     expect(api.getJob).toHaveBeenCalledWith("job-7c1e");
   });
@@ -90,7 +92,7 @@ describe("JobPage", () => {
     renderWithQuery(<JobPage jobId="job-0000abcd" />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("ReadError: 파일이 너무 큽니다");
-    expect(screen.getByLabelText("실패")).toBeInTheDocument();
+    expect(within(screen.getByRole("tabpanel")).getByLabelText("실패")).toBeInTheDocument();
   });
 
   it("없는 작업이면 서버 오류 문장을 보여 준다", async () => {
@@ -113,7 +115,7 @@ describe("JobPage", () => {
     vi.mocked(api.getJobFiles).mockRejectedValue(new api.ApiError(404, "없는 경로입니다"));
     renderWithQuery(<JobPage jobId="job-7c1e" />);
     expect(await screen.findByText("오류 목록 (1)")).toBeInTheDocument();
-    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tablist", { name: "서류" })).not.toBeInTheDocument();
   });
 
   it("처리 중이 3분을 넘으면 경과 시간과 다시 올리라는 안내가 나온다 (FB20)", async () => {
@@ -154,7 +156,7 @@ describe("JobPage", () => {
   it("맨 위에 다음 할 일 한 줄을 보인다: 불일치 · HS · 확인만 남음 (FB22)", async () => {
     const base = example.result!;
     const cases: [Job, string, string][] = [
-      [{ ...example, next_action: undefined }, "불일치 1건: 서류를 고쳐 다시 올려야 등록할 수 있습니다", "파일 업로드로"],
+      [{ ...example, next_action: undefined }, "불일치 1건: 서류를 고쳐 다시 올리거나, 원본을 확인해 판독 오류면 사유를 적고 승인하세요", "파일 업로드로"],
       [
         { ...example, next_action: undefined, result: { ...base, issues: base.issues.map((i) => ({ ...i, grade: "확인 필요" as const })) } },
         "HS 1개를 고르세요",
@@ -189,8 +191,61 @@ describe("JobPage", () => {
   it("불일치가 남으면 승인을 누르기 전에 막고 이유를 보인다", async () => {
     vi.mocked(api.getJob).mockResolvedValue(example);
     renderWithQuery(<JobPage jobId="job-0000abcd" />);
+    const banner = await screen.findByRole("region", { name: "다음 할 일" });
+    await userEvent.setup().click(within(banner).getByRole("button", { name: "판독 오류면 승인으로" }));
     const notes = await screen.findAllByRole("note");
-    expect(notes.some((n) => n.classList.contains("wms-blocked") && n.textContent?.includes("서류를 고쳐 다시 올려야 등록할 수 있습니다"))).toBe(true);
-    expect(screen.getByRole("button", { name: "승인하고 WMS 등록" })).toBeDisabled();
+    expect(notes.some((n) => n.classList.contains("wms-blocked") && n.textContent?.includes("서류를 고쳐 다시 올리거나, 원본을 확인해 판독 오류면 사유를 적고 승인하세요"))).toBe(true);
+    expect(screen.getByRole("button", { name: "판독 오류로 승인하고 WMS 등록" })).toBeDisabled();
+  });
+
+  it("단계 표시줄: 처음에는 할 일이 있는 단계를 열고, 누르면 그 단계만 보인다", async () => {
+    vi.mocked(api.getJob).mockResolvedValue(example); // 불일치가 남음 → 서류 대조
+    renderWithQuery(<JobPage jobId="job-7c1e" />);
+    const user = userEvent.setup();
+
+    const bar = await screen.findByRole("tablist", { name: "작업 단계" });
+    expect(within(bar).getAllByRole("tab")).toHaveLength(5);
+    expect(within(bar).getByRole("tab", { name: /서류 대조/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("오류 목록 (1)")).toBeInTheDocument();
+    expect(screen.queryByLabelText("승인자")).not.toBeInTheDocument(); // 다른 단계는 숨김
+
+    await user.click(within(bar).getByRole("tab", { name: /WMS 등록/ }));
+    expect(screen.getByLabelText("승인자")).toBeInTheDocument();
+    expect(screen.queryByText("오류 목록 (1)")).not.toBeInTheDocument();
+  });
+
+  it("결과가 나오기 전에는 처리 과정만 누를 수 있다", async () => {
+    vi.mocked(api.getJob).mockResolvedValue(at("running", { steps: [example.steps[0]] }));
+    renderWithQuery(<JobPage jobId="job-0000abcd" />);
+    const bar = await screen.findByRole("tablist", { name: "작업 단계" });
+    expect(within(bar).getByRole("tab", { name: /처리 과정/ })).toHaveAttribute("aria-selected", "true");
+    expect(within(bar).getByRole("tab", { name: /HS 코드/ })).toBeDisabled();
+  });
+
+  it("defaultStage 는 다음 할 일을 따른다", () => {
+    const base = example.result!;
+    expect(defaultStage(example)).toBe("review");
+    const noMismatch = { ...example, next_action: undefined, result: { ...base, issues: [] } };
+    expect(defaultStage(noMismatch)).toBe("hs");
+    expect(defaultStage({ ...noMismatch, next_action: { kind: "approve", message: "", count: null } })).toBe("wms");
+    expect(defaultStage(at("running"))).toBe("process");
+  });
+
+  it("stageInfo 는 서버 결과로 단계 상태를 정한다", () => {
+    expect(stageInfo(example, "review")).toEqual({ state: "todo", note: "불일치 1건" });
+    expect(stageInfo(example, "hs")).toEqual({ state: "todo", note: "1개 고르기" });
+    expect(stageInfo(example, "wms")).toEqual({ state: "todo", note: "승인 대기" });
+    expect(stageInfo(at("failed"), "process").state).toBe("fail");
+  });
+
+  it("groupSteps 는 분류 · 읽기 · 대조 · HS · 마무리로 묶고 빈 묶음은 뺀다", () => {
+    const step = (tool: string) => ({ tool, summary: tool, ok: true });
+    const groups = groupSteps(["classify_document", "read_document", "ocr_document", "cross_check", "reread_field", "finish_report"].map(step));
+    expect(groups.map((g) => [g.label, g.steps.length])).toEqual([
+      ["서류 분류", 1],
+      ["서류 읽기", 2],
+      ["대조와 다시 확인", 2],
+      ["마무리", 1],
+    ]);
   });
 });
