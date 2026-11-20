@@ -88,10 +88,15 @@ def expected_for(today: date, rows: list[dict], queries: list[dict] | None = Non
     받는 것: today(그날), rows(그날로 옮긴 시드 줄, shift_rows 결과), queries(queries.csv 줄. 없으면 읽는다).
     반환: 질문마다 {"query_id", "question", "conditions", "count"}. conditions는 queries.csv의 expected_conditions 모양이고
       today·period_resolved가 그날 값이다. date_to_today가 참이면 date_to도 그날이다. count는 이 파일의 규칙으로 센 건수.
+      조회하지 않아야 하는 질문(expect가 '안내'·'되묻기', #165)은 count 0이다 (rows를 돌려주지 않는다).
     """
     out = []
     for q in queries if queries is not None else load_queries():
         cond = json.loads(q["expected_conditions"])
+        if cond.get("expect"):
+            cond["today"] = today.isoformat()
+            out.append({"query_id": q["query_id"], "question": q["question"], "conditions": cond, "count": 0})
+            continue
         if cond.get("date_to_today"):
             cond["date_to"] = today.isoformat()
         span = _span(cond, today)

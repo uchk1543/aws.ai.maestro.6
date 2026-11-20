@@ -1,5 +1,6 @@
 """현황 조회 Agent(answer) 단위 테스트. 질문 → 조건 모델은 가짜로 대신한다 (Bedrock·AWS 호출 없음)."""
 
+import csv
 import json
 from datetime import date
 from pathlib import Path
@@ -83,12 +84,26 @@ def test_compose_answer_whole_period():
 # ---------------------------------------------------------------------------
 # 못 담는 조건·조건 없는 질문 (#165 FB08). 질문과 다른 조건으로 전체를 답하지 않는다
 # ---------------------------------------------------------------------------
-FB08 = [  # (질문, 모델이 낼 조건, 답 종류). 시드 전체는 76건
-    ("이그잼플유통 화물만 보여줘", {"unsupported": ["수하인 이그잼플유통"]}, "안내"),
-    ("EXSHSZX26003555 지금 어디까지 진행됐어?", {"unsupported": ["B/L 번호 EXSHSZX26003555"]}, "안내"),
-    ("오늘 점심 뭐 먹지?", {}, "되묻기"),
-    ("통관 끝난 화물 몇 건이야?", {"unsupported": ["상태 둘 이상: 수리, 반출"]}, "안내"),
-]
+QUERIES = [(q["query_id"], q["question"], json.loads(q["expected_conditions"]), q["expected_count"])
+           for q in csv.DictReader((ROOT / "eval/queries.csv").open(encoding="utf-8", newline=""))]
+# 정답지의 조회하지 않아야 하는 질문 (expect: 안내·되묻기). 가짜 모델은 정답 조건을 그대로 낸다. 시드 전체는 76건
+FB08 = [(question, {"unsupported": cond["unsupported"]}, cond["expect"]) for _, question, cond, _ in QUERIES if "expect" in cond]
+KEYED = [(qid, question, cond, int(count)) for qid, question, cond, count in QUERIES if "expect" not in cond]
+
+
+def test_answer_key_has_the_four_fb08_questions():
+    assert [q for q, _, _ in FB08] == [
+        "이그잼플유통 화물만 보여줘", "EXSHSZX26003555 지금 어디까지 진행됐어?", "오늘 점심 뭐 먹지?", "통관 끝난 화물 몇 건이야?",
+    ]
+
+
+@pytest.mark.parametrize("qid,question,cond,count", KEYED, ids=[k[0] for k in KEYED])
+def test_existing_twenty_questions_still_query(qid, question, cond, count):
+    """기존 20문항은 정답 조건이면 지금처럼 조회하고 정답 건수를 답한다 (가짜 모델, 20/20)."""
+    filters = {k: cond[k] for k in ("status", "period", "date_from", "date_to")}
+    res = answer(question, "s1", store=STORE, today=TODAY, parser=parser_of(**filters))
+    assert len(res.rows) == count and f"{count}건입니다." in res.answer
+    assert "조회할 수 없습니다" not in res.answer and "어떤 화물을 찾을지" not in res.answer
 
 
 @pytest.mark.parametrize("question,filters,kind", FB08, ids=[q for q, _, _ in FB08])
