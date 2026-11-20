@@ -7,6 +7,7 @@ tools/rules/units.csv, tools/rules/text_rules.csv 에 있다.
 """
 
 import csv
+import html
 import re
 from collections import Counter
 from collections.abc import Callable
@@ -14,7 +15,7 @@ from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 
-from tools.models import DOC_TYPE_KO, Cell, ExtractedDocument, Grade, Issue, IssueCell
+from tools.models import DOC_TYPE_KO, Cell, CheckedBy, ExtractedDocument, Grade, Issue, IssueCell, NoticeDocument
 
 RULES_DIR = Path(__file__).parent / "rules"
 RULES_CSV = RULES_DIR / "rules.csv"
@@ -404,3 +405,128 @@ def cross_check(docs: list[ExtractedDocument]) -> list[Issue]:
         single = _SINGLE_DOC_RULES.get(rule_id)
         issues += single(docs) if single else _check_rule(rule_id, docs)
     return issues
+
+
+# ---------------------------------------------------------------------------
+# 불일치 통지 문서 (C7 #158). 근거는 코드가 문장틀로 만들고 모델은 쓰지 않는다 (agent-design.md 5번)
+# ---------------------------------------------------------------------------
+_CHECKED_BY_KO: dict[CheckedBy, str] = {
+    "pdf_text": "PDF 글자층에서 확인",
+    "textract": "Textract OCR로 확인",
+    "model_reread": "모델이 다시 읽어 확인 (근거가 약함)",
+    "none": "아직 다시 확인하지 않음",
+}
+_NOTICE_MARK = "자동 생성 문서입니다. 사람이 검토한 뒤 보냅니다."
+_NOTICE_REQUEST: dict[str, str] = {
+    "불일치": "정정한 서류를 다시 보내 주세요.",
+    "확인 필요": "원본 값을 확인해 주세요.",
+}
+_MAX_TEXT = 300  # 서류에서 온 글자 한 덩이의 길이 상한
+_MD_SPECIAL = re.compile(r"([\\`*_{}\[\]()#+!|<>~&])")
+
+
+def _plain(text: str | None) -> str:
+    """서류에서 온 글자를 한 줄로 정리한다. 제어 문자를 빼고 공백을 하나로 맞추고 길이를 자른다."""
+    kept = "".join(ch if ch.isprintable() else " " for ch in (text or ""))
+    one_line = " ".join(kept.split())
+    return one_line if len(one_line) <= _MAX_TEXT else one_line[:_MAX_TEXT] + "…"
+
+
+def _md(text: str | None) -> str:
+    """마크다운에 데이터로 넣는다. 서식 글자를 이스케이프해 링크·제목·표·태그가 만들어지지 않게 한다."""
+    return _MD_SPECIAL.sub(r"\\\1", _plain(text))
+
+
+def _doc_number(doc: ExtractedDocument) -> str | None:
+    """서류 번호(doc_no)를 글자로. 값이 있으면 값, 없으면 적힌 그대로. 비었으면 None."""
+    cell = doc.doc_no
+    if cell is None:
+        return None
+    text = cell.value if isinstance(cell.value, str) else cell.raw
+    return _plain(text) or None
+
+
+def _file_name(path: str) -> str:
+    return _plain(re.split(r"[\\/]", path)[-1])
+
+
+def _notice_subject(job_id: str, docs: list[ExtractedDocument]) -> str:
+    """제목. B/L 번호와 송장 번호가 있으면 넣고, 둘 다 없으면 작업 ID."""
+    numbers: dict[str, str | None] = {}
+    for doc in docs:
+        if doc.doc_type in ("bill_of_lading", "commercial_invoice") and doc.doc_type not in numbers:
+            numbers[doc.doc_type] = _doc_number(doc)
+    parts = []
+    if numbers.get("bill_of_lading"):
+        parts.append(f"B/L {numbers['bill_of_lading']}")
+    if numbers.get("commercial_invoice"):
+        parts.append(f"송장 {numbers['commercial_invoice']}")
+    return f"[불일치 확인 요청] {' / '.join(parts) if parts else _plain(job_id)}"
+
+
+def notice_document(job_id: str, docs: list[ExtractedDocument], issues: list[Issue]) -> NoticeDocument:
+    """불일치 내용을 담아 관리자(화주·수출자 담당)에게 보낼 문서를 만든다. 모델 호출 없음.
+
+    언제: cross_check와 다시 확인이 끝난 뒤, 문서를 내려받거나 보낼 때.
+    받는 것: job_id(작업 ID), docs(읽은 서류), issues(cross_check 결과).
+    반환: NoticeDocument(제목, 마크다운, HTML, 불일치·확인 필요 건수). 불일치와 확인 필요만 담고 참고는 뺀다.
+    둘 다 없으면 본문에 '불일치 없음' 한 줄만 쓴다. 문장은 코드가 규칙의 근거 문장(evidence)을 그대로 쓰고,
+    서류에서 온 글자는 마크다운·HTML 모두 데이터로만 넣는다(이스케이프). 맨 위에 '자동 생성 문서' 표시를 붙인다.
+    """
+    print(f"[tool] notice_document job_id={job_id} issues={len(issues)}")
+    subject = _notice_subject(job_id, docs)
+    groups = {grade: [i for i in issues if i.grade == grade] for grade in ("불일치", "확인 필요")}
+
+    doc_lines = [
+        (DOC_TYPE_KO.get(d.doc_type, d.doc_type), _file_name(d.file), _doc_number(d)) for d in docs
+    ]
+
+    def cell_text(cell: IssueCell, escape: Callable[[str], str]) -> str:
+        """짚은 칸 한 줄. 서류에서 온 값(칸 경로·raw)만 escape를 거치고, 코드가 정한 문구는 그대로 쓴다."""
+        head = f"{escape(DOC_TYPE_KO.get(cell.doc, cell.doc))} {escape(cell.field)}: "
+        return head + (escape(cell.raw) if _plain(cell.raw) else "(읽지 못함)")
+
+    # 마크다운
+    md = [f"# {_md(subject)}", "", f"> {_NOTICE_MARK}", "", f"작업 ID: {_md(job_id)}", "", "## 대상 서류", ""]
+    md += [
+        f"- {ko}: 파일 {_md(name)}" + (f", 서류 번호 {_md(no)}" if no else "") for ko, name, no in doc_lines
+    ] or ["- (읽은 서류 없음)"]
+    if not groups["불일치"]:
+        md += ["", "## 불일치", "", "불일치 없음"]
+    for grade, items in groups.items():
+        if not items:
+            continue
+        md += ["", f"## {grade} ({len(items)}건)", "", _NOTICE_REQUEST[grade], ""]
+        for issue in items:
+            md += [f"- 규칙 {_md(issue.rule_id)}: {_md(issue.evidence)}"]
+            md += [f"  - 짚은 칸: {cell_text(c, _md)}" for c in issue.cells]
+            md += [f"  - 확인 방법: {_CHECKED_BY_KO[issue.checked_by]}"]
+
+    # HTML
+    esc = html.escape
+    page = [
+        "<!doctype html>", '<html lang="ko">', '<head><meta charset="utf-8">', f"<title>{esc(subject)}</title></head>", "<body>",
+        f"<h1>{esc(subject)}</h1>", f"<p><strong>{esc(_NOTICE_MARK)}</strong></p>", f"<p>작업 ID: {esc(_plain(job_id))}</p>",
+        "<h2>대상 서류</h2>", "<ul>",
+    ]
+    page += [
+        f"<li>{esc(ko)}: 파일 {esc(name)}" + (f", 서류 번호 {esc(no)}" if no else "") + "</li>" for ko, name, no in doc_lines
+    ] or ["<li>(읽은 서류 없음)</li>"]
+    page.append("</ul>")
+    if not groups["불일치"]:
+        page += ["<h2>불일치</h2>", "<p>불일치 없음</p>"]
+    for grade, items in groups.items():
+        if not items:
+            continue
+        page += [f"<h2>{esc(grade)} ({len(items)}건)</h2>", f"<p>{esc(_NOTICE_REQUEST[grade])}</p>", "<ul>"]
+        for issue in items:
+            page += [f"<li>규칙 {esc(_plain(issue.rule_id))}: {esc(_plain(issue.evidence))}", "<ul>"]
+            page += [f"<li>짚은 칸: {cell_text(c, lambda s: esc(_plain(s)))}</li>" for c in issue.cells]
+            page += [f"<li>확인 방법: {esc(_CHECKED_BY_KO[issue.checked_by])}</li>", "</ul></li>"]
+        page.append("</ul>")
+    page += ["</body>", "</html>"]
+
+    return NoticeDocument(
+        job_id=_plain(job_id), subject=subject, markdown="\n".join(md) + "\n", html="\n".join(page) + "\n",
+        mismatch_count=len(groups["불일치"]), check_count=len(groups["확인 필요"]),
+    )
