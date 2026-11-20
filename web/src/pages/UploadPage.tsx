@@ -5,9 +5,10 @@ import { ApiError, contentTypeOf, createJob, createUploads, putToS3 } from "../a
 import { Icon } from "../components/Icon";
 import { navigate } from "../route";
 
-// 서버 한도와 같게 둔다 (agent/document_agent.py MAX_FILES, MAX_BYTES)
+// 서버 한도와 같게 둔다 (agent/document_agent.py MAX_FILES, MAX_BYTES·MAX_IMAGE_BYTES, B10 #148)
 export const MAX_FILES = 10;
-export const MAX_BYTES = 4_500_000;
+export const MAX_PDF_BYTES = 4_500_000; // Bedrock 문서 블록 한도
+export const MAX_IMAGE_BYTES = 20_000_000; // 사진은 서버가 줄여 읽는다 (B10)
 const EXTENSIONS = [".pdf", ".png", ".jpg", ".jpeg"];
 const ACCEPT = EXTENSIONS.join(",");
 
@@ -22,6 +23,19 @@ function sizeText(bytes: number): string {
 
 function fileId(f: File): string {
   return `${f.name}:${f.size}:${f.lastModified}`;
+}
+
+function isPdf(name: string): boolean {
+  return name.toLowerCase().endsWith(".pdf");
+}
+
+/** 파일 하나의 크기 한도: PDF 4.5MB, 사진(PNG·JPG) 20MB. */
+export function maxBytesOf(name: string): number {
+  return isPdf(name) ? MAX_PDF_BYTES : MAX_IMAGE_BYTES;
+}
+
+function isTooBig(f: File): boolean {
+  return f.size > maxBytesOf(f.name);
 }
 
 /** 확장자(.pdf .png .jpg .jpeg, 대소문자 무시)로 올릴 수 있는 파일인지 본다. 서버도 다시 검사한다. */
@@ -44,7 +58,8 @@ export function UploadPage() {
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const tooBig = picked.filter((p) => p.file.size > MAX_BYTES);
+  const tooBig = picked.filter((p) => isTooBig(p.file));
+  const pdfTooBig = tooBig.some((p) => isPdf(p.file.name));
   const tooMany = picked.length > MAX_FILES;
   const canUpload = picked.length > 0 && !busy && tooBig.length === 0 && !tooMany;
 
@@ -111,7 +126,7 @@ export function UploadPage() {
           <br className="pc-br" /> 올려 주세요
         </h1>
         <p className="lead lead-short">
-          PDF · PNG · JPG, 한 번에 {MAX_FILES}개까지
+          PDF {sizeText(MAX_PDF_BYTES)} · 사진 {sizeText(MAX_IMAGE_BYTES)}, 한 번에 {MAX_FILES}개까지
           <br />
           서류 종류는 자동으로 분류합니다
         </p>
@@ -127,7 +142,9 @@ export function UploadPage() {
           </div>
           <div>
             <dt>크기</dt>
-            <dd>파일 하나 {sizeText(MAX_BYTES)}까지</dd>
+            <dd>
+              PDF {sizeText(MAX_PDF_BYTES)} · 사진 {sizeText(MAX_IMAGE_BYTES)}까지
+            </dd>
           </div>
           <div>
             <dt>서류 종류</dt>
@@ -172,7 +189,7 @@ export function UploadPage() {
         ) : (
           <ul className="file-list">
             {picked.map((p) => (
-              <li key={p.id} className={p.file.size > MAX_BYTES ? "file-card invalid" : "file-card"}>
+              <li key={p.id} className={isTooBig(p.file) ? "file-card invalid" : "file-card"}>
                 <span className="file-ext" aria-hidden="true">
                   {extText(p.file.name)}
                 </span>
@@ -182,7 +199,7 @@ export function UploadPage() {
                   </div>
                   <div className="file-meta">
                     {sizeText(p.file.size)}
-                    {p.file.size > MAX_BYTES && <span className="warn"> · 너무 큽니다</span>}
+                    {isTooBig(p.file) && <span className="warn"> · {sizeText(maxBytesOf(p.file.name))}까지입니다</span>}
                   </div>
                 </div>
                 <button
@@ -197,6 +214,11 @@ export function UploadPage() {
               </li>
             ))}
           </ul>
+        )}
+        {pdfTooBig && (
+          <p className="warn" role="alert">
+            PDF는 {sizeText(MAX_PDF_BYTES)}까지입니다. 쪽을 나누거나 사진으로 찍어 올려 주세요.
+          </p>
         )}
         {tooMany && (
           <p className="warn" role="alert">
