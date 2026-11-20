@@ -80,6 +80,11 @@ WEB_DIST=web/dist bash infra/deploy-web.sh
 모델 ID를 바꿀 때 (설정만 바뀜): 두 함수 모두 `aws lambda update-function-configuration --environment ...`로 바꾼다. 다른 환경 변수도 함께 넣어야 한다(덮어쓰기).
 
 ## 끝까지 한 번 (F3 뒤)
+화면과 같은 순서(업로드 URL → S3 PUT → 작업, doc_type null → 조회)를 공개 주소로 돌린다. AWS 자격 증명이 필요 없다.
+```bash
+uv run python -m scripts.e2e_upload https://<CloudFront 주소> samples/dev/D003/doc_a.pdf samples/dev/D003/doc_b.pdf samples/dev/D003/doc_c.pdf samples/dev/D003/doc_d.pdf
+```
+S3에 직접 올려 보는 옛 방법:
 ```bash
 BUCKET=team06-docs-465105354705
 aws s3 cp <상업송장>.pdf s3://$BUCKET/uploads/s1/invoice.pdf
@@ -95,11 +100,11 @@ curl -s "$URL/api/jobs/<job_id>"                # queued → running → waiting
 - 모델 호출: `MODEL_ID=... uv run python -m scripts.ping_bedrock [서류 경로 doc_type]` (로컬 aws login 필요)
 
 ## 남은 일
-- [ ] F1 `create.sh` 실행, CloudFront → API Gateway → Lambda 연결 확인
-- [ ] F3(4번) 합친 뒤 `deploy.sh`, `/api/` → `{"ok": true}`, 끝까지 한 번
+- [x] F1 `create.sh` 실행, CloudFront → API Gateway → Lambda 연결 확인
+- [x] F3(4번) 합친 뒤 `deploy.sh`, `/api/` → `{"ok": true}`, 끝까지 한 번 (2026-11-20, `scripts/e2e_upload.py`, D003 4장 14.7초)
 - [x] F4 Textract 권한(worker), team06-hs-history·team06-wms 테이블과 권한, 환경 변수 (HS 이력 키는 C3 설계로 맞춤)
 - [x] E2 team06-shipments 테이블과 시드 넣기 (`infra/seed_shipments.py`)
-- [ ] F5 화면 빌드 올리기 (`deploy-web.sh`)
+- [x] F5 화면 빌드 올리기 (`deploy-web.sh`)
 - [ ] F6 배포 시각마다 배포, `team06-` 아닌 리소스·서울 밖 리소스(CloudFront 제외) 점검
 
 ## 알려진 문제와 주의
