@@ -462,6 +462,12 @@ class WmsState(_Strict):
     status: WmsStatus = Field(description="승인 대기 · 등록됨")
     by: WmsBy | None = Field(default=None, description="등록한 경로. 등록 전이면 null")
     wms_id: str | None = Field(default=None, description="WMS가 준 번호. 등록 전이면 null")
+    approver: str | None = Field(
+        default=None, description="검수자 이름(사람 승인으로 등록됐을 때 승인 입력의 approver). 자동 등록·승인 대기는 null (X1 #258)"
+    )
+    approved_at: str | None = Field(
+        default=None, description="승인 시각. 한국 시간 ISO 8601(예 2026-11-21T09:30:12+09:00). 사람 승인일 때만 (X1 #258)"
+    )
 
 
 class JobResult(_Strict):

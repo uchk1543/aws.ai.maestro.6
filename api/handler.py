@@ -36,7 +36,7 @@ from functools import cache
 from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import TypeAdapter
 
-from tools import declaration, hs, report, wms
+from tools import certificate, declaration, hs, report, wms
 from tools.models import (
     DOC_TYPE_KO,
     Cell,
@@ -360,6 +360,18 @@ def _response(status: int, body) -> dict:
 
 def _error(status: int, message: str) -> dict:
     return _response(status, {"error": message})
+def _pdf_response(data: bytes, filename: str) -> dict:
+    """PDF 바이트 응답. API Gateway HTTP API는 이진 본문을 base64 글자로 받는다 (isBase64Encoded)."""
+    return {
+        "statusCode": 200,
+        "isBase64Encoded": True,
+        "headers": {
+            "content-type": "application/pdf",
+            "content-disposition": f'attachment; filename="{filename}"',
+            "cache-control": "no-store",
+        },
+        "body": base64.b64encode(data).decode("ascii"),
+    }
 
 
 def _body(event: dict):
@@ -644,7 +656,7 @@ def approve_job(job_id: str, body) -> dict:
         같은 B/L이 다른 작업으로 이미 등록됨(#176. 이때만 단계 기록에 이유를 한 줄 남긴다. 같은 이유면 다시 남기지 않는다)
       / 502 가상 WMS 저장 실패 (작업은 그대로라 다시 승인하면 된다).
     이미 등록된 작업이면 다시 등록하지 않고 그 상태를 돌려준다. WMS 쪽도 멱등 키라 재시도해도 한 번만 들어간다.
-    저장: result.wms = {등록됨, human, wms_id}, status = done, steps에 push_to_wms 한 줄과 mark_registered 한 줄(E3).
+    저장: result.wms = {등록됨, human, wms_id, approver, approved_at(한국 시간)}, status = done, steps에 push_to_wms 한 줄과 mark_registered 한 줄(E3).
       화면은 승인 뒤 GET /jobs/{id}를 다시 불러 result.wms(by 포함)를 쓴다.
     """
     if not JOB_ID.match(job_id):
@@ -687,6 +699,8 @@ def approve_job(job_id: str, body) -> dict:
     except (BotoCoreError, ClientError) as exc:
         print(f"[error] WMS 등록 실패 job={job_id} {type(exc).__name__}: {exc}")
         return _error(502, "가상 WMS에 등록하지 못했습니다. 잠시 뒤 다시 승인해 주세요 (같은 건은 한 번만 들어갑니다)")
+    # 검수자 이름과 승인 시각(한국 시간)을 칸으로 남긴다. 검수 완료서가 읽는다 (X1 #258). Lambda 시계는 UTC라 +09:00으로 고쳐 적는다
+    state = state.model_copy(update={"approver": approver, "approved_at": datetime.now(KST_OFFSET).isoformat(timespec="seconds")})
     job.result.wms = state
     job.status = "done"
     job.steps.append(Step(tool="push_to_wms", summary=f"사람 승인({approver})으로 WMS 등록: {state.wms_id}", ok=True))
@@ -695,6 +709,31 @@ def approve_job(job_id: str, body) -> dict:
     return _response(200, _wms_body(state))
 
 
+def job_certificate(job_id: str) -> dict:
+    """GET /jobs/{id}/certificate. 사람이 승인해 등록한 작업의 검수 완료서(PDF)를 만들어 돌려준다 (X1 #258).
+    언제: 화면의 '검수 완료서 받기'. 파일은 저장하지 않고 부를 때마다 저장된 작업에서 만든다. 모델·S3 호출 없음.
+    반환: 200 application/pdf(attachment, certificate-<작업 ID>.pdf) / 404 없는 작업
+      / 409 {"error"}: 승인 대기·자동 등록·등록 전, 검수자 이름이 없는 옛 작업
+      / 500 {"error"} PDF를 만들지 못함 (WMS 등록 상태는 바뀌지 않는다).
+    """
+    if not JOB_ID.match(job_id):
+        return _error(404, "작업을 찾을 수 없습니다")
+    item = _load_item(job_id)
+    if item is None:
+        return _error(404, "작업을 찾을 수 없습니다")
+    job = Job.model_validate_json(item["data"])
+    try:
+        certificate.check_issuable(job)
+    except certificate.NotIssuable as exc:
+        return _error(409, str(exc))
+    context = load_job_docs(item)
+    docs, importer = context if context is not None else ([], None)
+    try:
+        data = certificate.make_certificate(job, docs, importer=importer)
+    except Exception as exc:
+        print(f"[error] 검수 완료서 만들기 실패 job={job_id} {type(exc).__name__}: {exc}")
+        return _error(500, "검수 완료서를 만들지 못했습니다")
+    return _pdf_response(data, f"certificate-{job_id}.pdf")
 MAX_QUESTION = 500  # 현황 질문 길이 한도
 # fullmatch로 쓴다('$'는 끝 줄바꿈 앞에서도 맞는다). 첫 글자는 영문·숫자: '-' 하나는 answer·로그의 익명 표시다
 SESSION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,63}")
@@ -1369,6 +1408,8 @@ def lambda_handler(event, context):
             return job_files(parts[2])
         if method == "GET" and len(parts) == 4 and parts[1] == "jobs" and parts[3] == "notice":
             return job_notice(parts[2], event.get("queryStringParameters"))
+        if method == "GET" and len(parts) == 4 and parts[1] == "jobs" and parts[3] == "certificate":
+            return job_certificate(parts[2])
         if method == "POST" and len(parts) == 4 and parts[1] == "jobs" and parts[3] == "hs":
             return choose_hs(parts[2], _body(event))
         if method == "POST" and len(parts) == 4 and parts[1] == "jobs" and parts[3] == "approve":

@@ -96,7 +96,13 @@ function approve(body: unknown): ApproveResponse {
   if (result.issues.some((i) => i.grade === "불일치")) {
     throw new ApiError(409, "불일치가 남아 있어 WMS에 등록할 수 없습니다");
   }
-  result.wms = { status: "등록됨", by: "human", wms_id: "WMS-MOCK-0001" };
+  result.wms = {
+    status: "등록됨",
+    by: "human",
+    wms_id: "WMS-MOCK-0001",
+    approver,
+    approved_at: new Date().toISOString().slice(0, 19) + "+09:00",
+  };
   finalJob.steps.push({ tool: "push_to_wms", summary: `사람 승인(${approver})으로 WMS 등록`, ok: true });
   return { wms: { status: "등록됨", wms_id: "WMS-MOCK-0001" } };
 }

@@ -77,6 +77,35 @@ describe("WmsPanel", () => {
     expect(screen.queryByLabelText("승인자")).not.toBeInTheDocument();
   });
 
+  it("사람이 승인해 등록한 작업은 검수자와 '검수 완료서 받기' 링크를 보인다 (X1 #258)", () => {
+    renderWithQuery(
+      <WmsPanel
+        jobId="job-7c1e"
+        jobStatus="done"
+        wms={{ status: "등록됨", by: "human", wms_id: "WMS-0042", approver: "김담당", approved_at: "2026-11-21T09:30:12+09:00" }}
+      />,
+    );
+    const link = screen.getByRole("link", { name: "검수 완료서 받기" });
+    expect(link).toHaveAttribute("href", "/api/jobs/job-7c1e/certificate");
+    expect(screen.getByText(/검수자 김담당/)).toBeInTheDocument();
+    expect(screen.getByText(/2026-11-21 09:30/)).toBeInTheDocument();
+  });
+
+  it("자동 등록·승인 대기에는 검수 완료서 링크가 없다", () => {
+    const { unmount } = renderWithQuery(
+      <WmsPanel jobId="job-7c1e" jobStatus="done" wms={{ status: "등록됨", by: "auto", wms_id: "WMS-0042" }} />,
+    );
+    expect(screen.queryByRole("link", { name: "검수 완료서 받기" })).not.toBeInTheDocument();
+    unmount();
+    renderWithQuery(<WmsPanel jobId="job-7c1e" jobStatus="waiting_approval" wms={exampleWms} />);
+    expect(screen.queryByRole("link", { name: "검수 완료서 받기" })).not.toBeInTheDocument();
+  });
+
+  it("승인 입력 곁에 이름이 검수 완료서에 찍힌다고 알린다", () => {
+    renderWithQuery(<WmsPanel jobId="job-7c1e" jobStatus="waiting_approval" wms={exampleWms} />);
+    expect(screen.getByText("입력한 이름이 검수 완료서에 검수자로 찍힙니다.")).toBeInTheDocument();
+  });
+
   it("승인 대기인데 서버 wms 가 null 이면(배포 전·옛 작업) 승인 대기로 보고 승인 입력을 보인다 (FB01-b)", async () => {
     const user = userEvent.setup();
     vi.mocked(api.approveJob).mockResolvedValue({ wms: { status: "등록됨", wms_id: "WMS-0007" } } as never);

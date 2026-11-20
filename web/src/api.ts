@@ -81,6 +81,10 @@ export function chooseHs(jobId: string, choices: HSChoice[]): Promise<ChooseHsRe
 export function approveJob(jobId: string, approver: string): Promise<ApproveResponse> {
   return request("POST", `/api/jobs/${encodeURIComponent(jobId)}/approve`, { approver });
 }
+/** 검수 완료서 PDF 내려받기 주소 (GET /api/jobs/{id}/certificate, X1 #258). 사람이 승인해 등록한 작업만 받을 수 있다 */
+export function certificateUrl(jobId: string): string {
+  return `/api/jobs/${encodeURIComponent(jobId)}/certificate`;
+}
 
 /** 현황 채팅에 질문을 보낸다. 서버는 앞 질문을 기억하지 않고 질문마다 따로 답한다 (session_id 는 기록용, FB09 #166). */
 export function sendChat(req: ChatRequest): Promise<ChatResponse> {

@@ -47,6 +47,7 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 | `GET /api/documents?doc_type=<종류>&cursor=<다음 쪽>` | - | `docs/examples/documents.json` (문서 분류 내역, #143) |
 | `GET /api/jobs/{id}/files` | - | `docs/examples/job_files.json` (서류 보기: 원본 주소 + 읽은 칸, #156) |
 | `GET /api/jobs/{id}/notice?format=md\|html` | - | 불일치 통지 문서 파일 (`content-disposition: attachment`, `notice-<B/L 또는 작업 ID>.md\|html`, 기본 html). 처리 중이면 409 (#155, 문서는 C7 `NoticeDocument`) |
+| `GET /api/jobs/{id}/certificate` | - | 검수 완료서 PDF (`application/pdf`, `content-disposition: attachment`, `certificate-<작업 ID>.pdf`). 사람 승인으로 등록된 작업만. 없는 작업 404, 승인 대기·자동 등록·옛 작업은 409 `{"error"}` (X1 #258) |
 | `GET /api/jobs/{id}/notice?format=md\|html` | - | 불일치 통지 문서 내려받기 (F9 #155, 아직 없음. 문서 내용은 아래 `NoticeDocument`, 예시 `docs/examples/notice.json`, C7 #158) |
 | `GET /api/stats` | - | `docs/examples/stats.json` (대시보드 통계, F11 #195) |
 | `GET /api/jobs?next_action=<종류>` | - | `docs/examples/jobs.json` (다음 할 일이 같은 작업 목록, #252) |
@@ -93,6 +94,7 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 - `hs[].status`: `자동 확정` | `사람 확인 필요` | `사람 확정`, `hs[].by`: `history` | `auto_match` | `human` | null
 - `hs[].item_name`: 그 행의 품명(서류에 적힌 글자, 못 읽었으면 null). `hs[].doc_hs_code`: 서류에 적힌 HS를 적힌 그대로(예: `8507.60`, 없으면 null). 화면이 "1행 · 품명 (서류 HS)"로 보여 준다 (FB07 #164)
 - `wms.status`: `승인 대기` | `등록됨`, `wms.by`: `auto` | `human` | null
+- `wms.approver`: 검수자 이름(사람 승인으로 등록됐을 때 승인 입력의 `approver`), `wms.approved_at`: 승인 시각(한국 시간 ISO 8601, 예 `2026-11-21T09:30:12+09:00`). 자동 등록·승인 대기는 둘 다 null. 검수 완료서가 이 두 칸을 쓴다 (X1 #258)
 - `suspect`: 서류가 셋 이상일 때 다수결로 고른 서류 종류, 둘뿐이면 null
 - `next_action` (FB22 #178): `GET /api/jobs/{id}`가 응답 때마다 결과로 정하는 '지금 상태와 다음 할 일' 한 줄 `{kind, message, count}`. 저장하지 않는다 (`tools/wms.py`의 `next_action`)
   - `kind`: `wait`(대기·처리 중) | `fix_docs`(불일치가 남음. 승인해도 409라 서류를 고쳐 다시 올림) | `choose_hs`(HS를 사람이 골라야 함) | `approve`(확인 필요만 남았거나 승인만 남음) | `none`(끝남) | `reupload`(실패)

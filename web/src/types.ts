@@ -95,6 +95,10 @@ export interface WmsState {
   status: WmsStatus;
   by: WmsBy | null;
   wms_id?: string | null;
+  /** 검수자 이름 (사람 승인으로 등록됐을 때. X1 #258). 자동 등록·승인 대기는 null */
+  approver?: string | null;
+  /** 승인 시각, 한국 시간 ISO 8601 */
+  approved_at?: string | null;
 }
 export interface JobResult {
   issues: Issue[];

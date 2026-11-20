@@ -79,6 +79,7 @@ CONTRACTS = [
     Contract("tools.hs:confirm_by_human", P("result", "hs", "importer", "key", "job_id", kw=("history",)), HSResult, "2번 검증", "4번 API (POST /jobs/{id}/hs)"),
     Contract("tools.hs:item_key", P("doc", "line"), str, "2번 검증", "2번, 4번 API"),
     Contract("tools.declaration:draft_declaration", P("docs", "issues", "hs"), DeclarationDraft, "2번 검증", "1번 에이전트 루프, 4번 API"),
+    Contract("tools.certificate:make_certificate", P("job", "docs", kw=("importer",)), bytes, "PM", "4번 API (GET /jobs/{id}/certificate)"),
     # 4번 서버가 만들고, 1번·4번이 부른다
     Contract("tools.ocr:ocr_document", P("file", "data", kw=("client",)), OcrResult, "4번 서버", "1번 판독·다시 확인"),
     Contract("tools.wms:push_to_wms", P("record", kw=("adapter",)), WmsState, "4번 서버", "4번 API, 1번 리포트 뒤"),

@@ -246,7 +246,7 @@ def test_post_then_worker_shows_mismatch(fakes, lambda_client):
     draft = DeclarationDraft.model_validate(job["result"]["declaration_draft"])
     assert "total_gross_kg" in draft.blank_fields
     # 승인 대기로 끝나면 화면이 승인 입력을 그리도록 wms를 채운다 (#159, 실제 run_job 출력 FB14)
-    assert job["result"]["wms"] == {"status": "승인 대기", "by": None, "wms_id": None}
+    assert job["result"]["wms"] == {"status": "승인 대기", "by": None, "wms_id": None, "approver": None, "approved_at": None}
 
 
 def test_matching_docs_are_done(fakes, lambda_client):
@@ -742,7 +742,11 @@ def test_approve_registers_by_human_and_saves_wms(wms_fakes):
     _, job = call("GET", f"/jobs/{APPROVE_JOB}")
     Job.model_validate(job)
     assert job["status"] == "done"
-    assert job["result"]["wms"] == {"status": "등록됨", "by": "human", "wms_id": "wms-0001"}
+    wms_state = job["result"]["wms"]
+    assert {k: wms_state[k] for k in ("status", "by", "wms_id", "approver")} == {
+        "status": "등록됨", "by": "human", "wms_id": "wms-0001", "approver": "김 담당",  # 공백은 한 칸으로 정리된 이름 (X1 #258)
+    }
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+09:00", wms_state["approved_at"])  # 한국 시간
     assert job["steps"][-2] == {"tool": "push_to_wms", "summary": "사람 승인(김 담당)으로 WMS 등록: wms-0001", "ok": True}
     assert job["steps"][-1]["tool"] == "mark_registered"  # 화물 기록 상태 고치기 (E3). 여기서는 줄이 없다
     assert table.items[APPROVE_JOB]["importer"] == IMPORTER and table.items[APPROVE_JOB]["docs"]
@@ -1076,7 +1080,7 @@ def test_hs_choice_registers_to_wms_when_nothing_is_left(hs_fakes, wms_memory, s
     _, job = call("GET", f"/jobs/{HS_JOB}")
     Job.model_validate(job)
     assert job["status"] == "done"
-    assert job["result"]["wms"] == {"status": "등록됨", "by": "auto", "wms_id": wms_id}
+    assert job["result"]["wms"] == {"status": "등록됨", "by": "auto", "wms_id": wms_id, "approver": None, "approved_at": None}
     assert job["steps"][-2] == {"tool": "push_to_wms", "summary": f"WMS 자동 등록: {wms_id}", "ok": True}
     assert job["steps"][-1] == {"tool": "mark_registered", "summary": f"화물 기록 B/L {BL}: 입항 → 수입신고", "ok": True}
     assert shipments.rows[BL].customs_status == "수입신고"
@@ -1097,7 +1101,7 @@ def test_hs_choice_with_problem_left_waits_for_approval(hs_fakes, wms_memory, gr
 
     _, job = call("GET", f"/jobs/{HS_JOB}")
     assert job["status"] == "waiting_approval"
-    assert job["result"]["wms"] == {"status": "승인 대기", "by": None, "wms_id": None}
+    assert job["result"]["wms"] == {"status": "승인 대기", "by": None, "wms_id": None, "approver": None, "approved_at": None}
     assert job["steps"][-1]["tool"] == "draft_declaration"
     assert wms_memory.records == {}
 
