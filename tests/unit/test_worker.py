@@ -508,6 +508,11 @@ def test_done_job_is_registered_right_away(table, monkeypatch, shipments, wms_me
 
 
 class BrokenWms:
+    """등록할 때 저장소 오류를 낸다. 같은 B/L 찾기(#190 registered_jobs)는 비어 있다고 답해 등록까지 가게 한다."""
+
+    def registered_jobs(self, bl_no):
+        return {}
+
     def register(self, record):
         raise RuntimeError("가짜 WMS 오류")
 
