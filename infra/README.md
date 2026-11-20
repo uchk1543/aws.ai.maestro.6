@@ -24,8 +24,10 @@ PM과 4번 사이 이름 약속(진입점, 이벤트, 환경 변수)은 이슈 #
 | 정책 | `policy-logs.json` | 두 Lambda의 로그 그룹에 쓰기 |
 | 정책 | `policy-data.json` | `team06-jobs` Get/Put/UpdateItem, 서류 버킷 `uploads/*` Get/PutObject (미리 서명된 URL 포함) |
 | 정책 | `policy-jobs-list.json` | API Lambda만: `team06-jobs` Scan (문서 분류 내역 `GET /api/documents`, #143) |
+| 정책 | `policy-chat.json` | API Lambda만: `team06-chat` Get/Put/Query, 가드레일 `team06-chat-guard` ApplyGuardrail (APAC 프로필 도착 리전 6곳 포함, #151) |
+| 가드레일 | `team06-chat-guard` (`guardrail-chat.json`) | 현황 조회 입력 검사: 프롬프트 공격 HIGH, 유해 표현, 통관·화물과 무관한 요청 거부. Standard 등급(한국어), `apac.guardrail.v1:0`. 환경 변수 `GUARDRAIL_ID`·`GUARDRAIL_VERSION`(API Lambda) |
 | 정책 | `policy-invoke-worker.json` | API Lambda가 `team06-worker`만 호출 |
-| DynamoDB | `team06-jobs`, `team06-hs-history`, `team06-wms`, `team06-shipments` | 온디맨드. 키와 칸은 아래 "테이블" |
+| DynamoDB | `team06-jobs`, `team06-hs-history`, `team06-wms`, `team06-shipments`, `team06-chat` | 온디맨드. 키와 칸은 아래 "테이블" |
 | 정책 | `policy-textract.json` | worker만: `textract:AnalyzeDocument`, `DetectDocumentText` (서울) |
 | S3 | `team06-docs-<계정ID>` | 공개 차단. `uploads/` 서류, `deploy/` 배포 zip. CORS: 화면 주소에서 PUT만 |
 | S3 | `team06-web-<계정ID>` | 공개 차단. 버킷 정책 `policy-web-bucket.json`: CloudFront 배포 하나만 읽기 |
@@ -46,6 +48,18 @@ PM과 4번 사이 이름 약속(진입점, 이벤트, 환경 변수)은 이슈 #
 | `team06-hs-history` | `importer`(파티션) + `item_key`(정렬, `tools.hs.item_key`) — 4번 C3 설계(#76) | `hs`(10자리), `job_id`, `updated_at` | `HSHistory` 구현 (C2), 사람 확정 (C3) |
 | `team06-wms` | `idempotency_key` = `"<B/L 번호>#<작업 ID>"` | `wms_id`, `record`(WmsRecord JSON 문자열), `registered_at` | `WmsAdapter` 구현 (D1). 같은 키는 조건부 쓰기(`attribute_not_exists`)로 한 번만 |
 | `team06-shipments` | `bl_no` | Shipment 칸 그대로 (날짜는 `YYYY-MM-DD` 문자열, `job_id` 없으면 칸 없음) | `ShipmentStore` 구현 (E3·E4). 시드는 `infra/seed_shipments.py` (E2). Lambda 권한에 Scan 포함 |
+| `team06-chat` | `session_id`(파티션) + `ts`(정렬, 한국 시간 `YYYYMMDDHHMMSSmmm`) | `role`(user·assistant), `text`, 답이면 `filters`·`count`·`rule`·`blocked`, `expires_at`(초, TTL 7일) | 채팅 기록 (E6 #157). 환경 변수 `CHAT_TABLE` |
+
+### 데모·평가 전 초기화 (PM만, #170)
+평가·10회 반복·데모 직전에는 확정 이력이 비어 있어야 한다 (agent-design.md 11번). 기본은 미리보기이고, `--apply`면 `reset`을 입력해야 지운다.
+지우기 전에 지울 줄을 `build/reset-<시각>.json`에 남긴다.
+```bash
+uv run python infra/reset_demo.py --job <job_id>              # 시험 작업 하나가 남긴 줄 (HS 이력·WMS·화물 기록·작업)
+uv run python infra/reset_demo.py --all                       # 처리 기록 전체 미리보기
+uv run python infra/reset_demo.py --all --apply               # 비우고 시드 화물 기록 다시 넣기
+uv run python infra/reset_demo.py --all --apply --s3          # 서류 버킷 uploads/·cache/read/까지
+```
+시드 화물 기록(job_id 칸 없음)은 지우지 않는다. 처리한 작업이 쓴 줄만 지운다.
 
 ### 테이블 키 바꾸기
 `create.sh`는 이미 있는 테이블의 키가 다르면 멈춘다. 키는 만든 뒤 바꿀 수 없어서 지우고 다시 만들어야 한다.
@@ -60,7 +74,7 @@ MODEL_ID=global.anthropic.claude-sonnet-5-5 bash infra/recreate-table.sh <테이
 
 ## 실행 순서 (PM)
 ```bash
-aws login && aws sts get-caller-identity       # 계정 465105354705, 사용자 확인
+aws login && aws sts get-caller-identity       # 계정 <계정ID>, 사용자 확인
 git switch main && git pull && uv sync && uv run pytest -q
 
 # 처음 한 번: 리소스 만들기 (있으면 건너뜀, 지우지 않음). CloudFront가 퍼지는 데 5~10분
@@ -87,7 +101,7 @@ uv run python -m scripts.e2e_upload https://<CloudFront 주소> samples/dev/D003
 ```
 S3에 직접 올려 보는 옛 방법:
 ```bash
-BUCKET=team06-docs-465105354705
+BUCKET=team06-docs-<계정ID>
 aws s3 cp <상업송장>.pdf s3://$BUCKET/uploads/s1/invoice.pdf
 aws s3 cp <포장명세서>.pdf s3://$BUCKET/uploads/s1/packing_list.pdf
 URL=https://<CloudFront 주소>

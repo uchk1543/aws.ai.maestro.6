@@ -43,6 +43,9 @@ MAX_BYTES = 4_500_000  # Bedrock 문서 블록 한도 (4.5MB)
 READ_TYPES = {"commercial_invoice", "packing_list", "bill_of_lading", "certificate_of_origin"}
 MAX_WORKERS = 4
 MAX_REASON = 80  # 단계 기록에 넣는 분류 근거 길이. 지시는 60자인데 실제로 86자까지 나왔다 (#18)
+# 분류 못 함·분류 실패 때 사람에게 하는 안내. 화면에 종류 고르기가 아직 없어 지금 할 수 있는 행동만 적는다 (#183).
+# 종류 고르기(#167)가 들어오면 "종류를 골라 다시 올려 주세요."로 되돌릴지 PM이 정한다
+RETRY_HINT = "다른 파일로 다시 올려 주세요."
 MAX_TURNS = 12  # 에이전트 루프의 모델 호출 한도 (Strands limits)
 AGENT_SECONDS = 150  # 에이전트 루프 시간 한도. 처리 Lambda 300초 안에 코드가 마무리할 시간을 남긴다
 
@@ -117,7 +120,7 @@ class _Run:
             if doc_type == "unknown":  # 사용자가 unknown으로 올린 파일도 사람에게 묻는다
                 self._hand_over(
                     key, "DOC-UNKNOWN", "unknown", "doc_type",
-                    f"{_name(key)}의 서류 종류를 정하지 못했습니다. 종류를 골라 다시 올려 주세요.", failed=False,
+                    f"{_name(key)}의 서류 종류를 정하지 못했습니다. {RETRY_HINT}", failed=False,
                 )
             elif doc_type not in READ_TYPES:
                 self._not_read_yet(key, doc_type)
@@ -186,7 +189,7 @@ class _Run:
             self.step("classify_document", f"{name} 분류 실패: {error}", ok=False)
             self._hand_over(
                 key, "CLASSIFY-FAIL", "unknown", "doc_type",
-                f"{name}의 서류 종류를 알아내지 못했습니다. 다시 올리거나 종류를 골라 올려 주세요.", failed=True,
+                f"{name}의 서류 종류를 알아내지 못했습니다. {RETRY_HINT}", failed=True,
             )
             return f"{key}: 분류 실패 ({error})"
         reason = _short(outcome.reason)
@@ -197,7 +200,7 @@ class _Run:
             self._clear(key)
             self._hand_over(
                 key, "DOC-UNKNOWN", "unknown", "doc_type",
-                f"{name}의 서류 종류를 정하지 못했습니다({reason}). 종류를 골라 다시 올려 주세요.", failed=False,
+                f"{name}의 서류 종류를 정하지 못했습니다({reason}). {RETRY_HINT}", failed=False,
             )
             return f"{key}: unknown ({reason}). 읽지 않는다 (사람에게 묻도록 기록함)"
         self._clear(key)
