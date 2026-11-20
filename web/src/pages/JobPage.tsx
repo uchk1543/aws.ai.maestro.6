@@ -1,6 +1,7 @@
 // G3 진행 화면: GET /api/jobs/{id} 를 2초마다 불러 단계 기록(steps)을 보여 준다
 import { useQuery } from "@tanstack/react-query";
 import { ApiError, getJob } from "../api";
+import { HsPicker } from "../components/HsPicker";
 import { IssueList } from "../components/IssueList";
 import type { Job, JobStatus } from "../types";
 
@@ -73,6 +74,7 @@ export function JobPage({ jobId }: { jobId: string }) {
           </div>
 
           {job.result && <IssueList issues={job.result.issues} />}
+          {job.result && <HsPicker jobId={job.job_id} jobStatus={job.status} results={job.result.hs} />}
         </>
       )}
     </section>
