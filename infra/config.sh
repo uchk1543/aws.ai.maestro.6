@@ -21,6 +21,7 @@ ROLE_WORKER=team06-worker-role
 TABLE=team06-jobs                       # 키 job_id
 HS_TABLE=team06-hs-history              # 키 pk = "<수입자>#<품목 키>" (F4, C2)
 WMS_TABLE=team06-wms                    # 키 idempotency_key = "<B/L 번호>#<작업 ID>" (F4, D1)
+SHIPMENTS_TABLE=team06-shipments        # 키 bl_no (E2, 시드: infra/seed_shipments.py)
 BUCKET="team06-docs-${ACCOUNT_ID}"      # 서류 원본(uploads/)과 배포 zip(deploy/)
 WEB_BUCKET="team06-web-${ACCOUNT_ID}"   # 화면 빌드 파일 (CloudFront만 읽음)
 

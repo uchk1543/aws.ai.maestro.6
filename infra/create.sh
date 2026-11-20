@@ -3,7 +3,7 @@
 #   MODEL_ID=<global 추론 프로필 ID> bash infra/create.sh
 # 만드는 것
 #   IAM 역할 team06-api-role, team06-worker-role (인라인 정책만, 필요한 권한만. worker에만 Textract)
-#   DynamoDB team06-jobs, team06-hs-history, team06-wms
+#   DynamoDB team06-jobs, team06-hs-history, team06-wms, team06-shipments
 #   S3 team06-docs-<계정>(서류·배포 zip), team06-web-<계정>(화면, CloudFront만 읽음)
 #   로그 그룹 2개(보존 7일), Lambda team06-api(30초) · team06-worker(300초), 각각 동시 실행 상한 5
 #   API Gateway HTTP API team06-api (/api, /api/{proxy+}, 요청 제한), CloudFront team06-web (/* → S3, /api/* → API)
@@ -56,6 +56,7 @@ ensure_table() {
 ensure_table "${TABLE}" job_id
 ensure_table "${HS_TABLE}" pk
 ensure_table "${WMS_TABLE}" idempotency_key
+ensure_table "${SHIPMENTS_TABLE}" bl_no
 
 # ---------------------------------------------------------------------------
 # 3. S3 버킷 두 개 (둘 다 공개 차단)
@@ -111,7 +112,7 @@ ensure_function() {
   fi
   aws lambda put-function-concurrency --function-name "${fn}" --reserved-concurrent-executions 5 >/dev/null
 }
-COMMON_ENV="MODEL_ID=${MODEL_ID},JOBS_TABLE=${TABLE},HS_TABLE=${HS_TABLE},WMS_TABLE=${WMS_TABLE},DOCS_BUCKET=${BUCKET}"
+COMMON_ENV="MODEL_ID=${MODEL_ID},JOBS_TABLE=${TABLE},HS_TABLE=${HS_TABLE},WMS_TABLE=${WMS_TABLE},SHIPMENTS_TABLE=${SHIPMENTS_TABLE},DOCS_BUCKET=${BUCKET}"
 WORKER_ENV="${COMMON_ENV}"
 API_ENV="${COMMON_ENV},WORKER_FUNCTION=${FN_WORKER}"
 ensure_function "${FN_WORKER}" "${HANDLER_WORKER}" "${ROLE_WORKER}" 300 1024 "${WORKER_ENV}"
