@@ -176,7 +176,7 @@
         <tr><td>오류 없는 42세트</td><td><span class="bad strong">4세트</span>를 불일치로 봄</td><td class="strong">0세트 *</td></tr>
         <tr><td>같은 세트 10번</td><td class="note">재지 않음</td><td class="strong">4세트 모두 10번 같은 판정</td></tr>
       </table>
-      <p class="note" style="margin-top:8px">* 정답 값을 넣어 규칙만 잰 값. 실제 판독으로 끝까지 잰 30세트: 심은 오류 P0 15/15건, P1 포함 21건 모두 짚음, 오류 없는 12세트 오탐 0.</p>
+      <p class="note" style="margin-top:8px">* 정답 값을 넣어 규칙만 잰 값. 실제 판독으로 75세트를 끝까지 다시 재도 37/37건. 오류가 하나도 없는 30세트 오탐 0, 모델 혼자 불일치로 본 4세트는 '참고'로 냈다.</p>
       <div class="card" style="margin-top:14px">
         <p style="font-size:20px;line-height:1.7"><code>QDT/26/0279</code> ↔ <code>QDT26/0279</code><br>모델 혼자: <span class="bad strong">불일치</span> · 우리 규칙: <span class="strong">참고</span> (구분 기호만 다름)</p>
       </div>
@@ -381,10 +381,10 @@
         <h2>왜 따져 봤나</h2>
         <ul><li>통관 서류에는 거래처와 금액이 있다</li><li>서울에는 Sonnet 5.5를 직접 부르는 길이 없다</li><li>모델 ID는 코드에 없고 환경 변수다</li></ul>
       </div>
-      <div class="card" style="margin-top:12px"><h2>비용</h2><p style="font-size:18.5px;line-height:1.7"><span class="strong">서류 한 장 약 0.04달러</span> <span class="note">분류 + 읽기</span><br><span class="strong">세트 하나 약 0.17달러</span> <span class="note">끝까지, 4장</span><br><span class="strong">Textract 쪽당 0.0015달러</span><br><span class="strong">11/20 하루 2,918번 호출</span></p></div>
+      <div class="card" style="margin-top:12px"><h2>비용</h2><p style="font-size:18.5px;line-height:1.7"><span class="strong">서류 한 장 약 0.04달러</span> <span class="note">분류 + 읽기</span><br><span class="strong">세트 하나 약 0.18달러</span> <span class="note">끝까지, 4장</span><br><span class="strong">Textract 쪽당 0.0015달러</span><br><span class="strong">11/20 하루 2,918번 호출</span></p></div>
     </div>
   </div>
-  <div class="foot"><span class="src">서울 직접 호출은 4세트 15장으로 잰 값이고 채팅과 다시 확인은 재지 않았다. 비용은 토큰 실측 × 직접 요금 어림이다. 세트 비용은 끝까지 30세트(모델 338번, Textract 114쪽) 평균. · 근거 이슈 #224 #169 #172</span><span>13</span></div>
+  <div class="foot"><span class="src">서울 직접 호출은 4세트 15장으로 잰 값이고 채팅과 다시 확인은 재지 않았다. 비용은 토큰 실측 × 직접 요금 어림이다. 세트 비용은 끝까지 75세트(모델 846번, Textract 288쪽) 평균. · 근거 이슈 #224 #169 #172</span><span>13</span></div>
 </section>
 
 <!-- 12 -->
@@ -432,7 +432,8 @@
         <tr><td>같은 판정 (4세트 × 10번)</td><td class="strong">40 / 40번</td></tr>
         <tr><td>현황 질문</td><td class="strong">24 / 24문항</td></tr>
         <tr><td>한 세트(4장) 처리 시간</td><td class="strong">30초 안팎</td></tr>
-        <tr><td>끝까지 30세트 (분류부터 HS까지)</td><td class="strong">오류 15/15건 · 오탐 0/12세트</td></tr>
+        <tr><td>끝까지 75세트: 심은 오류 · 오탐</td><td class="strong">37/37건 · 0/30세트</td></tr>
+        <tr><td>끝까지 75세트: B/L·원산지증명서까지</td><td class="strong">46 / 53건</td></tr>
       </table>
     </div>
     <div class="col">
@@ -447,7 +448,7 @@
       <p class="note" style="margin-top:8px">46건은 불일치 43건과 확인 필요 3건이다. 놓친 7건은 서류끼리는 맞는데 HS가 틀린 경우다.</p>
     </div>
   </div>
-  <div class="foot"><span class="src">근거: PR #86 #93 #136 #128 #203 #109 #267 · 채점 재실행 (main 5ad0933). 끝까지 30세트는 고정 순서로 한 번 쟀다(분류 114/114장, 세트당 평균 19초). 분류 288/288은 양식 8가지에서 잰 쉬운 시험이다.</span><span>15</span></div>
+  <div class="foot"><span class="src">근거: PR #86 #93 #136 #128 #203 #109 #267 · 채점 재실행 (main 5ad0933). 끝까지 75세트는 고정 순서로 한 번 쟀다(세트당 평균 19초). 분류 288/288은 양식 8가지에서 잰 쉬운 시험이다.</span><span>15</span></div>
 </section>
 
 </body>
