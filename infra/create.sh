@@ -55,7 +55,7 @@ ensure_role() {
   done
 }
 ensure_role "${ROLE_API}" logs data bedrock invoke-worker jobs-list  # jobs-list: 문서 분류 내역 GET /documents (#143)
-ensure_role "${ROLE_WORKER}" logs data bedrock textract
+ensure_role "${ROLE_WORKER}" logs data bedrock textract cache  # cache: 판독·OCR 캐시 cache/read/·cache/ocr/ (B4-L0)
 # 채팅 기록·가드레일은 API Lambda만 (F8 #151). 정책에 가드레일 ID가 들어가서 따로 붙인다
 aws iam put-role-policy --role-name "${ROLE_API}" --policy-name "team06-chat" \
   --policy-document "file://$(render policy-chat.json "GUARDRAIL_ID=${GUARDRAIL_ID}")"
@@ -154,7 +154,10 @@ ensure_function() {
   aws lambda put-function-concurrency --function-name "${fn}" --reserved-concurrent-executions 5 >/dev/null
 }
 COMMON_ENV="MODEL_ID=${MODEL_ID},JOBS_TABLE=${TABLE},HS_HISTORY_TABLE=${HS_HISTORY_TABLE},WMS_TABLE=${WMS_TABLE},SHIPMENTS_TABLE=${SHIPMENTS_TABLE},DOCS_BUCKET=${BUCKET},CHAT_TABLE=${CHAT_TABLE}"
-WORKER_ENV="${COMMON_ENV}"
+# 판독 캐시(READ_CACHE_BUCKET)는 켜 둔다. 라이브 데모·반복 측정은 NO_CACHE=1 로 판독·OCR 캐시를 끈다 (agent-design.md 2번).
+# CLASSIFY_BY_OCR=1 이면 서류 종류를 Textract 제목 줄로 고르고 못 정하면 Bedrock 으로 분류한다 (기본 0, B4-L0).
+# TEXTRACT_TPS: 계정의 Textract 초당 한도 (서울 기본 1). 한도를 올리면 같이 올린다.
+WORKER_ENV="${COMMON_ENV},READ_CACHE_BUCKET=${BUCKET},NO_CACHE=${NO_CACHE:-0},CLASSIFY_BY_OCR=${CLASSIFY_BY_OCR:-0},TEXTRACT_TPS=${TEXTRACT_TPS:-1}"
 API_ENV="${COMMON_ENV},WORKER_FUNCTION=${FN_WORKER},GUARDRAIL_ID=${GUARDRAIL_ID},GUARDRAIL_VERSION=${GUARDRAIL_VERSION}"
 ensure_function "${FN_WORKER}" "${HANDLER_WORKER}" "${ROLE_WORKER}" 300 1024 "${WORKER_ENV}"
 ensure_function "${FN_API}" "${HANDLER_API}" "${ROLE_API}" 30 512 "${API_ENV}"
