@@ -43,3 +43,53 @@ class MemoryWms:
 
     def registered_jobs(self, bl_no: str) -> dict[str, str]:
         return {r.job_id: wms_id for wms_id, r in self.records.values() if r.bl_no == bl_no}
+
+
+class MemoryChatTable:
+    """team06-chat(boto3 Table)의 메모리판 (E6 #157). put_item·query만. 키: session_id(파티션) + ts(정렬).
+
+    put_item은 값을 boto3 resource와 같은 규칙으로 바꿔 둔다 (int → Decimal, float·date는 TypeError, None → NULL).
+    query는 KeyConditionExpression=Key("session_id").eq(…)만 받고, ScanIndexForward·Limit를 DynamoDB처럼 따른다.
+    fail_put(Item)이 참이면 put_item이, fail_query가 참이면 query가 ClientError를 낸다.
+    queries에 받은 조회를 {"session_id", "ScanIndexForward", "Limit"}로 남긴다.
+    """
+
+    def __init__(self, *, fail_put=None, fail_query: bool = False):
+        self.items: dict[tuple[str, str], dict] = {}
+        self.queries: list[dict] = []
+        self.fail_put, self.fail_query = fail_put, fail_query
+
+    def put_item(self, *, Item: dict) -> dict:
+        if self.fail_put and self.fail_put(Item):
+            raise _client_error("PutItem")
+        self.items[(Item["session_id"], Item["ts"])] = _as_dynamo(Item)  # 같은 키면 덮어쓴다 (DynamoDB와 같다)
+        return {}
+
+    def query(self, *, KeyConditionExpression, ScanIndexForward: bool = True, Limit: int | None = None) -> dict:
+        expr = KeyConditionExpression.get_expression()
+        key, session_id = expr["values"]
+        assert expr["operator"] == "=" and key.name == "session_id", "session_id = :id 조건만 받는다"
+        self.queries.append({"session_id": session_id, "ScanIndexForward": ScanIndexForward, "Limit": Limit})
+        if self.fail_query:
+            raise _client_error("Query")
+        rows = sorted((i for (s, _), i in self.items.items() if s == session_id), key=lambda i: i["ts"],
+                      reverse=not ScanIndexForward)
+        page = rows[:Limit] if Limit is not None else rows
+        out = {"Items": [dict(i) for i in page], "Count": len(page)}
+        if len(page) < len(rows):
+            out["LastEvaluatedKey"] = {"session_id": session_id, "ts": page[-1]["ts"]}
+        return out
+
+
+def _as_dynamo(item: dict) -> dict:
+    """boto3 resource가 DynamoDB에 쓰고 다시 읽을 때와 같은 값으로 바꾼다."""
+    from boto3.dynamodb.types import TypeDeserializer, TypeSerializer
+
+    ser, de = TypeSerializer(), TypeDeserializer()
+    return {name: de.deserialize(ser.serialize(value)) for name, value in item.items()}
+
+
+def _client_error(operation: str):
+    from botocore.exceptions import ClientError
+
+    return ClientError({"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "가짜 실패"}}, operation)
