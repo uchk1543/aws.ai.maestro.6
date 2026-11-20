@@ -2,6 +2,7 @@
 // 오류(또는 서류별 값)를 누르면 그 서류로 바꾸고, 원본의 칸 위치에 박스를, 읽은 칸 표의 그 줄을 강조한다.
 // 등급·근거 문장·raw 는 서버 값 그대로 쓴다. 칸 위치는 서버가 준 표시(mark)에서 field 이름이 같은 것을 찾을 뿐이다.
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { noticeUrl } from "../api";
 import { DOC_TYPE_KO, type DocType, type Grade, type Issue, type IssueCell, type JobFileView } from "../types";
 import { DocViewer, type Box } from "./DocViewer";
 import { CHECKED_BY_KO, GRADE_CLASS, sortByGrade } from "./IssueList";
@@ -35,7 +36,7 @@ export function hitsFor(sorted: Issue[], doc: DocType | null): Map<string, Field
 
 const ROW_TONE: Record<Grade, string> = { 불일치: "row-mismatch", "확인 필요": "row-check", 참고: "row-note" };
 
-export function DocReview({ issues, files }: { issues: Issue[]; files: JobFileView[] }) {
+export function DocReview({ jobId, issues, files }: { jobId: string; issues: Issue[]; files: JobFileView[] }) {
   const sorted = useMemo(() => sortByGrade(issues), [issues]);
   const firstCell = (issue: Issue) => Math.max(0, issue.cells.findIndex((c) => c.doc === issue.suspect));
   const [active, setActive] = useState<{ i: number; c: number }>(() => ({ i: 0, c: sorted[0] ? firstCell(sorted[0]) : 0 }));
@@ -84,12 +85,15 @@ export function DocReview({ issues, files }: { issues: Issue[]; files: JobFileVi
     <div className="panel review">
       <div className="review-head">
         <h2>오류 목록 ({issues.length})</h2>
-        {/* 관리자에게 보낼 불일치 통지 문서. C7(#158)·F9(#155)가 들어오면 연결한다 */}
-        <button type="button" className="review-admin" disabled aria-describedby="review-admin-note">
+        {/* 관리자에게 보낼 불일치 통지 문서 (서버가 만든 파일 그대로, F9 #155 · C7 #158). 보내는 것은 사람이 한다 */}
+        <a className="review-admin" href={noticeUrl(jobId)} download aria-describedby="review-admin-note">
           관리자에게 보낼 문서 받기
-        </button>
+        </a>
+        <a className="review-admin-alt" href={noticeUrl(jobId, "md")} download aria-label="관리자에게 보낼 문서 마크다운으로 받기">
+          .md
+        </a>
         <span id="review-admin-note" className="hint">
-          준비 중
+          검토한 뒤 보내세요
         </span>
       </div>
       <div className="review-grid">

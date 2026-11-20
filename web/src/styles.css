@@ -2682,8 +2682,25 @@ video.port-media.on {
   border-radius: 999px;
 }
 
-.review-admin:disabled {
-  cursor: not-allowed;
+/* 통지 문서 받기 (링크). 연결 전 '준비 중' 회색에서 눌리는 모양으로 */
+a.review-admin {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ink);
+  text-decoration: none;
+  background: var(--bg);
+  cursor: pointer;
+}
+
+a.review-admin:hover {
+  background: var(--fill-2);
+}
+
+.review-admin-alt {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: underline;
 }
 
 .read-fields {

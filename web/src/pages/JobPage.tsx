@@ -297,7 +297,7 @@ export function JobPage({ jobId }: { jobId: string }) {
             {active === "review" &&
               job.result &&
               (job.result.issues.length > 0 && viewFiles.length > 0 ? (
-                <DocReview issues={job.result.issues} files={viewFiles} />
+                <DocReview jobId={job.job_id} issues={job.result.issues} files={viewFiles} />
               ) : (
                 <IssueList issues={job.result.issues} />
               ))}

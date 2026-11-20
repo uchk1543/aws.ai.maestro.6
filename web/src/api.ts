@@ -86,6 +86,12 @@ export function approveJob(jobId: string, approver: string, overrideReason?: str
 export function hsRequestUrl(jobId: string): string {
   return `/api/jobs/${encodeURIComponent(jobId)}/hs-request`;
 }
+/** 불일치 통지 문서 내려받기 주소 (GET /api/jobs/{id}/notice?format=html|md, F9 #155 · C7 #158).
+ *  관리자에게 보낼 문서로, 불일치·확인 필요와 근거를 담는다. 처리 중인 작업은 409 */
+export function noticeUrl(jobId: string, format: "html" | "md" = "html"): string {
+  return `/api/jobs/${encodeURIComponent(jobId)}/notice?format=${format}`;
+}
+
 /** 검수 완료서 PDF 내려받기 주소 (GET /api/jobs/{id}/certificate, X1 #258). 사람이 승인해 등록한 작업만 받을 수 있다 */
 export function certificateUrl(jobId: string): string {
   return `/api/jobs/${encodeURIComponent(jobId)}/certificate`;
