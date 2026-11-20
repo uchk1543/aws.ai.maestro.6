@@ -1,0 +1,263 @@
+{
+  "setId": "SET-011",
+  "images": {
+    "bl": {
+      "file": "docs/bl.png",
+      "w": 1191,
+      "h": 1684,
+      "boxes": {
+        "bl_no": [
+          607,
+          168,
+          789,
+          201
+        ],
+        "shipper": [
+          84,
+          176,
+          427,
+          199
+        ],
+        "gross": [
+          897,
+          659,
+          968,
+          681
+        ],
+        "container": [
+          80,
+          659,
+          186,
+          681
+        ],
+        "packages": [
+          395,
+          659,
+          426,
+          681
+        ]
+      }
+    },
+    "bl_fixed": {
+      "file": "docs/bl_fixed.png",
+      "w": 1191,
+      "h": 1684,
+      "boxes": {}
+    },
+    "invoice": {
+      "file": "docs/invoice.png",
+      "w": 1191,
+      "h": 1684,
+      "boxes": {
+        "invoice_no": [
+          689,
+          208,
+          806,
+          231
+        ],
+        "total": [
+          1030,
+          459,
+          1110,
+          481
+        ],
+        "item": [
+          236,
+          459,
+          546,
+          481
+        ]
+      }
+    },
+    "invoice_fixed": {
+      "file": "docs/invoice_fixed.png",
+      "w": 1191,
+      "h": 1684,
+      "boxes": {}
+    },
+    "pl": {
+      "file": "docs/pl.png",
+      "w": 1191,
+      "h": 1684,
+      "boxes": {
+        "invoice_ref": [
+          738,
+          264,
+          854,
+          287
+        ],
+        "gross_total": [
+          909,
+          481,
+          980,
+          503
+        ],
+        "gross_line": [
+          909,
+          447,
+          980,
+          469
+        ]
+      }
+    },
+    "pl_fixed": {
+      "file": "docs/pl_fixed.png",
+      "w": 1191,
+      "h": 1684,
+      "boxes": {}
+    },
+    "co": {
+      "file": "docs/co.png",
+      "w": 1191,
+      "h": 1684,
+      "boxes": {
+        "hs": [
+          640,
+          507,
+          698,
+          529
+        ]
+      }
+    },
+    "co_fixed": {
+      "file": "docs/co_fixed.png",
+      "w": 1191,
+      "h": 1684,
+      "boxes": {}
+    }
+  },
+  "shipment": {
+    "shipper": "EASTWIND POWER SOLUTIONS CO., LTD.",
+    "consignee": "BUSAN TECH CO., LTD.",
+    "blNo": "PSS2611979784",
+    "carrier": "PACIFIC STAR SHIPPING",
+    "onBoard": "2026-11-18",
+    "vessel": "PACIFIC DAWN / 070W",
+    "pol": "SHANGHAI, CHINA",
+    "pod": "BUSAN, KOREA",
+    "invoiceNo": "EWP-2611-775",
+    "item": "LITHIUM-ION BATTERY PACK 48V 100AH",
+    "quantity": 268,
+    "unit": "PCS",
+    "packages": 134,
+    "incoterms": "CIF BUSAN",
+    "currency": "USD",
+    "totalAmount": 575058.32,
+    "origin": "CHINA",
+    "hs6": "850760"
+  },
+  "checks": {
+    "blGross": 12462.0,
+    "plGrossPrinted": 21462.0,
+    "plGrossLineSum": 12462.0,
+    "containerPrinted": "PSSU6789536",
+    "containerCorrect": "PSSU6789535",
+    "checkDigitComputed": 5,
+    "checkDigitPrinted": 6,
+    "findings": [
+      [
+        "container_check_digit",
+        "error"
+      ],
+      [
+        "gross_weight_match",
+        "error"
+      ],
+      [
+        "pl_gross_weight_sum",
+        "error"
+      ]
+    ],
+    "fixedFindings": [],
+    "injected": [
+      {
+        "error_type": "gross_weight_digit_swap",
+        "rule": "gross_weight_match",
+        "documents": [
+          "bill_of_lading",
+          "packing_list"
+        ],
+        "expected_result": "error",
+        "document": "packing_list",
+        "field": "total_gross_weight_kg",
+        "correct_value": 12462.0,
+        "printed_value": 21462.0
+      },
+      {
+        "error_type": "container_check_digit",
+        "rule": "container_check_digit",
+        "documents": [
+          "bill_of_lading"
+        ],
+        "expected_result": "error",
+        "document": "bill_of_lading",
+        "field": "container_numbers[0]",
+        "correct_value": "PSSU6789535",
+        "printed_value": "PSSU6789536"
+      }
+    ]
+  },
+  "logistics": {
+    "baseDate": "2026-11-19",
+    "weekStart": "2026-11-16",
+    "weekEnd": "2026-11-22",
+    "delayed": [
+      {
+        "id": "SHP-2611-012",
+        "consignee": "YEONGDO INDUSTRIAL SUPPLY CO., LTD.",
+        "status": "심사 중",
+        "reason": "서류 불일치: B/L 포장 수가 Packing List와 다름",
+        "free_time_end": "2026-11-23",
+        "bl_no": "NGC2611569130"
+      },
+      {
+        "id": "SHP-2611-013",
+        "consignee": "HAEUNDAE TRADING CO., LTD.",
+        "status": "심사 중",
+        "reason": "서류 오류: Invoice 합계 금액이 품목 합계와 다름",
+        "free_time_end": "2026-11-21",
+        "bl_no": "NGC2611372999"
+      },
+      {
+        "id": "SHP-2611-014",
+        "consignee": "NAMPO LIVING RETAIL CO., LTD.",
+        "status": "보완 요구",
+        "reason": "서류 불일치: Packing List의 Invoice 번호가 다름 / 보완 요구: 원산지증명서 원산지가 Invoice와 다름",
+        "free_time_end": "2026-11-21",
+        "bl_no": "NGC2610653587"
+      },
+      {
+        "id": "SHP-2611-015",
+        "consignee": "NAMPO LIVING RETAIL CO., LTD.",
+        "status": "보완 요구",
+        "reason": "보완 요구: FOB 조건 운임·보험료 자료 미제출",
+        "free_time_end": "2026-11-21",
+        "bl_no": "BHL2610136745"
+      },
+      {
+        "id": "SHP-2611-016",
+        "consignee": "YEONGDO INDUSTRIAL SUPPLY CO., LTD.",
+        "status": "검사 지정",
+        "reason": "세관 물품검사 지정",
+        "free_time_end": "2026-11-22",
+        "bl_no": "PSS2611914983"
+      },
+      {
+        "id": "SHP-2611-017",
+        "consignee": "GIJANG FRESH FOODS CO., LTD.",
+        "status": "심사 중",
+        "reason": "요건 확인 대기 (식품 검사)",
+        "free_time_end": "2026-11-21",
+        "bl_no": "BHL2611702326"
+      }
+    ],
+    "freeTimeSoon": 4,
+    "demo": {
+      "id": "SHP-2611-011",
+      "eta": "2026-11-22",
+      "status": "입항 예정",
+      "docs": "검증 필요 (입항 전)"
+    },
+    "total": 30
+  }
+}

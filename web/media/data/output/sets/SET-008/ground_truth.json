@@ -1,0 +1,228 @@
+{
+  "set_id": "SET-008",
+  "scenario": "normal",
+  "generated_with": {
+    "seed": 20261120,
+    "base_date": "2026-11-19"
+  },
+  "template_variants": {
+    "bill_of_lading": "B",
+    "commercial_invoice": "A",
+    "packing_list": "B",
+    "certificate_of_origin": "A"
+  },
+  "files": {
+    "bill_of_lading": "bl.pdf",
+    "commercial_invoice": "invoice.pdf",
+    "packing_list": "packing_list.pdf",
+    "certificate_of_origin": "certificate_of_origin.pdf"
+  },
+  "corrected_files": {},
+  "scans": [],
+  "shipment_truth": {
+    "set_id": "SET-008",
+    "shipper": {
+      "name": "SANTOS VALLEY COFFEE EXPORTADORA LTDA.",
+      "address": [
+        "RUA DO COMERCIO, 410 - CENTRO",
+        "SANTOS - SP, 11010-140, BRAZIL"
+      ]
+    },
+    "seller": {
+      "name": "SANTOS VALLEY COFFEE EXPORTADORA LTDA.",
+      "address": [
+        "RUA DO COMERCIO, 410 - CENTRO",
+        "SANTOS - SP, 11010-140, BRAZIL"
+      ]
+    },
+    "consignee": {
+      "name": "HAEUNDAE TRADING CO., LTD.",
+      "address": [
+        "120, MARINE CITY 2-RO, HAEUNDAE-GU",
+        "BUSAN 48120, KOREA"
+      ]
+    },
+    "notify_party": {
+      "name": "HAEUNDAE TRADING CO., LTD.",
+      "address": [
+        "120, MARINE CITY 2-RO, HAEUNDAE-GU",
+        "BUSAN 48120, KOREA"
+      ]
+    },
+    "buyer": {
+      "name": "HAEUNDAE TRADING CO., LTD.",
+      "address": [
+        "120, MARINE CITY 2-RO, HAEUNDAE-GU",
+        "BUSAN 48120, KOREA"
+      ],
+      "short": "HDT"
+    },
+    "carrier": "NORTHGATE CONTAINER LINES",
+    "bl_no": "NGC2611349414",
+    "vessel": "NORTHGATE MERIDIAN",
+    "voyage": "090E",
+    "port_of_loading": {
+      "locode": "BRSSZ",
+      "name": "SANTOS, BRAZIL"
+    },
+    "port_of_discharge": {
+      "locode": "KRPUS",
+      "name": "BUSAN, KOREA"
+    },
+    "on_board_date": "2026-11-01",
+    "freight_terms": "FREIGHT PREPAID",
+    "containers": [
+      {
+        "container_no": "NGCU8207678",
+        "seal_no": "NGC7922214",
+        "type": "20GP"
+      }
+    ],
+    "reefer_temp": null,
+    "invoice_no": "SVC-2610-282",
+    "invoice_date": "2026-10-28",
+    "po_no": "PO-HDT-26-6678",
+    "incoterms": "CIF",
+    "incoterms_place": "BUSAN",
+    "currency": "USD",
+    "payment_terms": "L/C AT SIGHT",
+    "freight_amount": null,
+    "insurance_amount": null,
+    "withheld_customs_value": null,
+    "country_of_origin": "BRAZIL",
+    "co_certificate_no": "CO26BR276466",
+    "co_issue_date": "2026-10-31",
+    "items": [
+      {
+        "line_no": 1,
+        "item_key": "coffee",
+        "item_code": "SV-GCAR60",
+        "description": "GREEN COFFEE BEANS, ARABICA, NOT ROASTED, NOT DECAFFEINATED",
+        "quantity": 18540,
+        "unit": "KG",
+        "unit_price": 5.58,
+        "amount": 103453.2,
+        "packages": 309,
+        "package_type": "BAGS",
+        "net_weight_kg": 18540.0,
+        "gross_weight_kg": 18694.5,
+        "cbm": 27.81,
+        "hs6_expected": "090111",
+        "hs6_declared_on_co": "090111"
+      }
+    ],
+    "totals": {
+      "quantity": 18540,
+      "amount": 103453.2,
+      "packages": 309,
+      "package_type": "BAGS",
+      "net_weight_kg": 18540.0,
+      "gross_weight_kg": 18694.5,
+      "cbm": 27.81
+    },
+    "shipping_marks": [
+      "HDT",
+      "BUSAN, KOREA",
+      "C/NO. 1-309",
+      "MADE IN BRAZIL"
+    ]
+  },
+  "printed_fields": {
+    "bill_of_lading": {
+      "bl_no": "NGC2611349414",
+      "carrier": "NORTHGATE CONTAINER LINES",
+      "shipper_name": "SANTOS VALLEY COFFEE EXPORTADORA LTDA.",
+      "consignee_name": "HAEUNDAE TRADING CO., LTD.",
+      "notify_party_name": "HAEUNDAE TRADING CO., LTD.",
+      "vessel": "NORTHGATE MERIDIAN",
+      "voyage": "090E",
+      "port_of_loading": "SANTOS, BRAZIL",
+      "port_of_discharge": "BUSAN, KOREA",
+      "container_numbers": [
+        "NGCU8207678"
+      ],
+      "seal_numbers": [
+        "NGC7922214"
+      ],
+      "total_packages": 309,
+      "package_type": "BAGS",
+      "gross_weight_kg": 18694.5,
+      "measurement_cbm": 27.81,
+      "cargo_description": [
+        "GREEN COFFEE BEANS, ARABICA, NOT ROASTED, NOT DECAFFEINATED"
+      ],
+      "freight_terms": "FREIGHT PREPAID",
+      "on_board_date": "2026-11-01"
+    },
+    "commercial_invoice": {
+      "invoice_no": "SVC-2610-282",
+      "invoice_date": "2026-10-28",
+      "po_no": "PO-HDT-26-6678",
+      "seller_name": "SANTOS VALLEY COFFEE EXPORTADORA LTDA.",
+      "buyer_name": "HAEUNDAE TRADING CO., LTD.",
+      "incoterms": "CIF",
+      "incoterms_place": "BUSAN",
+      "currency": "USD",
+      "payment_terms": "L/C AT SIGHT",
+      "line_items": [
+        {
+          "description": "GREEN COFFEE BEANS, ARABICA, NOT ROASTED, NOT DECAFFEINATED",
+          "quantity": 18540,
+          "unit": "KG",
+          "unit_price": 5.58,
+          "amount": 103453.2
+        }
+      ],
+      "total_amount": 103453.2,
+      "freight_amount": null,
+      "insurance_amount": null,
+      "country_of_origin": "BRAZIL"
+    },
+    "packing_list": {
+      "invoice_no_ref": "SVC-2610-282",
+      "date": "2026-10-28",
+      "shipper_name": "SANTOS VALLEY COFFEE EXPORTADORA LTDA.",
+      "consignee_name": "HAEUNDAE TRADING CO., LTD.",
+      "line_items": [
+        {
+          "description": "GREEN COFFEE BEANS, ARABICA, NOT ROASTED, NOT DECAFFEINATED",
+          "quantity": 18540,
+          "packages": 309,
+          "net_weight_kg": 18540.0,
+          "gross_weight_kg": 18694.5,
+          "cbm": 27.81
+        }
+      ],
+      "total_packages": 309,
+      "total_net_weight_kg": 18540.0,
+      "total_gross_weight_kg": 18694.5,
+      "total_cbm": 27.81,
+      "shipping_marks": [
+        "HDT",
+        "BUSAN, KOREA",
+        "C/NO. 1-309",
+        "MADE IN BRAZIL"
+      ]
+    },
+    "certificate_of_origin": {
+      "certificate_no": "CO26BR276466",
+      "issue_date": "2026-10-31",
+      "exporter_name": "SANTOS VALLEY COFFEE EXPORTADORA LTDA.",
+      "consignee_name": "HAEUNDAE TRADING CO., LTD.",
+      "country_of_origin": "BRAZIL",
+      "invoice_no_ref": "SVC-2610-282",
+      "invoice_date_ref": "2026-10-28",
+      "items": [
+        {
+          "description": "GREEN COFFEE BEANS, ARABICA, NOT ROASTED, NOT DECAFFEINATED",
+          "hs_code": "090111",
+          "quantity": 18540,
+          "unit": "KG"
+        }
+      ],
+      "transport": "NORTHGATE MERIDIAN 090E / SANTOS, BRAZIL TO BUSAN, KOREA"
+    }
+  },
+  "injected_errors": [],
+  "expected_findings": []
+}

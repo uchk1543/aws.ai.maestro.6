@@ -1,0 +1,315 @@
+{
+  "set_id": "SET-005",
+  "scenario": "normal",
+  "generated_with": {
+    "seed": 20261120,
+    "base_date": "2026-11-19"
+  },
+  "template_variants": {
+    "bill_of_lading": "A",
+    "commercial_invoice": "B",
+    "packing_list": "A",
+    "certificate_of_origin": "B"
+  },
+  "files": {
+    "bill_of_lading": "bl.pdf",
+    "commercial_invoice": "invoice.pdf",
+    "packing_list": "packing_list.pdf",
+    "certificate_of_origin": "certificate_of_origin.pdf"
+  },
+  "corrected_files": {},
+  "scans": [],
+  "shipment_truth": {
+    "set_id": "SET-005",
+    "shipper": {
+      "name": "FORMOSA FASTENER INDUSTRIAL CORP.",
+      "address": [
+        "NO. 35, LINHAI 3RD ROAD, XIAOGANG DISTRICT",
+        "KAOHSIUNG 81251, TAIWAN"
+      ]
+    },
+    "seller": {
+      "name": "FORMOSA FASTENER INDUSTRIAL CORP.",
+      "address": [
+        "NO. 35, LINHAI 3RD ROAD, XIAOGANG DISTRICT",
+        "KAOHSIUNG 81251, TAIWAN"
+      ]
+    },
+    "consignee": {
+      "name": "YEONGDO INDUSTRIAL SUPPLY CO., LTD.",
+      "address": [
+        "210, TAEJONG-RO, YEONGDO-GU",
+        "BUSAN 49001, KOREA"
+      ]
+    },
+    "notify_party": {
+      "name": "YEONGDO INDUSTRIAL SUPPLY CO., LTD.",
+      "address": [
+        "210, TAEJONG-RO, YEONGDO-GU",
+        "BUSAN 49001, KOREA"
+      ]
+    },
+    "buyer": {
+      "name": "YEONGDO INDUSTRIAL SUPPLY CO., LTD.",
+      "address": [
+        "210, TAEJONG-RO, YEONGDO-GU",
+        "BUSAN 49001, KOREA"
+      ],
+      "short": "YIS"
+    },
+    "carrier": "BLUE HARBOR LINE",
+    "bl_no": "BHL2611226573",
+    "vessel": "BLUE HARBOR SEVEN",
+    "voyage": "047E",
+    "port_of_loading": {
+      "locode": "TWKHH",
+      "name": "KAOHSIUNG, TAIWAN"
+    },
+    "port_of_discharge": {
+      "locode": "KRPUS",
+      "name": "BUSAN, KOREA"
+    },
+    "on_board_date": "2026-11-09",
+    "freight_terms": "FREIGHT PREPAID",
+    "containers": [
+      {
+        "container_no": "BHLU3736490",
+        "seal_no": "BHL1876523",
+        "type": "20GP"
+      }
+    ],
+    "reefer_temp": null,
+    "invoice_no": "FFI-2611-238",
+    "invoice_date": "2026-11-08",
+    "po_no": "PO-YIS-26-4568",
+    "incoterms": "CIF",
+    "incoterms_place": "BUSAN",
+    "currency": "USD",
+    "payment_terms": "T/T 30 DAYS AFTER B/L DATE",
+    "freight_amount": null,
+    "insurance_amount": null,
+    "withheld_customs_value": null,
+    "country_of_origin": "TAIWAN",
+    "co_certificate_no": "CO26TW669886",
+    "co_issue_date": "2026-11-09",
+    "items": [
+      {
+        "line_no": 1,
+        "item_key": "bolt",
+        "item_code": "FF-HB1250Z",
+        "description": "STEEL HEX BOLT M12X50, ZINC PLATED",
+        "quantity": 82500,
+        "unit": "PCS",
+        "unit_price": 0.116,
+        "amount": 9570.0,
+        "packages": 165,
+        "package_type": "CARTONS",
+        "net_weight_kg": 4950.0,
+        "gross_weight_kg": 5032.5,
+        "cbm": 2.475,
+        "hs6_expected": "731815",
+        "hs6_declared_on_co": "731815"
+      },
+      {
+        "line_no": 2,
+        "item_key": "nut",
+        "item_code": "FF-HN12Z",
+        "description": "STEEL HEX NUT M12, ZINC PLATED",
+        "quantity": 196000,
+        "unit": "PCS",
+        "unit_price": 0.025,
+        "amount": 4900.0,
+        "packages": 196,
+        "package_type": "CARTONS",
+        "net_weight_kg": 3332.0,
+        "gross_weight_kg": 3430.0,
+        "cbm": 1.96,
+        "hs6_expected": "731816",
+        "hs6_declared_on_co": "731816"
+      },
+      {
+        "line_no": 3,
+        "item_key": "machine_parts",
+        "item_code": "FF-MP-0001",
+        "description": "MACHINE PARTS",
+        "quantity": 590,
+        "unit": "PCS",
+        "unit_price": 22.79,
+        "amount": 13446.1,
+        "packages": 59,
+        "package_type": "CARTONS",
+        "net_weight_kg": 1475.0,
+        "gross_weight_kg": 1593.0,
+        "cbm": 2.95,
+        "hs6_expected": null,
+        "hs6_declared_on_co": "848790"
+      }
+    ],
+    "totals": {
+      "quantity": 279090,
+      "amount": 27916.1,
+      "packages": 420,
+      "package_type": "CARTONS",
+      "net_weight_kg": 9757.0,
+      "gross_weight_kg": 10055.5,
+      "cbm": 7.385
+    },
+    "shipping_marks": [
+      "YIS",
+      "BUSAN, KOREA",
+      "C/NO. 1-420",
+      "MADE IN TAIWAN"
+    ]
+  },
+  "printed_fields": {
+    "bill_of_lading": {
+      "bl_no": "BHL2611226573",
+      "carrier": "BLUE HARBOR LINE",
+      "shipper_name": "FORMOSA FASTENER INDUSTRIAL CORP.",
+      "consignee_name": "YEONGDO INDUSTRIAL SUPPLY CO., LTD.",
+      "notify_party_name": "YEONGDO INDUSTRIAL SUPPLY CO., LTD.",
+      "vessel": "BLUE HARBOR SEVEN",
+      "voyage": "047E",
+      "port_of_loading": "KAOHSIUNG, TAIWAN",
+      "port_of_discharge": "BUSAN, KOREA",
+      "container_numbers": [
+        "BHLU3736490"
+      ],
+      "seal_numbers": [
+        "BHL1876523"
+      ],
+      "total_packages": 420,
+      "package_type": "CARTONS",
+      "gross_weight_kg": 10055.5,
+      "measurement_cbm": 7.385,
+      "cargo_description": [
+        "STEEL HEX BOLT M12X50, ZINC PLATED",
+        "STEEL HEX NUT M12, ZINC PLATED",
+        "MACHINE PARTS"
+      ],
+      "freight_terms": "FREIGHT PREPAID",
+      "on_board_date": "2026-11-09"
+    },
+    "commercial_invoice": {
+      "invoice_no": "FFI-2611-238",
+      "invoice_date": "2026-11-08",
+      "po_no": "PO-YIS-26-4568",
+      "seller_name": "FORMOSA FASTENER INDUSTRIAL CORP.",
+      "buyer_name": "YEONGDO INDUSTRIAL SUPPLY CO., LTD.",
+      "incoterms": "CIF",
+      "incoterms_place": "BUSAN",
+      "currency": "USD",
+      "payment_terms": "T/T 30 DAYS AFTER B/L DATE",
+      "line_items": [
+        {
+          "description": "STEEL HEX BOLT M12X50, ZINC PLATED",
+          "quantity": 82500,
+          "unit": "PCS",
+          "unit_price": 0.116,
+          "amount": 9570.0
+        },
+        {
+          "description": "STEEL HEX NUT M12, ZINC PLATED",
+          "quantity": 196000,
+          "unit": "PCS",
+          "unit_price": 0.025,
+          "amount": 4900.0
+        },
+        {
+          "description": "MACHINE PARTS",
+          "quantity": 590,
+          "unit": "PCS",
+          "unit_price": 22.79,
+          "amount": 13446.1
+        }
+      ],
+      "total_amount": 27916.1,
+      "freight_amount": null,
+      "insurance_amount": null,
+      "country_of_origin": "TAIWAN"
+    },
+    "packing_list": {
+      "invoice_no_ref": "FFI-2611-238",
+      "date": "2026-11-08",
+      "shipper_name": "FORMOSA FASTENER INDUSTRIAL CORP.",
+      "consignee_name": "YEONGDO INDUSTRIAL SUPPLY CO., LTD.",
+      "line_items": [
+        {
+          "description": "STEEL HEX BOLT M12X50, ZINC PLATED",
+          "quantity": 82500,
+          "packages": 165,
+          "net_weight_kg": 4950.0,
+          "gross_weight_kg": 5032.5,
+          "cbm": 2.475
+        },
+        {
+          "description": "STEEL HEX NUT M12, ZINC PLATED",
+          "quantity": 196000,
+          "packages": 196,
+          "net_weight_kg": 3332.0,
+          "gross_weight_kg": 3430.0,
+          "cbm": 1.96
+        },
+        {
+          "description": "MACHINE PARTS",
+          "quantity": 590,
+          "packages": 59,
+          "net_weight_kg": 1475.0,
+          "gross_weight_kg": 1593.0,
+          "cbm": 2.95
+        }
+      ],
+      "total_packages": 420,
+      "total_net_weight_kg": 9757.0,
+      "total_gross_weight_kg": 10055.5,
+      "total_cbm": 7.385,
+      "shipping_marks": [
+        "YIS",
+        "BUSAN, KOREA",
+        "C/NO. 1-420",
+        "MADE IN TAIWAN"
+      ]
+    },
+    "certificate_of_origin": {
+      "certificate_no": "CO26TW669886",
+      "issue_date": "2026-11-09",
+      "exporter_name": "FORMOSA FASTENER INDUSTRIAL CORP.",
+      "consignee_name": "YEONGDO INDUSTRIAL SUPPLY CO., LTD.",
+      "country_of_origin": "TAIWAN",
+      "invoice_no_ref": "FFI-2611-238",
+      "invoice_date_ref": "2026-11-08",
+      "items": [
+        {
+          "description": "STEEL HEX BOLT M12X50, ZINC PLATED",
+          "hs_code": "731815",
+          "quantity": 82500,
+          "unit": "PCS"
+        },
+        {
+          "description": "STEEL HEX NUT M12, ZINC PLATED",
+          "hs_code": "731816",
+          "quantity": 196000,
+          "unit": "PCS"
+        },
+        {
+          "description": "MACHINE PARTS",
+          "hs_code": "848790",
+          "quantity": 590,
+          "unit": "PCS"
+        }
+      ],
+      "transport": "BLUE HARBOR SEVEN 047E / KAOHSIUNG, TAIWAN TO BUSAN, KOREA"
+    }
+  },
+  "injected_errors": [],
+  "expected_findings": [
+    {
+      "rule": "hs_clarification_needed",
+      "severity": "info",
+      "documents": [
+        "commercial_invoice"
+      ],
+      "note": "'MACHINE PARTS' 품명만으로 HS 분류 불가. 재질·용도를 되물어야 함"
+    }
+  ]
+}

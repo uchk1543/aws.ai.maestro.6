@@ -1,0 +1,233 @@
+{
+  "set_id": "SET-004",
+  "scenario": "normal",
+  "generated_with": {
+    "seed": 20261120,
+    "base_date": "2026-11-19"
+  },
+  "template_variants": {
+    "bill_of_lading": "B",
+    "commercial_invoice": "A",
+    "packing_list": "B",
+    "certificate_of_origin": "A"
+  },
+  "files": {
+    "bill_of_lading": "bl.pdf",
+    "commercial_invoice": "invoice.pdf",
+    "packing_list": "packing_list.pdf",
+    "certificate_of_origin": "certificate_of_origin.pdf"
+  },
+  "corrected_files": {},
+  "scans": [
+    "scans/bl.jpg",
+    "scans/invoice.jpg",
+    "scans/packing_list.jpg",
+    "scans/certificate_of_origin.jpg"
+  ],
+  "shipment_truth": {
+    "set_id": "SET-004",
+    "shipper": {
+      "name": "MEKONG SEAFOOD EXPORT CO., LTD.",
+      "address": [
+        "TRA NOC 2 INDUSTRIAL PARK, BINH THUY DISTRICT",
+        "CAN THO CITY, VIETNAM"
+      ]
+    },
+    "seller": {
+      "name": "MEKONG SEAFOOD EXPORT CO., LTD.",
+      "address": [
+        "TRA NOC 2 INDUSTRIAL PARK, BINH THUY DISTRICT",
+        "CAN THO CITY, VIETNAM"
+      ]
+    },
+    "consignee": {
+      "name": "GIJANG FRESH FOODS CO., LTD.",
+      "address": [
+        "77, GIJANG-HAEAN-RO, GIJANG-GUN",
+        "BUSAN 46083, KOREA"
+      ]
+    },
+    "notify_party": {
+      "name": "GIJANG FRESH FOODS CO., LTD.",
+      "address": [
+        "77, GIJANG-HAEAN-RO, GIJANG-GUN",
+        "BUSAN 46083, KOREA"
+      ]
+    },
+    "buyer": {
+      "name": "GIJANG FRESH FOODS CO., LTD.",
+      "address": [
+        "77, GIJANG-HAEAN-RO, GIJANG-GUN",
+        "BUSAN 46083, KOREA"
+      ],
+      "short": "GFF"
+    },
+    "carrier": "NORTHGATE CONTAINER LINES",
+    "bl_no": "NGC2611927176",
+    "vessel": "NORTHGATE MERIDIAN",
+    "voyage": "037N",
+    "port_of_loading": {
+      "locode": "VNSGN",
+      "name": "HO CHI MINH CITY, VIETNAM"
+    },
+    "port_of_discharge": {
+      "locode": "KRPUS",
+      "name": "BUSAN, KOREA"
+    },
+    "on_board_date": "2026-11-10",
+    "freight_terms": "FREIGHT PREPAID",
+    "containers": [
+      {
+        "container_no": "NGCU0658470",
+        "seal_no": "NGC3588691",
+        "type": "40RH"
+      }
+    ],
+    "reefer_temp": "-18 C",
+    "invoice_no": "MSE-2611-991",
+    "invoice_date": "2026-11-08",
+    "po_no": "PO-GFF-26-8009",
+    "incoterms": "CIF",
+    "incoterms_place": "BUSAN",
+    "currency": "USD",
+    "payment_terms": "T/T 30 DAYS AFTER B/L DATE",
+    "freight_amount": null,
+    "insurance_amount": null,
+    "withheld_customs_value": null,
+    "country_of_origin": "VIETNAM",
+    "co_certificate_no": "CO26VN124766",
+    "co_issue_date": "2026-11-08",
+    "items": [
+      {
+        "line_no": 1,
+        "item_key": "shrimp",
+        "item_code": "MS-SHVN1KG",
+        "description": "FROZEN RAW PEELED VANNAMEI SHRIMP, 1KG BAG",
+        "quantity": 9740,
+        "unit": "BAGS",
+        "unit_price": 8.38,
+        "amount": 81621.2,
+        "packages": 974,
+        "package_type": "CARTONS",
+        "net_weight_kg": 9740.0,
+        "gross_weight_kg": 10519.2,
+        "cbm": 24.35,
+        "hs6_expected": "030617",
+        "hs6_declared_on_co": "030617"
+      }
+    ],
+    "totals": {
+      "quantity": 9740,
+      "amount": 81621.2,
+      "packages": 974,
+      "package_type": "CARTONS",
+      "net_weight_kg": 9740.0,
+      "gross_weight_kg": 10519.2,
+      "cbm": 24.35
+    },
+    "shipping_marks": [
+      "GFF",
+      "BUSAN, KOREA",
+      "C/NO. 1-974",
+      "MADE IN VIETNAM"
+    ]
+  },
+  "printed_fields": {
+    "bill_of_lading": {
+      "bl_no": "NGC2611927176",
+      "carrier": "NORTHGATE CONTAINER LINES",
+      "shipper_name": "MEKONG SEAFOOD EXPORT CO., LTD.",
+      "consignee_name": "GIJANG FRESH FOODS CO., LTD.",
+      "notify_party_name": "GIJANG FRESH FOODS CO., LTD.",
+      "vessel": "NORTHGATE MERIDIAN",
+      "voyage": "037N",
+      "port_of_loading": "HO CHI MINH CITY, VIETNAM",
+      "port_of_discharge": "BUSAN, KOREA",
+      "container_numbers": [
+        "NGCU0658470"
+      ],
+      "seal_numbers": [
+        "NGC3588691"
+      ],
+      "total_packages": 974,
+      "package_type": "CARTONS",
+      "gross_weight_kg": 10519.2,
+      "measurement_cbm": 24.35,
+      "cargo_description": [
+        "FROZEN RAW PEELED VANNAMEI SHRIMP, 1KG BAG"
+      ],
+      "freight_terms": "FREIGHT PREPAID",
+      "on_board_date": "2026-11-10"
+    },
+    "commercial_invoice": {
+      "invoice_no": "MSE-2611-991",
+      "invoice_date": "2026-11-08",
+      "po_no": "PO-GFF-26-8009",
+      "seller_name": "MEKONG SEAFOOD EXPORT CO., LTD.",
+      "buyer_name": "GIJANG FRESH FOODS CO., LTD.",
+      "incoterms": "CIF",
+      "incoterms_place": "BUSAN",
+      "currency": "USD",
+      "payment_terms": "T/T 30 DAYS AFTER B/L DATE",
+      "line_items": [
+        {
+          "description": "FROZEN RAW PEELED VANNAMEI SHRIMP, 1KG BAG",
+          "quantity": 9740,
+          "unit": "BAGS",
+          "unit_price": 8.38,
+          "amount": 81621.2
+        }
+      ],
+      "total_amount": 81621.2,
+      "freight_amount": null,
+      "insurance_amount": null,
+      "country_of_origin": "VIETNAM"
+    },
+    "packing_list": {
+      "invoice_no_ref": "MSE-2611-991",
+      "date": "2026-11-08",
+      "shipper_name": "MEKONG SEAFOOD EXPORT CO., LTD.",
+      "consignee_name": "GIJANG FRESH FOODS CO., LTD.",
+      "line_items": [
+        {
+          "description": "FROZEN RAW PEELED VANNAMEI SHRIMP, 1KG BAG",
+          "quantity": 9740,
+          "packages": 974,
+          "net_weight_kg": 9740.0,
+          "gross_weight_kg": 10519.2,
+          "cbm": 24.35
+        }
+      ],
+      "total_packages": 974,
+      "total_net_weight_kg": 9740.0,
+      "total_gross_weight_kg": 10519.2,
+      "total_cbm": 24.35,
+      "shipping_marks": [
+        "GFF",
+        "BUSAN, KOREA",
+        "C/NO. 1-974",
+        "MADE IN VIETNAM"
+      ]
+    },
+    "certificate_of_origin": {
+      "certificate_no": "CO26VN124766",
+      "issue_date": "2026-11-08",
+      "exporter_name": "MEKONG SEAFOOD EXPORT CO., LTD.",
+      "consignee_name": "GIJANG FRESH FOODS CO., LTD.",
+      "country_of_origin": "VIETNAM",
+      "invoice_no_ref": "MSE-2611-991",
+      "invoice_date_ref": "2026-11-08",
+      "items": [
+        {
+          "description": "FROZEN RAW PEELED VANNAMEI SHRIMP, 1KG BAG",
+          "hs_code": "030617",
+          "quantity": 9740,
+          "unit": "BAGS"
+        }
+      ],
+      "transport": "NORTHGATE MERIDIAN 037N / HO CHI MINH CITY, VIETNAM TO BUSAN, KOREA"
+    }
+  },
+  "injected_errors": [],
+  "expected_findings": []
+}

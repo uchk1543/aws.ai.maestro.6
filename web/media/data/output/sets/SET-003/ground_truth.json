@@ -1,0 +1,228 @@
+{
+  "set_id": "SET-003",
+  "scenario": "normal",
+  "generated_with": {
+    "seed": 20261120,
+    "base_date": "2026-11-19"
+  },
+  "template_variants": {
+    "bill_of_lading": "A",
+    "commercial_invoice": "B",
+    "packing_list": "A",
+    "certificate_of_origin": "B"
+  },
+  "files": {
+    "bill_of_lading": "bl.pdf",
+    "commercial_invoice": "invoice.pdf",
+    "packing_list": "packing_list.pdf",
+    "certificate_of_origin": "certificate_of_origin.pdf"
+  },
+  "corrected_files": {},
+  "scans": [],
+  "shipment_truth": {
+    "set_id": "SET-003",
+    "shipper": {
+      "name": "SAIGON GARMENT WORKS JSC",
+      "address": [
+        "LOT 12, TAN THUAN EXPORT PROCESSING ZONE",
+        "DISTRICT 7, HO CHI MINH CITY, VIETNAM"
+      ]
+    },
+    "seller": {
+      "name": "SAIGON GARMENT WORKS JSC",
+      "address": [
+        "LOT 12, TAN THUAN EXPORT PROCESSING ZONE",
+        "DISTRICT 7, HO CHI MINH CITY, VIETNAM"
+      ]
+    },
+    "consignee": {
+      "name": "NAMPO LIVING RETAIL CO., LTD.",
+      "address": [
+        "33, GUDEOK-RO, JUNG-GU",
+        "BUSAN 48953, KOREA"
+      ]
+    },
+    "notify_party": {
+      "name": "NAMPO LIVING RETAIL CO., LTD.",
+      "address": [
+        "33, GUDEOK-RO, JUNG-GU",
+        "BUSAN 48953, KOREA"
+      ]
+    },
+    "buyer": {
+      "name": "NAMPO LIVING RETAIL CO., LTD.",
+      "address": [
+        "33, GUDEOK-RO, JUNG-GU",
+        "BUSAN 48953, KOREA"
+      ],
+      "short": "NLR"
+    },
+    "carrier": "NORTHGATE CONTAINER LINES",
+    "bl_no": "NGC2610488519",
+    "vessel": "NORTHGATE PIONEER",
+    "voyage": "095S",
+    "port_of_loading": {
+      "locode": "VNSGN",
+      "name": "HO CHI MINH CITY, VIETNAM"
+    },
+    "port_of_discharge": {
+      "locode": "KRPUS",
+      "name": "BUSAN, KOREA"
+    },
+    "on_board_date": "2026-10-29",
+    "freight_terms": "FREIGHT COLLECT",
+    "containers": [
+      {
+        "container_no": "NGCU4813152",
+        "seal_no": "NGC9031644",
+        "type": "20GP"
+      }
+    ],
+    "reefer_temp": null,
+    "invoice_no": "SGW-2610-754",
+    "invoice_date": "2026-10-24",
+    "po_no": "PO-NLR-26-1639",
+    "incoterms": "FOB",
+    "incoterms_place": "HO CHI MINH CITY",
+    "currency": "USD",
+    "payment_terms": "L/C AT SIGHT",
+    "freight_amount": 1886.34,
+    "insurance_amount": 54.83,
+    "withheld_customs_value": null,
+    "country_of_origin": "VIETNAM",
+    "co_certificate_no": "CO26VN422294",
+    "co_issue_date": "2026-10-27",
+    "items": [
+      {
+        "line_no": 1,
+        "item_key": "tshirt",
+        "item_code": "SG-TS100C",
+        "description": "MEN'S T-SHIRT, KNITTED, 100% COTTON",
+        "quantity": 11500,
+        "unit": "PCS",
+        "unit_price": 4.21,
+        "amount": 48415.0,
+        "packages": 230,
+        "package_type": "CARTONS",
+        "net_weight_kg": 2300.0,
+        "gross_weight_kg": 2530.0,
+        "cbm": 13.8,
+        "hs6_expected": "610910",
+        "hs6_declared_on_co": "610910"
+      }
+    ],
+    "totals": {
+      "quantity": 11500,
+      "amount": 48415.0,
+      "packages": 230,
+      "package_type": "CARTONS",
+      "net_weight_kg": 2300.0,
+      "gross_weight_kg": 2530.0,
+      "cbm": 13.8
+    },
+    "shipping_marks": [
+      "NLR",
+      "BUSAN, KOREA",
+      "C/NO. 1-230",
+      "MADE IN VIETNAM"
+    ]
+  },
+  "printed_fields": {
+    "bill_of_lading": {
+      "bl_no": "NGC2610488519",
+      "carrier": "NORTHGATE CONTAINER LINES",
+      "shipper_name": "SAIGON GARMENT WORKS JSC",
+      "consignee_name": "NAMPO LIVING RETAIL CO., LTD.",
+      "notify_party_name": "NAMPO LIVING RETAIL CO., LTD.",
+      "vessel": "NORTHGATE PIONEER",
+      "voyage": "095S",
+      "port_of_loading": "HO CHI MINH CITY, VIETNAM",
+      "port_of_discharge": "BUSAN, KOREA",
+      "container_numbers": [
+        "NGCU4813152"
+      ],
+      "seal_numbers": [
+        "NGC9031644"
+      ],
+      "total_packages": 230,
+      "package_type": "CARTONS",
+      "gross_weight_kg": 2530.0,
+      "measurement_cbm": 13.8,
+      "cargo_description": [
+        "MEN'S T-SHIRT, KNITTED, 100% COTTON"
+      ],
+      "freight_terms": "FREIGHT COLLECT",
+      "on_board_date": "2026-10-29"
+    },
+    "commercial_invoice": {
+      "invoice_no": "SGW-2610-754",
+      "invoice_date": "2026-10-24",
+      "po_no": "PO-NLR-26-1639",
+      "seller_name": "SAIGON GARMENT WORKS JSC",
+      "buyer_name": "NAMPO LIVING RETAIL CO., LTD.",
+      "incoterms": "FOB",
+      "incoterms_place": "HO CHI MINH CITY",
+      "currency": "USD",
+      "payment_terms": "L/C AT SIGHT",
+      "line_items": [
+        {
+          "description": "MEN'S T-SHIRT, KNITTED, 100% COTTON",
+          "quantity": 11500,
+          "unit": "PCS",
+          "unit_price": 4.21,
+          "amount": 48415.0
+        }
+      ],
+      "total_amount": 48415.0,
+      "freight_amount": 1886.34,
+      "insurance_amount": 54.83,
+      "country_of_origin": "VIETNAM"
+    },
+    "packing_list": {
+      "invoice_no_ref": "SGW-2610-754",
+      "date": "2026-10-24",
+      "shipper_name": "SAIGON GARMENT WORKS JSC",
+      "consignee_name": "NAMPO LIVING RETAIL CO., LTD.",
+      "line_items": [
+        {
+          "description": "MEN'S T-SHIRT, KNITTED, 100% COTTON",
+          "quantity": 11500,
+          "packages": 230,
+          "net_weight_kg": 2300.0,
+          "gross_weight_kg": 2530.0,
+          "cbm": 13.8
+        }
+      ],
+      "total_packages": 230,
+      "total_net_weight_kg": 2300.0,
+      "total_gross_weight_kg": 2530.0,
+      "total_cbm": 13.8,
+      "shipping_marks": [
+        "NLR",
+        "BUSAN, KOREA",
+        "C/NO. 1-230",
+        "MADE IN VIETNAM"
+      ]
+    },
+    "certificate_of_origin": {
+      "certificate_no": "CO26VN422294",
+      "issue_date": "2026-10-27",
+      "exporter_name": "SAIGON GARMENT WORKS JSC",
+      "consignee_name": "NAMPO LIVING RETAIL CO., LTD.",
+      "country_of_origin": "VIETNAM",
+      "invoice_no_ref": "SGW-2610-754",
+      "invoice_date_ref": "2026-10-24",
+      "items": [
+        {
+          "description": "MEN'S T-SHIRT, KNITTED, 100% COTTON",
+          "hs_code": "610910",
+          "quantity": 11500,
+          "unit": "PCS"
+        }
+      ],
+      "transport": "NORTHGATE PIONEER 095S / HO CHI MINH CITY, VIETNAM TO BUSAN, KOREA"
+    }
+  },
+  "injected_errors": [],
+  "expected_findings": []
+}

@@ -1,0 +1,267 @@
+{
+  "set_id": "SET-006",
+  "scenario": "normal",
+  "generated_with": {
+    "seed": 20261120,
+    "base_date": "2026-11-19"
+  },
+  "template_variants": {
+    "bill_of_lading": "B",
+    "commercial_invoice": "A",
+    "packing_list": "B",
+    "certificate_of_origin": "A"
+  },
+  "files": {
+    "bill_of_lading": "bl.pdf",
+    "commercial_invoice": "invoice.pdf",
+    "packing_list": "packing_list.pdf",
+    "certificate_of_origin": "certificate_of_origin.pdf"
+  },
+  "corrected_files": {},
+  "scans": [],
+  "shipment_truth": {
+    "set_id": "SET-006",
+    "shipper": {
+      "name": "SIAM HOMEWARE CO., LTD.",
+      "address": [
+        "99/9 MOO 4, BANGNA-TRAD ROAD KM 23",
+        "BANG PHLI, SAMUT PRAKAN 10540, THAILAND"
+      ]
+    },
+    "seller": {
+      "name": "SIAM HOMEWARE CO., LTD.",
+      "address": [
+        "99/9 MOO 4, BANGNA-TRAD ROAD KM 23",
+        "BANG PHLI, SAMUT PRAKAN 10540, THAILAND"
+      ]
+    },
+    "consignee": {
+      "name": "NAMPO LIVING RETAIL CO., LTD.",
+      "address": [
+        "33, GUDEOK-RO, JUNG-GU",
+        "BUSAN 48953, KOREA"
+      ]
+    },
+    "notify_party": {
+      "name": "NAMPO LIVING RETAIL CO., LTD.",
+      "address": [
+        "33, GUDEOK-RO, JUNG-GU",
+        "BUSAN 48953, KOREA"
+      ]
+    },
+    "buyer": {
+      "name": "NAMPO LIVING RETAIL CO., LTD.",
+      "address": [
+        "33, GUDEOK-RO, JUNG-GU",
+        "BUSAN 48953, KOREA"
+      ],
+      "short": "NLR"
+    },
+    "carrier": "BLUE HARBOR LINE",
+    "bl_no": "BHL2611665279",
+    "vessel": "BLUE HARBOR SEVEN",
+    "voyage": "009N",
+    "port_of_loading": {
+      "locode": "THLCH",
+      "name": "LAEM CHABANG, THAILAND"
+    },
+    "port_of_discharge": {
+      "locode": "KRPUS",
+      "name": "BUSAN, KOREA"
+    },
+    "on_board_date": "2026-11-04",
+    "freight_terms": "FREIGHT COLLECT",
+    "containers": [
+      {
+        "container_no": "BHLU7587543",
+        "seal_no": "BHL6464635",
+        "type": "40HC"
+      }
+    ],
+    "reefer_temp": null,
+    "invoice_no": "SHW-2610-206",
+    "invoice_date": "2026-10-30",
+    "po_no": "PO-NLR-26-7470",
+    "incoterms": "FOB",
+    "incoterms_place": "LAEM CHABANG",
+    "currency": "USD",
+    "payment_terms": "T/T IN ADVANCE",
+    "freight_amount": 1221.79,
+    "insurance_amount": 15.76,
+    "withheld_customs_value": null,
+    "country_of_origin": "THAILAND",
+    "co_certificate_no": "CO26TH354491",
+    "co_issue_date": "2026-11-03",
+    "items": [
+      {
+        "line_no": 1,
+        "item_key": "storage_box",
+        "item_code": "SH-PB50L",
+        "description": "POLYPROPYLENE STORAGE BOX 50L WITH LID",
+        "quantity": 1568,
+        "unit": "PCS",
+        "unit_price": 4.89,
+        "amount": 7667.52,
+        "packages": 196,
+        "package_type": "CARTONS",
+        "net_weight_kg": 2508.8,
+        "gross_weight_kg": 2744.0,
+        "cbm": 35.28,
+        "hs6_expected": "392310",
+        "hs6_declared_on_co": "392310"
+      },
+      {
+        "line_no": 2,
+        "item_key": "sink",
+        "item_code": "SH-SS7843",
+        "description": "STAINLESS STEEL KITCHEN SINK 780X430MM",
+        "quantity": 124,
+        "unit": "PCS",
+        "unit_price": 31.13,
+        "amount": 3860.12,
+        "packages": 62,
+        "package_type": "CARTONS",
+        "net_weight_kg": 744.0,
+        "gross_weight_kg": 868.0,
+        "cbm": 7.44,
+        "hs6_expected": "732410",
+        "hs6_declared_on_co": "732410"
+      }
+    ],
+    "totals": {
+      "quantity": 1692,
+      "amount": 11527.64,
+      "packages": 258,
+      "package_type": "CARTONS",
+      "net_weight_kg": 3252.8,
+      "gross_weight_kg": 3612.0,
+      "cbm": 42.72
+    },
+    "shipping_marks": [
+      "NLR",
+      "BUSAN, KOREA",
+      "C/NO. 1-258",
+      "MADE IN THAILAND"
+    ]
+  },
+  "printed_fields": {
+    "bill_of_lading": {
+      "bl_no": "BHL2611665279",
+      "carrier": "BLUE HARBOR LINE",
+      "shipper_name": "SIAM HOMEWARE CO., LTD.",
+      "consignee_name": "NAMPO LIVING RETAIL CO., LTD.",
+      "notify_party_name": "NAMPO LIVING RETAIL CO., LTD.",
+      "vessel": "BLUE HARBOR SEVEN",
+      "voyage": "009N",
+      "port_of_loading": "LAEM CHABANG, THAILAND",
+      "port_of_discharge": "BUSAN, KOREA",
+      "container_numbers": [
+        "BHLU7587543"
+      ],
+      "seal_numbers": [
+        "BHL6464635"
+      ],
+      "total_packages": 258,
+      "package_type": "CARTONS",
+      "gross_weight_kg": 3612.0,
+      "measurement_cbm": 42.72,
+      "cargo_description": [
+        "POLYPROPYLENE STORAGE BOX 50L WITH LID",
+        "STAINLESS STEEL KITCHEN SINK 780X430MM"
+      ],
+      "freight_terms": "FREIGHT COLLECT",
+      "on_board_date": "2026-11-04"
+    },
+    "commercial_invoice": {
+      "invoice_no": "SHW-2610-206",
+      "invoice_date": "2026-10-30",
+      "po_no": "PO-NLR-26-7470",
+      "seller_name": "SIAM HOMEWARE CO., LTD.",
+      "buyer_name": "NAMPO LIVING RETAIL CO., LTD.",
+      "incoterms": "FOB",
+      "incoterms_place": "LAEM CHABANG",
+      "currency": "USD",
+      "payment_terms": "T/T IN ADVANCE",
+      "line_items": [
+        {
+          "description": "POLYPROPYLENE STORAGE BOX 50L WITH LID",
+          "quantity": 1568,
+          "unit": "PCS",
+          "unit_price": 4.89,
+          "amount": 7667.52
+        },
+        {
+          "description": "STAINLESS STEEL KITCHEN SINK 780X430MM",
+          "quantity": 124,
+          "unit": "PCS",
+          "unit_price": 31.13,
+          "amount": 3860.12
+        }
+      ],
+      "total_amount": 11527.64,
+      "freight_amount": 1221.79,
+      "insurance_amount": 15.76,
+      "country_of_origin": "THAILAND"
+    },
+    "packing_list": {
+      "invoice_no_ref": "SHW-2610-206",
+      "date": "2026-10-30",
+      "shipper_name": "SIAM HOMEWARE CO., LTD.",
+      "consignee_name": "NAMPO LIVING RETAIL CO., LTD.",
+      "line_items": [
+        {
+          "description": "POLYPROPYLENE STORAGE BOX 50L WITH LID",
+          "quantity": 1568,
+          "packages": 196,
+          "net_weight_kg": 2508.8,
+          "gross_weight_kg": 2744.0,
+          "cbm": 35.28
+        },
+        {
+          "description": "STAINLESS STEEL KITCHEN SINK 780X430MM",
+          "quantity": 124,
+          "packages": 62,
+          "net_weight_kg": 744.0,
+          "gross_weight_kg": 868.0,
+          "cbm": 7.44
+        }
+      ],
+      "total_packages": 258,
+      "total_net_weight_kg": 3252.8,
+      "total_gross_weight_kg": 3612.0,
+      "total_cbm": 42.72,
+      "shipping_marks": [
+        "NLR",
+        "BUSAN, KOREA",
+        "C/NO. 1-258",
+        "MADE IN THAILAND"
+      ]
+    },
+    "certificate_of_origin": {
+      "certificate_no": "CO26TH354491",
+      "issue_date": "2026-11-03",
+      "exporter_name": "SIAM HOMEWARE CO., LTD.",
+      "consignee_name": "NAMPO LIVING RETAIL CO., LTD.",
+      "country_of_origin": "THAILAND",
+      "invoice_no_ref": "SHW-2610-206",
+      "invoice_date_ref": "2026-10-30",
+      "items": [
+        {
+          "description": "POLYPROPYLENE STORAGE BOX 50L WITH LID",
+          "hs_code": "392310",
+          "quantity": 1568,
+          "unit": "PCS"
+        },
+        {
+          "description": "STAINLESS STEEL KITCHEN SINK 780X430MM",
+          "hs_code": "732410",
+          "quantity": 124,
+          "unit": "PCS"
+        }
+      ],
+      "transport": "BLUE HARBOR SEVEN 009N / LAEM CHABANG, THAILAND TO BUSAN, KOREA"
+    }
+  },
+  "injected_errors": [],
+  "expected_findings": []
+}

@@ -1,0 +1,254 @@
+{
+  "set_id": "SET-013",
+  "scenario": "error",
+  "generated_with": {
+    "seed": 20261120,
+    "base_date": "2026-11-19"
+  },
+  "template_variants": {
+    "bill_of_lading": "A",
+    "commercial_invoice": "B",
+    "packing_list": "A",
+    "certificate_of_origin": "B"
+  },
+  "files": {
+    "bill_of_lading": "bl.pdf",
+    "commercial_invoice": "invoice.pdf",
+    "packing_list": "packing_list.pdf",
+    "certificate_of_origin": "certificate_of_origin.pdf"
+  },
+  "corrected_files": {
+    "bill_of_lading": "corrected/bl.pdf",
+    "commercial_invoice": "corrected/invoice.pdf",
+    "packing_list": "corrected/packing_list.pdf",
+    "certificate_of_origin": "corrected/certificate_of_origin.pdf"
+  },
+  "scans": [],
+  "shipment_truth": {
+    "set_id": "SET-013",
+    "shipper": {
+      "name": "LOTUS DIGITAL MANUFACTURING CO., LTD.",
+      "address": [
+        "BLOCK C, 16 KEJI SOUTH ROAD, NANSHAN DISTRICT",
+        "SHENZHEN 518057, CHINA"
+      ]
+    },
+    "seller": {
+      "name": "LOTUS DIGITAL MANUFACTURING CO., LTD.",
+      "address": [
+        "BLOCK C, 16 KEJI SOUTH ROAD, NANSHAN DISTRICT",
+        "SHENZHEN 518057, CHINA"
+      ]
+    },
+    "consignee": {
+      "name": "HAEUNDAE TRADING CO., LTD.",
+      "address": [
+        "120, MARINE CITY 2-RO, HAEUNDAE-GU",
+        "BUSAN 48120, KOREA"
+      ]
+    },
+    "notify_party": {
+      "name": "HAEUNDAE TRADING CO., LTD.",
+      "address": [
+        "120, MARINE CITY 2-RO, HAEUNDAE-GU",
+        "BUSAN 48120, KOREA"
+      ]
+    },
+    "buyer": {
+      "name": "HAEUNDAE TRADING CO., LTD.",
+      "address": [
+        "120, MARINE CITY 2-RO, HAEUNDAE-GU",
+        "BUSAN 48120, KOREA"
+      ],
+      "short": "HDT"
+    },
+    "carrier": "NORTHGATE CONTAINER LINES",
+    "bl_no": "NGC2611372999",
+    "vessel": "NORTHGATE PIONEER",
+    "voyage": "019E",
+    "port_of_loading": {
+      "locode": "CNYTN",
+      "name": "YANTIAN, SHENZHEN, CHINA"
+    },
+    "port_of_discharge": {
+      "locode": "KRPUS",
+      "name": "BUSAN, KOREA"
+    },
+    "on_board_date": "2026-11-02",
+    "freight_terms": "FREIGHT PREPAID",
+    "containers": [
+      {
+        "container_no": "NGCU4390404",
+        "seal_no": "NGC8574228",
+        "type": "20GP"
+      }
+    ],
+    "reefer_temp": null,
+    "invoice_no": "LDM-2610-556",
+    "invoice_date": "2026-10-29",
+    "po_no": "PO-HDT-26-7098",
+    "incoterms": "CIF",
+    "incoterms_place": "BUSAN",
+    "currency": "USD",
+    "payment_terms": "T/T 30 DAYS AFTER B/L DATE",
+    "freight_amount": null,
+    "insurance_amount": null,
+    "withheld_customs_value": null,
+    "country_of_origin": "CHINA",
+    "co_certificate_no": "CO26CN677236",
+    "co_issue_date": "2026-11-01",
+    "items": [
+      {
+        "line_no": 1,
+        "item_key": "notebook",
+        "item_code": "LD-NB14I5",
+        "description": "NOTEBOOK COMPUTER 14 INCH, 16GB RAM, 512GB SSD",
+        "quantity": 710,
+        "unit": "PCS",
+        "unit_price": 575.77,
+        "amount": 408796.7,
+        "packages": 142,
+        "package_type": "CARTONS",
+        "net_weight_kg": 994.0,
+        "gross_weight_kg": 1278.0,
+        "cbm": 7.1,
+        "hs6_expected": "847130",
+        "hs6_declared_on_co": "847130"
+      }
+    ],
+    "totals": {
+      "quantity": 710,
+      "amount": 408796.7,
+      "packages": 142,
+      "package_type": "CARTONS",
+      "net_weight_kg": 994.0,
+      "gross_weight_kg": 1278.0,
+      "cbm": 7.1
+    },
+    "shipping_marks": [
+      "HDT",
+      "BUSAN, KOREA",
+      "C/NO. 1-142",
+      "MADE IN CHINA"
+    ]
+  },
+  "printed_fields": {
+    "bill_of_lading": {
+      "bl_no": "NGC2611372999",
+      "carrier": "NORTHGATE CONTAINER LINES",
+      "shipper_name": "LOTUS DIGITAL MANUFACTURING CO., LTD.",
+      "consignee_name": "HAEUNDAE TRADING CO., LTD.",
+      "notify_party_name": "HAEUNDAE TRADING CO., LTD.",
+      "vessel": "NORTHGATE PIONEER",
+      "voyage": "019E",
+      "port_of_loading": "YANTIAN, SHENZHEN, CHINA",
+      "port_of_discharge": "BUSAN, KOREA",
+      "container_numbers": [
+        "NGCU4390404"
+      ],
+      "seal_numbers": [
+        "NGC8574228"
+      ],
+      "total_packages": 142,
+      "package_type": "CARTONS",
+      "gross_weight_kg": 1278.0,
+      "measurement_cbm": 7.1,
+      "cargo_description": [
+        "NOTEBOOK COMPUTER 14 INCH, 16GB RAM, 512GB SSD"
+      ],
+      "freight_terms": "FREIGHT PREPAID",
+      "on_board_date": "2026-11-02"
+    },
+    "commercial_invoice": {
+      "invoice_no": "LDM-2610-556",
+      "invoice_date": "2026-10-29",
+      "po_no": "PO-HDT-26-7098",
+      "seller_name": "LOTUS DIGITAL MANUFACTURING CO., LTD.",
+      "buyer_name": "HAEUNDAE TRADING CO., LTD.",
+      "incoterms": "CIF",
+      "incoterms_place": "BUSAN",
+      "currency": "USD",
+      "payment_terms": "T/T 30 DAYS AFTER B/L DATE",
+      "line_items": [
+        {
+          "description": "NOTEBOOK COMPUTER 14 INCH, 16GB RAM, 512GB SSD",
+          "quantity": 710,
+          "unit": "PCS",
+          "unit_price": 575.77,
+          "amount": 408796.7
+        }
+      ],
+      "total_amount": 409796.7,
+      "freight_amount": null,
+      "insurance_amount": null,
+      "country_of_origin": "CHINA"
+    },
+    "packing_list": {
+      "invoice_no_ref": "LDM-2610-556",
+      "date": "2026-10-29",
+      "shipper_name": "LOTUS DIGITAL MANUFACTURING CO., LTD.",
+      "consignee_name": "HAEUNDAE TRADING CO., LTD.",
+      "line_items": [
+        {
+          "description": "NOTEBOOK COMPUTER 14 INCH, 16GB RAM, 512GB SSD",
+          "quantity": 710,
+          "packages": 142,
+          "net_weight_kg": 994.0,
+          "gross_weight_kg": 1278.0,
+          "cbm": 7.1
+        }
+      ],
+      "total_packages": 142,
+      "total_net_weight_kg": 994.0,
+      "total_gross_weight_kg": 1278.0,
+      "total_cbm": 7.1,
+      "shipping_marks": [
+        "HDT",
+        "BUSAN, KOREA",
+        "C/NO. 1-142",
+        "MADE IN CHINA"
+      ]
+    },
+    "certificate_of_origin": {
+      "certificate_no": "CO26CN677236",
+      "issue_date": "2026-11-01",
+      "exporter_name": "LOTUS DIGITAL MANUFACTURING CO., LTD.",
+      "consignee_name": "HAEUNDAE TRADING CO., LTD.",
+      "country_of_origin": "CHINA",
+      "invoice_no_ref": "LDM-2610-556",
+      "invoice_date_ref": "2026-10-29",
+      "items": [
+        {
+          "description": "NOTEBOOK COMPUTER 14 INCH, 16GB RAM, 512GB SSD",
+          "hs_code": "847130",
+          "quantity": 710,
+          "unit": "PCS"
+        }
+      ],
+      "transport": "NORTHGATE PIONEER 019E / YANTIAN, SHENZHEN, CHINA TO BUSAN, KOREA"
+    }
+  },
+  "injected_errors": [
+    {
+      "error_type": "invoice_total_mismatch",
+      "rule": "invoice_amount_sum",
+      "documents": [
+        "commercial_invoice"
+      ],
+      "expected_result": "error",
+      "document": "commercial_invoice",
+      "field": "total_amount",
+      "correct_value": 408796.7,
+      "printed_value": 409796.7
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule": "invoice_amount_sum",
+      "severity": "error",
+      "documents": [
+        "commercial_invoice"
+      ]
+    }
+  ]
+}

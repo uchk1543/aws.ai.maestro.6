@@ -1,0 +1,300 @@
+{
+  "set_id": "SET-012",
+  "scenario": "error",
+  "generated_with": {
+    "seed": 20261120,
+    "base_date": "2026-11-19"
+  },
+  "template_variants": {
+    "bill_of_lading": "B",
+    "commercial_invoice": "A",
+    "packing_list": "B",
+    "certificate_of_origin": "A"
+  },
+  "files": {
+    "bill_of_lading": "bl.pdf",
+    "commercial_invoice": "invoice.pdf",
+    "packing_list": "packing_list.pdf",
+    "certificate_of_origin": "certificate_of_origin.pdf"
+  },
+  "corrected_files": {
+    "bill_of_lading": "corrected/bl.pdf",
+    "commercial_invoice": "corrected/invoice.pdf",
+    "packing_list": "corrected/packing_list.pdf",
+    "certificate_of_origin": "corrected/certificate_of_origin.pdf"
+  },
+  "scans": [
+    "scans/bl.jpg",
+    "scans/invoice.jpg",
+    "scans/packing_list.jpg",
+    "scans/certificate_of_origin.jpg"
+  ],
+  "shipment_truth": {
+    "set_id": "SET-012",
+    "shipper": {
+      "name": "FORMOSA FASTENER INDUSTRIAL CORP.",
+      "address": [
+        "NO. 35, LINHAI 3RD ROAD, XIAOGANG DISTRICT",
+        "KAOHSIUNG 81251, TAIWAN"
+      ]
+    },
+    "seller": {
+      "name": "FORMOSA FASTENER INDUSTRIAL CORP.",
+      "address": [
+        "NO. 35, LINHAI 3RD ROAD, XIAOGANG DISTRICT",
+        "KAOHSIUNG 81251, TAIWAN"
+      ]
+    },
+    "consignee": {
+      "name": "YEONGDO INDUSTRIAL SUPPLY CO., LTD.",
+      "address": [
+        "210, TAEJONG-RO, YEONGDO-GU",
+        "BUSAN 49001, KOREA"
+      ]
+    },
+    "notify_party": {
+      "name": "YEONGDO INDUSTRIAL SUPPLY CO., LTD.",
+      "address": [
+        "210, TAEJONG-RO, YEONGDO-GU",
+        "BUSAN 49001, KOREA"
+      ]
+    },
+    "buyer": {
+      "name": "YEONGDO INDUSTRIAL SUPPLY CO., LTD.",
+      "address": [
+        "210, TAEJONG-RO, YEONGDO-GU",
+        "BUSAN 49001, KOREA"
+      ],
+      "short": "YIS"
+    },
+    "carrier": "NORTHGATE CONTAINER LINES",
+    "bl_no": "NGC2611569130",
+    "vessel": "NORTHGATE PIONEER",
+    "voyage": "062N",
+    "port_of_loading": {
+      "locode": "TWKHH",
+      "name": "KAOHSIUNG, TAIWAN"
+    },
+    "port_of_discharge": {
+      "locode": "KRPUS",
+      "name": "BUSAN, KOREA"
+    },
+    "on_board_date": "2026-11-10",
+    "freight_terms": "FREIGHT PREPAID",
+    "containers": [
+      {
+        "container_no": "NGCU4825343",
+        "seal_no": "NGC6695774",
+        "type": "20GP"
+      }
+    ],
+    "reefer_temp": null,
+    "invoice_no": "FFI-2611-541",
+    "invoice_date": "2026-11-06",
+    "po_no": "PO-YIS-26-2076",
+    "incoterms": "CIF",
+    "incoterms_place": "BUSAN",
+    "currency": "USD",
+    "payment_terms": "T/T IN ADVANCE",
+    "freight_amount": null,
+    "insurance_amount": null,
+    "withheld_customs_value": null,
+    "country_of_origin": "TAIWAN",
+    "co_certificate_no": "CO26TW138168",
+    "co_issue_date": "2026-11-10",
+    "items": [
+      {
+        "line_no": 1,
+        "item_key": "bolt",
+        "item_code": "FF-HB1250Z",
+        "description": "STEEL HEX BOLT M12X50, ZINC PLATED",
+        "quantity": 136000,
+        "unit": "PCS",
+        "unit_price": 0.082,
+        "amount": 11152.0,
+        "packages": 272,
+        "package_type": "CARTONS",
+        "net_weight_kg": 8160.0,
+        "gross_weight_kg": 8296.0,
+        "cbm": 4.08,
+        "hs6_expected": "731815",
+        "hs6_declared_on_co": "731815"
+      },
+      {
+        "line_no": 2,
+        "item_key": "nut",
+        "item_code": "FF-HN12Z",
+        "description": "STEEL HEX NUT M12, ZINC PLATED",
+        "quantity": 142000,
+        "unit": "PCS",
+        "unit_price": 0.033,
+        "amount": 4686.0,
+        "packages": 142,
+        "package_type": "CARTONS",
+        "net_weight_kg": 2414.0,
+        "gross_weight_kg": 2485.0,
+        "cbm": 1.42,
+        "hs6_expected": "731816",
+        "hs6_declared_on_co": "731816"
+      }
+    ],
+    "totals": {
+      "quantity": 278000,
+      "amount": 15838.0,
+      "packages": 414,
+      "package_type": "CARTONS",
+      "net_weight_kg": 10574.0,
+      "gross_weight_kg": 10781.0,
+      "cbm": 5.5
+    },
+    "shipping_marks": [
+      "YIS",
+      "BUSAN, KOREA",
+      "C/NO. 1-414",
+      "MADE IN TAIWAN"
+    ]
+  },
+  "printed_fields": {
+    "bill_of_lading": {
+      "bl_no": "NGC2611569130",
+      "carrier": "NORTHGATE CONTAINER LINES",
+      "shipper_name": "FORMOSA FASTENER INDUSTRIAL CORP.",
+      "consignee_name": "YEONGDO INDUSTRIAL SUPPLY CO., LTD.",
+      "notify_party_name": "YEONGDO INDUSTRIAL SUPPLY CO., LTD.",
+      "vessel": "NORTHGATE PIONEER",
+      "voyage": "062N",
+      "port_of_loading": "KAOHSIUNG, TAIWAN",
+      "port_of_discharge": "BUSAN, KOREA",
+      "container_numbers": [
+        "NGCU4825343"
+      ],
+      "seal_numbers": [
+        "NGC6695774"
+      ],
+      "total_packages": 413,
+      "package_type": "CARTONS",
+      "gross_weight_kg": 10781.0,
+      "measurement_cbm": 5.5,
+      "cargo_description": [
+        "STEEL HEX BOLT M12X50, ZINC PLATED",
+        "STEEL HEX NUT M12, ZINC PLATED"
+      ],
+      "freight_terms": "FREIGHT PREPAID",
+      "on_board_date": "2026-11-10"
+    },
+    "commercial_invoice": {
+      "invoice_no": "FFI-2611-541",
+      "invoice_date": "2026-11-06",
+      "po_no": "PO-YIS-26-2076",
+      "seller_name": "FORMOSA FASTENER INDUSTRIAL CORP.",
+      "buyer_name": "YEONGDO INDUSTRIAL SUPPLY CO., LTD.",
+      "incoterms": "CIF",
+      "incoterms_place": "BUSAN",
+      "currency": "USD",
+      "payment_terms": "T/T IN ADVANCE",
+      "line_items": [
+        {
+          "description": "STEEL HEX BOLT M12X50, ZINC PLATED",
+          "quantity": 136000,
+          "unit": "PCS",
+          "unit_price": 0.082,
+          "amount": 11152.0
+        },
+        {
+          "description": "STEEL HEX NUT M12, ZINC PLATED",
+          "quantity": 142000,
+          "unit": "PCS",
+          "unit_price": 0.033,
+          "amount": 4686.0
+        }
+      ],
+      "total_amount": 15838.0,
+      "freight_amount": null,
+      "insurance_amount": null,
+      "country_of_origin": "TAIWAN"
+    },
+    "packing_list": {
+      "invoice_no_ref": "FFI-2611-541",
+      "date": "2026-11-06",
+      "shipper_name": "FORMOSA FASTENER INDUSTRIAL CORP.",
+      "consignee_name": "YEONGDO INDUSTRIAL SUPPLY CO., LTD.",
+      "line_items": [
+        {
+          "description": "STEEL HEX BOLT M12X50, ZINC PLATED",
+          "quantity": 136000,
+          "packages": 272,
+          "net_weight_kg": 8160.0,
+          "gross_weight_kg": 8296.0,
+          "cbm": 4.08
+        },
+        {
+          "description": "STEEL HEX NUT M12, ZINC PLATED",
+          "quantity": 142000,
+          "packages": 142,
+          "net_weight_kg": 2414.0,
+          "gross_weight_kg": 2485.0,
+          "cbm": 1.42
+        }
+      ],
+      "total_packages": 414,
+      "total_net_weight_kg": 10574.0,
+      "total_gross_weight_kg": 10781.0,
+      "total_cbm": 5.5,
+      "shipping_marks": [
+        "YIS",
+        "BUSAN, KOREA",
+        "C/NO. 1-414",
+        "MADE IN TAIWAN"
+      ]
+    },
+    "certificate_of_origin": {
+      "certificate_no": "CO26TW138168",
+      "issue_date": "2026-11-10",
+      "exporter_name": "FORMOSA FASTENER INDUSTRIAL CORP.",
+      "consignee_name": "YEONGDO INDUSTRIAL SUPPLY CO., LTD.",
+      "country_of_origin": "TAIWAN",
+      "invoice_no_ref": "FFI-2611-541",
+      "invoice_date_ref": "2026-11-06",
+      "items": [
+        {
+          "description": "STEEL HEX BOLT M12X50, ZINC PLATED",
+          "hs_code": "731815",
+          "quantity": 136000,
+          "unit": "PCS"
+        },
+        {
+          "description": "STEEL HEX NUT M12, ZINC PLATED",
+          "hs_code": "731816",
+          "quantity": 142000,
+          "unit": "PCS"
+        }
+      ],
+      "transport": "NORTHGATE PIONEER 062N / KAOHSIUNG, TAIWAN TO BUSAN, KOREA"
+    }
+  },
+  "injected_errors": [
+    {
+      "error_type": "package_count_mismatch",
+      "rule": "package_count_match",
+      "documents": [
+        "bill_of_lading",
+        "packing_list"
+      ],
+      "expected_result": "error",
+      "document": "bill_of_lading",
+      "field": "total_packages",
+      "correct_value": 414,
+      "printed_value": 413
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule": "package_count_match",
+      "severity": "error",
+      "documents": [
+        "bill_of_lading",
+        "packing_list"
+      ]
+    }
+  ]
+}

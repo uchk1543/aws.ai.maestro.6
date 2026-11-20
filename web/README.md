@@ -91,11 +91,12 @@ VITE_API_PROXY=https://<CloudFront 주소> npm run dev:api
 - 서류 원본이나 키를 화면 코드에 넣지 않는다.
 
 ## 대시보드 영상 (G15)
-`public/dashboard/`의 영상은 대시보드용으로 따로 만든 Blender 장면(흰 클레이 항구, 파랑·주황 컨테이너)이다. 장면은 `scene/build_scene.py` 하나로 만들고, 렌더한 프레임은 `scene/encode.py`로 묶는다 (빌드에는 들어가지 않는다).
+`public/dashboard/`의 영상은 대시보드용으로 따로 만든 Blender 장면(흰 클레이 항구, 파랑·주황 컨테이너)이다. 장면은 `media/video/blender/dash_port/build_scene.py` 하나로 만들고, 렌더한 프레임은 같은 폴더의 `encode.py`로 묶는다 (빌드에는 들어가지 않는다). 발표 영상·Blender 자산 전체 안내는 [media/README.md](media/README.md).
   ```
-  blender -b -P scene/build_scene.py                          # scene/dash_port.blend 저장 (Blender 4.0, EEVEE)
-  blender -b scene/dash_port.blend -o //frames/f#### -s 1 -e 888 -a   # 노트북 내장 그래픽으로 장당 10~20초 (888장, 약 3~4시간)
-  FFMPEG=<ffmpeg 경로> uv run --no-project --with pillow python scene/encode.py public/dashboard
+  cd media/video/blender/dash_port
+  blender -b -P build_scene.py                          # dash_port.blend 저장 (Blender 4.0, EEVEE)
+  blender -b dash_port.blend -o //frames/f#### -s 1 -e 888 -a   # 노트북 내장 그래픽으로 장당 10~20초 (888장, 약 3~4시간)
+  FFMPEG=<ffmpeg 경로> uv run --no-project --with pillow python encode.py ../../../../public/dashboard
   ```
 - `port-intro.mp4`: 24초, 한 번 재생. 컨테이너 하나를 따라간다: 배 입항 → 안벽 크레인 하역 → 트럭으로 장치장 사이 이동 → 검사대 → 게이트 반출 → 항구 전체로 빠짐
   - 화면 위 통관 단계(입항 → … → 반출)가 영상 시간에 맞춰 바뀐다. 단계가 시작하는 초는 `DashboardPage.tsx`의 `STAGE_TIMES`. 영상을 다시 만들면 함께 고친다

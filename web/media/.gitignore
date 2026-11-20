@@ -1,0 +1,22 @@
+# 큰 파일은 저장소에 넣지 않는다. GitHub Release(media-assets-2026-11-21)에서
+# fetch_assets.ps1 / fetch_assets.sh 로 받아 이 자리에 푼다. 받은 파일이 커밋되지 않게 막는다.
+*.blend
+*.blend1
+*.glb
+*.log
+*_log.txt
+__pycache__/
+video/node_modules/
+video/out/
+video/record/*/
+video/blender/renders/
+video/blender/**/frames/
+video/blender/**/loopframes/
+video/blender/**/stills/*.png
+video/blender/assets/polyhaven/
+video/public/blender/
+video/public/real/
+video/public/demo/take/*.mp4
+video/public/fonts/NotoSansKR-VF.ttf
+# 받은 zip
+/_downloads/

@@ -1,0 +1,228 @@
+{
+  "set_id": "SET-010",
+  "scenario": "normal",
+  "generated_with": {
+    "seed": 20261120,
+    "base_date": "2026-11-19"
+  },
+  "template_variants": {
+    "bill_of_lading": "B",
+    "commercial_invoice": "A",
+    "packing_list": "B",
+    "certificate_of_origin": "A"
+  },
+  "files": {
+    "bill_of_lading": "bl.pdf",
+    "commercial_invoice": "invoice.pdf",
+    "packing_list": "packing_list.pdf",
+    "certificate_of_origin": "certificate_of_origin.pdf"
+  },
+  "corrected_files": {},
+  "scans": [],
+  "shipment_truth": {
+    "set_id": "SET-010",
+    "shipper": {
+      "name": "PACIFIC ROAD TIRE INC.",
+      "address": [
+        "2450 EAST PACIFIC COAST HWY",
+        "LONG BEACH, CA 90806, USA"
+      ]
+    },
+    "seller": {
+      "name": "PACIFIC ROAD TIRE INC.",
+      "address": [
+        "2450 EAST PACIFIC COAST HWY",
+        "LONG BEACH, CA 90806, USA"
+      ]
+    },
+    "consignee": {
+      "name": "YEONGDO INDUSTRIAL SUPPLY CO., LTD.",
+      "address": [
+        "210, TAEJONG-RO, YEONGDO-GU",
+        "BUSAN 49001, KOREA"
+      ]
+    },
+    "notify_party": {
+      "name": "YEONGDO INDUSTRIAL SUPPLY CO., LTD.",
+      "address": [
+        "210, TAEJONG-RO, YEONGDO-GU",
+        "BUSAN 49001, KOREA"
+      ]
+    },
+    "buyer": {
+      "name": "YEONGDO INDUSTRIAL SUPPLY CO., LTD.",
+      "address": [
+        "210, TAEJONG-RO, YEONGDO-GU",
+        "BUSAN 49001, KOREA"
+      ],
+      "short": "YIS"
+    },
+    "carrier": "PACIFIC STAR SHIPPING",
+    "bl_no": "PSS2611803715",
+    "vessel": "PACIFIC STAR",
+    "voyage": "004W",
+    "port_of_loading": {
+      "locode": "USLAX",
+      "name": "LOS ANGELES, USA"
+    },
+    "port_of_discharge": {
+      "locode": "KRPUS",
+      "name": "BUSAN, KOREA"
+    },
+    "on_board_date": "2026-11-10",
+    "freight_terms": "FREIGHT COLLECT",
+    "containers": [
+      {
+        "container_no": "PSSU7836312",
+        "seal_no": "PSS9214439",
+        "type": "40HC"
+      }
+    ],
+    "reefer_temp": null,
+    "invoice_no": "PRT-2611-201",
+    "invoice_date": "2026-11-09",
+    "po_no": "PO-YIS-26-5471",
+    "incoterms": "FOB",
+    "incoterms_place": "LOS ANGELES",
+    "currency": "USD",
+    "payment_terms": "T/T IN ADVANCE",
+    "freight_amount": 1022.63,
+    "insurance_amount": 47.54,
+    "withheld_customs_value": null,
+    "country_of_origin": "USA",
+    "co_certificate_no": "CO26US761581",
+    "co_issue_date": "2026-11-08",
+    "items": [
+      {
+        "line_no": 1,
+        "item_key": "tyre",
+        "item_code": "PR-T2055516",
+        "description": "NEW PNEUMATIC RUBBER TYRE FOR PASSENGER CAR 205/55R16",
+        "quantity": 792,
+        "unit": "PCS",
+        "unit_price": 41.37,
+        "amount": 32765.04,
+        "packages": 792,
+        "package_type": "PCS",
+        "net_weight_kg": 6732.0,
+        "gross_weight_kg": 6732.0,
+        "cbm": 51.48,
+        "hs6_expected": "401110",
+        "hs6_declared_on_co": "401110"
+      }
+    ],
+    "totals": {
+      "quantity": 792,
+      "amount": 32765.04,
+      "packages": 792,
+      "package_type": "PCS",
+      "net_weight_kg": 6732.0,
+      "gross_weight_kg": 6732.0,
+      "cbm": 51.48
+    },
+    "shipping_marks": [
+      "YIS",
+      "BUSAN, KOREA",
+      "C/NO. 1-792",
+      "MADE IN USA"
+    ]
+  },
+  "printed_fields": {
+    "bill_of_lading": {
+      "bl_no": "PSS2611803715",
+      "carrier": "PACIFIC STAR SHIPPING",
+      "shipper_name": "PACIFIC ROAD TIRE INC.",
+      "consignee_name": "YEONGDO INDUSTRIAL SUPPLY CO., LTD.",
+      "notify_party_name": "YEONGDO INDUSTRIAL SUPPLY CO., LTD.",
+      "vessel": "PACIFIC STAR",
+      "voyage": "004W",
+      "port_of_loading": "LOS ANGELES, USA",
+      "port_of_discharge": "BUSAN, KOREA",
+      "container_numbers": [
+        "PSSU7836312"
+      ],
+      "seal_numbers": [
+        "PSS9214439"
+      ],
+      "total_packages": 792,
+      "package_type": "PCS",
+      "gross_weight_kg": 6732.0,
+      "measurement_cbm": 51.48,
+      "cargo_description": [
+        "NEW PNEUMATIC RUBBER TYRE FOR PASSENGER CAR 205/55R16"
+      ],
+      "freight_terms": "FREIGHT COLLECT",
+      "on_board_date": "2026-11-10"
+    },
+    "commercial_invoice": {
+      "invoice_no": "PRT-2611-201",
+      "invoice_date": "2026-11-09",
+      "po_no": "PO-YIS-26-5471",
+      "seller_name": "PACIFIC ROAD TIRE INC.",
+      "buyer_name": "YEONGDO INDUSTRIAL SUPPLY CO., LTD.",
+      "incoterms": "FOB",
+      "incoterms_place": "LOS ANGELES",
+      "currency": "USD",
+      "payment_terms": "T/T IN ADVANCE",
+      "line_items": [
+        {
+          "description": "NEW PNEUMATIC RUBBER TYRE FOR PASSENGER CAR 205/55R16",
+          "quantity": 792,
+          "unit": "PCS",
+          "unit_price": 41.37,
+          "amount": 32765.04
+        }
+      ],
+      "total_amount": 32765.04,
+      "freight_amount": 1022.63,
+      "insurance_amount": 47.54,
+      "country_of_origin": "USA"
+    },
+    "packing_list": {
+      "invoice_no_ref": "PRT-2611-201",
+      "date": "2026-11-09",
+      "shipper_name": "PACIFIC ROAD TIRE INC.",
+      "consignee_name": "YEONGDO INDUSTRIAL SUPPLY CO., LTD.",
+      "line_items": [
+        {
+          "description": "NEW PNEUMATIC RUBBER TYRE FOR PASSENGER CAR 205/55R16",
+          "quantity": 792,
+          "packages": 792,
+          "net_weight_kg": 6732.0,
+          "gross_weight_kg": 6732.0,
+          "cbm": 51.48
+        }
+      ],
+      "total_packages": 792,
+      "total_net_weight_kg": 6732.0,
+      "total_gross_weight_kg": 6732.0,
+      "total_cbm": 51.48,
+      "shipping_marks": [
+        "YIS",
+        "BUSAN, KOREA",
+        "C/NO. 1-792",
+        "MADE IN USA"
+      ]
+    },
+    "certificate_of_origin": {
+      "certificate_no": "CO26US761581",
+      "issue_date": "2026-11-08",
+      "exporter_name": "PACIFIC ROAD TIRE INC.",
+      "consignee_name": "YEONGDO INDUSTRIAL SUPPLY CO., LTD.",
+      "country_of_origin": "USA",
+      "invoice_no_ref": "PRT-2611-201",
+      "invoice_date_ref": "2026-11-09",
+      "items": [
+        {
+          "description": "NEW PNEUMATIC RUBBER TYRE FOR PASSENGER CAR 205/55R16",
+          "hs_code": "401110",
+          "quantity": 792,
+          "unit": "PCS"
+        }
+      ],
+      "transport": "PACIFIC STAR 004W / LOS ANGELES, USA TO BUSAN, KOREA"
+    }
+  },
+  "injected_errors": [],
+  "expected_findings": []
+}

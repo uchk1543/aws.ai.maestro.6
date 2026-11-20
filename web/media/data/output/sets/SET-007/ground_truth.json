@@ -1,0 +1,235 @@
+{
+  "set_id": "SET-007",
+  "scenario": "normal",
+  "generated_with": {
+    "seed": 20261120,
+    "base_date": "2026-11-19"
+  },
+  "template_variants": {
+    "bill_of_lading": "A",
+    "commercial_invoice": "B",
+    "packing_list": "A",
+    "certificate_of_origin": "B"
+  },
+  "files": {
+    "bill_of_lading": "bl.pdf",
+    "commercial_invoice": "invoice.pdf",
+    "packing_list": "packing_list.pdf",
+    "certificate_of_origin": "certificate_of_origin.pdf"
+  },
+  "corrected_files": {},
+  "scans": [],
+  "shipment_truth": {
+    "set_id": "SET-007",
+    "shipper": {
+      "name": "NINGBO TIMBERCRAFT FURNITURE CO., LTD.",
+      "address": [
+        "NO. 518 HUANCHENG NORTH ROAD, JIANGBEI DISTRICT",
+        "NINGBO 315020, CHINA"
+      ]
+    },
+    "seller": {
+      "name": "NINGBO TIMBERCRAFT FURNITURE CO., LTD.",
+      "address": [
+        "NO. 518 HUANCHENG NORTH ROAD, JIANGBEI DISTRICT",
+        "NINGBO 315020, CHINA"
+      ]
+    },
+    "consignee": {
+      "name": "TO ORDER OF HARBOR CITY BANK, BUSAN BRANCH",
+      "address": []
+    },
+    "notify_party": {
+      "name": "NAMPO LIVING RETAIL CO., LTD.",
+      "address": [
+        "33, GUDEOK-RO, JUNG-GU",
+        "BUSAN 48953, KOREA"
+      ]
+    },
+    "buyer": {
+      "name": "NAMPO LIVING RETAIL CO., LTD.",
+      "address": [
+        "33, GUDEOK-RO, JUNG-GU",
+        "BUSAN 48953, KOREA"
+      ],
+      "short": "NLR"
+    },
+    "carrier": "NORTHGATE CONTAINER LINES",
+    "bl_no": "NGC2611773224",
+    "vessel": "NORTHGATE MERIDIAN",
+    "voyage": "037N",
+    "port_of_loading": {
+      "locode": "CNNGB",
+      "name": "NINGBO, CHINA"
+    },
+    "port_of_discharge": {
+      "locode": "KRPUS",
+      "name": "BUSAN, KOREA"
+    },
+    "on_board_date": "2026-11-06",
+    "freight_terms": "FREIGHT PREPAID",
+    "containers": [
+      {
+        "container_no": "NGCU7842386",
+        "seal_no": "NGC6548252",
+        "type": "40HC"
+      }
+    ],
+    "reefer_temp": null,
+    "invoice_no": "NTF-2611-604",
+    "invoice_date": "2026-11-04",
+    "po_no": "PO-NLR-26-5583",
+    "incoterms": "CIF",
+    "incoterms_place": "BUSAN",
+    "currency": "USD",
+    "payment_terms": "T/T IN ADVANCE",
+    "freight_amount": null,
+    "insurance_amount": null,
+    "withheld_customs_value": null,
+    "country_of_origin": "CHINA",
+    "co_certificate_no": "CO26CN157325",
+    "co_issue_date": "2026-11-06",
+    "items": [
+      {
+        "line_no": 1,
+        "item_key": "wardrobe",
+        "item_code": "NT-WD1200",
+        "description": "WOODEN BEDROOM WARDROBE, KNOCK-DOWN, OAK VENEER",
+        "quantity": 119,
+        "unit": "SETS",
+        "unit_price": 172.82,
+        "amount": 20565.58,
+        "packages": 119,
+        "package_type": "CARTONS",
+        "net_weight_kg": 6545.0,
+        "gross_weight_kg": 7021.0,
+        "cbm": 53.55,
+        "hs6_expected": "940350",
+        "hs6_declared_on_co": "940350"
+      }
+    ],
+    "totals": {
+      "quantity": 119,
+      "amount": 20565.58,
+      "packages": 119,
+      "package_type": "CARTONS",
+      "net_weight_kg": 6545.0,
+      "gross_weight_kg": 7021.0,
+      "cbm": 53.55
+    },
+    "shipping_marks": [
+      "NLR",
+      "BUSAN, KOREA",
+      "C/NO. 1-119",
+      "MADE IN CHINA"
+    ]
+  },
+  "printed_fields": {
+    "bill_of_lading": {
+      "bl_no": "NGC2611773224",
+      "carrier": "NORTHGATE CONTAINER LINES",
+      "shipper_name": "NINGBO TIMBERCRAFT FURNITURE CO., LTD.",
+      "consignee_name": "TO ORDER OF HARBOR CITY BANK, BUSAN BRANCH",
+      "notify_party_name": "NAMPO LIVING RETAIL CO., LTD.",
+      "vessel": "NORTHGATE MERIDIAN",
+      "voyage": "037N",
+      "port_of_loading": "NINGBO, CHINA",
+      "port_of_discharge": "BUSAN, KOREA",
+      "container_numbers": [
+        "NGCU7842386"
+      ],
+      "seal_numbers": [
+        "NGC6548252"
+      ],
+      "total_packages": 119,
+      "package_type": "CARTONS",
+      "gross_weight_kg": 7021.0,
+      "measurement_cbm": 53.55,
+      "cargo_description": [
+        "WOODEN BEDROOM WARDROBE, KNOCK-DOWN, OAK VENEER"
+      ],
+      "freight_terms": "FREIGHT PREPAID",
+      "on_board_date": "2026-11-06"
+    },
+    "commercial_invoice": {
+      "invoice_no": "NTF-2611-604",
+      "invoice_date": "2026-11-04",
+      "po_no": "PO-NLR-26-5583",
+      "seller_name": "NINGBO TIMBERCRAFT FURNITURE CO., LTD.",
+      "buyer_name": "NAMPO LIVING RETAIL CO., LTD.",
+      "incoterms": "CIF",
+      "incoterms_place": "BUSAN",
+      "currency": "USD",
+      "payment_terms": "T/T IN ADVANCE",
+      "line_items": [
+        {
+          "description": "WOODEN BEDROOM WARDROBE, KNOCK-DOWN, OAK VENEER",
+          "quantity": 119,
+          "unit": "SETS",
+          "unit_price": 172.82,
+          "amount": 20565.58
+        }
+      ],
+      "total_amount": 20565.58,
+      "freight_amount": null,
+      "insurance_amount": null,
+      "country_of_origin": "CHINA"
+    },
+    "packing_list": {
+      "invoice_no_ref": "NTF-2611-604",
+      "date": "2026-11-04",
+      "shipper_name": "NINGBO TIMBERCRAFT FURNITURE CO., LTD.",
+      "consignee_name": "NAMPO LIVING RETAIL CO., LTD.",
+      "line_items": [
+        {
+          "description": "WOODEN BEDROOM WARDROBE, KNOCK-DOWN, OAK VENEER",
+          "quantity": 119,
+          "packages": 119,
+          "net_weight_kg": 6545.0,
+          "gross_weight_kg": 7021.0,
+          "cbm": 53.55
+        }
+      ],
+      "total_packages": 119,
+      "total_net_weight_kg": 6545.0,
+      "total_gross_weight_kg": 7021.0,
+      "total_cbm": 53.55,
+      "shipping_marks": [
+        "NLR",
+        "BUSAN, KOREA",
+        "C/NO. 1-119",
+        "MADE IN CHINA"
+      ]
+    },
+    "certificate_of_origin": {
+      "certificate_no": "CO26CN157325",
+      "issue_date": "2026-11-06",
+      "exporter_name": "NINGBO TIMBERCRAFT FURNITURE CO., LTD.",
+      "consignee_name": "NAMPO LIVING RETAIL CO., LTD.",
+      "country_of_origin": "CHINA",
+      "invoice_no_ref": "NTF-2611-604",
+      "invoice_date_ref": "2026-11-04",
+      "items": [
+        {
+          "description": "WOODEN BEDROOM WARDROBE, KNOCK-DOWN, OAK VENEER",
+          "hs_code": "940350",
+          "quantity": 119,
+          "unit": "SETS"
+        }
+      ],
+      "transport": "NORTHGATE MERIDIAN 037N / NINGBO, CHINA TO BUSAN, KOREA"
+    }
+  },
+  "injected_errors": [],
+  "expected_findings": [
+    {
+      "rule": "party_consistency",
+      "severity": "info",
+      "documents": [
+        "bill_of_lading",
+        "commercial_invoice"
+      ],
+      "note": "지시식 B/L이라 Consignee가 Buyer와 다름. 오류가 아니라 참고"
+    }
+  ]
+}

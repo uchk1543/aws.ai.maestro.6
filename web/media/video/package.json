@@ -1,0 +1,23 @@
+{
+  "name": "team6-workflow-video",
+  "private": true,
+  "version": "1.0.0",
+  "description": "6팀 부산항 수입 서류 자동화 Agent 워크플로 영상 (Remotion)",
+  "scripts": {
+    "assets": "python prepare_assets.py",
+    "studio": "remotion studio src/index.ts",
+    "still": "remotion still src/index.ts Workflow",
+    "render": "remotion render src/index.ts Workflow out/team6_workflow.mp4 --codec=h264 --crf=18"
+  },
+  "dependencies": {
+    "@react-three/fiber": "8.18.0",
+    "@remotion/cli": "4.0.538",
+    "@remotion/google-fonts": "4.0.538",
+    "@remotion/media": "4.0.538",
+    "@remotion/three": "4.0.538",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.538",
+    "three": "0.170.0"
+  }
+}

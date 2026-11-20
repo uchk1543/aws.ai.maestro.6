@@ -1,0 +1,267 @@
+{
+  "set_id": "SET-002",
+  "scenario": "normal",
+  "generated_with": {
+    "seed": 20261120,
+    "base_date": "2026-11-19"
+  },
+  "template_variants": {
+    "bill_of_lading": "B",
+    "commercial_invoice": "A",
+    "packing_list": "B",
+    "certificate_of_origin": "A"
+  },
+  "files": {
+    "bill_of_lading": "bl.pdf",
+    "commercial_invoice": "invoice.pdf",
+    "packing_list": "packing_list.pdf",
+    "certificate_of_origin": "certificate_of_origin.pdf"
+  },
+  "corrected_files": {},
+  "scans": [],
+  "shipment_truth": {
+    "set_id": "SET-002",
+    "shipper": {
+      "name": "LOTUS DIGITAL MANUFACTURING CO., LTD.",
+      "address": [
+        "BLOCK C, 16 KEJI SOUTH ROAD, NANSHAN DISTRICT",
+        "SHENZHEN 518057, CHINA"
+      ]
+    },
+    "seller": {
+      "name": "LOTUS DIGITAL MANUFACTURING CO., LTD.",
+      "address": [
+        "BLOCK C, 16 KEJI SOUTH ROAD, NANSHAN DISTRICT",
+        "SHENZHEN 518057, CHINA"
+      ]
+    },
+    "consignee": {
+      "name": "HAEUNDAE TRADING CO., LTD.",
+      "address": [
+        "120, MARINE CITY 2-RO, HAEUNDAE-GU",
+        "BUSAN 48120, KOREA"
+      ]
+    },
+    "notify_party": {
+      "name": "HAEUNDAE TRADING CO., LTD.",
+      "address": [
+        "120, MARINE CITY 2-RO, HAEUNDAE-GU",
+        "BUSAN 48120, KOREA"
+      ]
+    },
+    "buyer": {
+      "name": "HAEUNDAE TRADING CO., LTD.",
+      "address": [
+        "120, MARINE CITY 2-RO, HAEUNDAE-GU",
+        "BUSAN 48120, KOREA"
+      ],
+      "short": "HDT"
+    },
+    "carrier": "NORTHGATE CONTAINER LINES",
+    "bl_no": "NGC2611341567",
+    "vessel": "NORTHGATE MERIDIAN",
+    "voyage": "064E",
+    "port_of_loading": {
+      "locode": "CNYTN",
+      "name": "YANTIAN, SHENZHEN, CHINA"
+    },
+    "port_of_discharge": {
+      "locode": "KRPUS",
+      "name": "BUSAN, KOREA"
+    },
+    "on_board_date": "2026-11-06",
+    "freight_terms": "FREIGHT PREPAID",
+    "containers": [
+      {
+        "container_no": "NGCU0162601",
+        "seal_no": "NGC5041176",
+        "type": "20GP"
+      }
+    ],
+    "reefer_temp": null,
+    "invoice_no": "LDM-2611-461",
+    "invoice_date": "2026-11-01",
+    "po_no": "PO-HDT-26-7906",
+    "incoterms": "CIF",
+    "incoterms_place": "BUSAN",
+    "currency": "USD",
+    "payment_terms": "T/T IN ADVANCE",
+    "freight_amount": null,
+    "insurance_amount": null,
+    "withheld_customs_value": null,
+    "country_of_origin": "CHINA",
+    "co_certificate_no": "CO26CN146192",
+    "co_issue_date": "2026-11-05",
+    "items": [
+      {
+        "line_no": 1,
+        "item_key": "notebook",
+        "item_code": "LD-NB14I5",
+        "description": "NOTEBOOK COMPUTER 14 INCH, 16GB RAM, 512GB SSD",
+        "quantity": 770,
+        "unit": "PCS",
+        "unit_price": 492.41,
+        "amount": 379155.7,
+        "packages": 154,
+        "package_type": "CARTONS",
+        "net_weight_kg": 1078.0,
+        "gross_weight_kg": 1386.0,
+        "cbm": 7.7,
+        "hs6_expected": "847130",
+        "hs6_declared_on_co": "847130"
+      },
+      {
+        "line_no": 2,
+        "item_key": "smartphone",
+        "item_code": "LD-SP65128",
+        "description": "SMARTPHONE 6.5 INCH 128GB, UNLOCKED",
+        "quantity": 2560,
+        "unit": "PCS",
+        "unit_price": 169.36,
+        "amount": 433561.6,
+        "packages": 128,
+        "package_type": "CARTONS",
+        "net_weight_kg": 512.0,
+        "gross_weight_kg": 704.0,
+        "cbm": 3.84,
+        "hs6_expected": "851713",
+        "hs6_declared_on_co": "851713"
+      }
+    ],
+    "totals": {
+      "quantity": 3330,
+      "amount": 812717.3,
+      "packages": 282,
+      "package_type": "CARTONS",
+      "net_weight_kg": 1590.0,
+      "gross_weight_kg": 2090.0,
+      "cbm": 11.54
+    },
+    "shipping_marks": [
+      "HDT",
+      "BUSAN, KOREA",
+      "C/NO. 1-282",
+      "MADE IN CHINA"
+    ]
+  },
+  "printed_fields": {
+    "bill_of_lading": {
+      "bl_no": "NGC2611341567",
+      "carrier": "NORTHGATE CONTAINER LINES",
+      "shipper_name": "LOTUS DIGITAL MANUFACTURING CO., LTD.",
+      "consignee_name": "HAEUNDAE TRADING CO., LTD.",
+      "notify_party_name": "HAEUNDAE TRADING CO., LTD.",
+      "vessel": "NORTHGATE MERIDIAN",
+      "voyage": "064E",
+      "port_of_loading": "YANTIAN, SHENZHEN, CHINA",
+      "port_of_discharge": "BUSAN, KOREA",
+      "container_numbers": [
+        "NGCU0162601"
+      ],
+      "seal_numbers": [
+        "NGC5041176"
+      ],
+      "total_packages": 282,
+      "package_type": "CARTONS",
+      "gross_weight_kg": 2090.0,
+      "measurement_cbm": 11.54,
+      "cargo_description": [
+        "NOTEBOOK COMPUTER 14 INCH, 16GB RAM, 512GB SSD",
+        "SMARTPHONE 6.5 INCH 128GB, UNLOCKED"
+      ],
+      "freight_terms": "FREIGHT PREPAID",
+      "on_board_date": "2026-11-06"
+    },
+    "commercial_invoice": {
+      "invoice_no": "LDM-2611-461",
+      "invoice_date": "2026-11-01",
+      "po_no": "PO-HDT-26-7906",
+      "seller_name": "LOTUS DIGITAL MANUFACTURING CO., LTD.",
+      "buyer_name": "HAEUNDAE TRADING CO., LTD.",
+      "incoterms": "CIF",
+      "incoterms_place": "BUSAN",
+      "currency": "USD",
+      "payment_terms": "T/T IN ADVANCE",
+      "line_items": [
+        {
+          "description": "NOTEBOOK COMPUTER 14 INCH, 16GB RAM, 512GB SSD",
+          "quantity": 770,
+          "unit": "PCS",
+          "unit_price": 492.41,
+          "amount": 379155.7
+        },
+        {
+          "description": "SMARTPHONE 6.5 INCH 128GB, UNLOCKED",
+          "quantity": 2560,
+          "unit": "PCS",
+          "unit_price": 169.36,
+          "amount": 433561.6
+        }
+      ],
+      "total_amount": 812717.3,
+      "freight_amount": null,
+      "insurance_amount": null,
+      "country_of_origin": "CHINA"
+    },
+    "packing_list": {
+      "invoice_no_ref": "LDM-2611-461",
+      "date": "2026-11-01",
+      "shipper_name": "LOTUS DIGITAL MANUFACTURING CO., LTD.",
+      "consignee_name": "HAEUNDAE TRADING CO., LTD.",
+      "line_items": [
+        {
+          "description": "NOTEBOOK COMPUTER 14 INCH, 16GB RAM, 512GB SSD",
+          "quantity": 770,
+          "packages": 154,
+          "net_weight_kg": 1078.0,
+          "gross_weight_kg": 1386.0,
+          "cbm": 7.7
+        },
+        {
+          "description": "SMARTPHONE 6.5 INCH 128GB, UNLOCKED",
+          "quantity": 2560,
+          "packages": 128,
+          "net_weight_kg": 512.0,
+          "gross_weight_kg": 704.0,
+          "cbm": 3.84
+        }
+      ],
+      "total_packages": 282,
+      "total_net_weight_kg": 1590.0,
+      "total_gross_weight_kg": 2090.0,
+      "total_cbm": 11.54,
+      "shipping_marks": [
+        "HDT",
+        "BUSAN, KOREA",
+        "C/NO. 1-282",
+        "MADE IN CHINA"
+      ]
+    },
+    "certificate_of_origin": {
+      "certificate_no": "CO26CN146192",
+      "issue_date": "2026-11-05",
+      "exporter_name": "LOTUS DIGITAL MANUFACTURING CO., LTD.",
+      "consignee_name": "HAEUNDAE TRADING CO., LTD.",
+      "country_of_origin": "CHINA",
+      "invoice_no_ref": "LDM-2611-461",
+      "invoice_date_ref": "2026-11-01",
+      "items": [
+        {
+          "description": "NOTEBOOK COMPUTER 14 INCH, 16GB RAM, 512GB SSD",
+          "hs_code": "847130",
+          "quantity": 770,
+          "unit": "PCS"
+        },
+        {
+          "description": "SMARTPHONE 6.5 INCH 128GB, UNLOCKED",
+          "hs_code": "851713",
+          "quantity": 2560,
+          "unit": "PCS"
+        }
+      ],
+      "transport": "NORTHGATE MERIDIAN 064E / YANTIAN, SHENZHEN, CHINA TO BUSAN, KOREA"
+    }
+  },
+  "injected_errors": [],
+  "expected_findings": []
+}

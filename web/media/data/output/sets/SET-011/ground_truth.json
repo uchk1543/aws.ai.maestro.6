@@ -1,0 +1,288 @@
+{
+  "set_id": "SET-011",
+  "scenario": "error",
+  "generated_with": {
+    "seed": 20261120,
+    "base_date": "2026-11-19"
+  },
+  "template_variants": {
+    "bill_of_lading": "A",
+    "commercial_invoice": "B",
+    "packing_list": "A",
+    "certificate_of_origin": "B"
+  },
+  "files": {
+    "bill_of_lading": "bl.pdf",
+    "commercial_invoice": "invoice.pdf",
+    "packing_list": "packing_list.pdf",
+    "certificate_of_origin": "certificate_of_origin.pdf"
+  },
+  "corrected_files": {
+    "bill_of_lading": "corrected/bl.pdf",
+    "commercial_invoice": "corrected/invoice.pdf",
+    "packing_list": "corrected/packing_list.pdf",
+    "certificate_of_origin": "corrected/certificate_of_origin.pdf"
+  },
+  "scans": [
+    "scans/bl.jpg",
+    "scans/invoice.jpg",
+    "scans/packing_list.jpg",
+    "scans/certificate_of_origin.jpg"
+  ],
+  "shipment_truth": {
+    "set_id": "SET-011",
+    "shipper": {
+      "name": "EASTWIND POWER SOLUTIONS CO., LTD.",
+      "address": [
+        "NO. 88 JINQIAO ROAD, PUDONG NEW DISTRICT",
+        "SHANGHAI 201206, CHINA"
+      ]
+    },
+    "seller": {
+      "name": "EASTWIND POWER SOLUTIONS CO., LTD.",
+      "address": [
+        "NO. 88 JINQIAO ROAD, PUDONG NEW DISTRICT",
+        "SHANGHAI 201206, CHINA"
+      ]
+    },
+    "consignee": {
+      "name": "BUSAN TECH CO., LTD.",
+      "address": [
+        "45, CENTUM JUNGANG-RO, HAEUNDAE-GU",
+        "BUSAN 48058, KOREA"
+      ]
+    },
+    "notify_party": {
+      "name": "BUSAN TECH CO., LTD.",
+      "address": [
+        "45, CENTUM JUNGANG-RO, HAEUNDAE-GU",
+        "BUSAN 48058, KOREA"
+      ]
+    },
+    "buyer": {
+      "name": "BUSAN TECH CO., LTD.",
+      "address": [
+        "45, CENTUM JUNGANG-RO, HAEUNDAE-GU",
+        "BUSAN 48058, KOREA"
+      ],
+      "short": "BTC"
+    },
+    "carrier": "PACIFIC STAR SHIPPING",
+    "bl_no": "PSS2611979784",
+    "vessel": "PACIFIC DAWN",
+    "voyage": "070W",
+    "port_of_loading": {
+      "locode": "CNSHA",
+      "name": "SHANGHAI, CHINA"
+    },
+    "port_of_discharge": {
+      "locode": "KRPUS",
+      "name": "BUSAN, KOREA"
+    },
+    "on_board_date": "2026-11-18",
+    "freight_terms": "FREIGHT PREPAID",
+    "containers": [
+      {
+        "container_no": "PSSU6789535",
+        "seal_no": "PSS7365141",
+        "type": "20GP"
+      }
+    ],
+    "reefer_temp": null,
+    "invoice_no": "EWP-2611-775",
+    "invoice_date": "2026-11-14",
+    "po_no": "PO-BTC-26-9375",
+    "incoterms": "CIF",
+    "incoterms_place": "BUSAN",
+    "currency": "USD",
+    "payment_terms": "T/T 30 DAYS AFTER B/L DATE",
+    "freight_amount": null,
+    "insurance_amount": null,
+    "withheld_customs_value": null,
+    "country_of_origin": "CHINA",
+    "co_certificate_no": "CO26CN280866",
+    "co_issue_date": "2026-11-18",
+    "items": [
+      {
+        "line_no": 1,
+        "item_key": "battery",
+        "item_code": "EW-BP48100",
+        "description": "LITHIUM-ION BATTERY PACK 48V 100AH",
+        "quantity": 268,
+        "unit": "PCS",
+        "unit_price": 2145.74,
+        "amount": 575058.32,
+        "packages": 134,
+        "package_type": "CARTONS",
+        "net_weight_kg": 12060.0,
+        "gross_weight_kg": 12462.0,
+        "cbm": 16.08,
+        "hs6_expected": "850760",
+        "hs6_declared_on_co": "850760"
+      }
+    ],
+    "totals": {
+      "quantity": 268,
+      "amount": 575058.32,
+      "packages": 134,
+      "package_type": "CARTONS",
+      "net_weight_kg": 12060.0,
+      "gross_weight_kg": 12462.0,
+      "cbm": 16.08
+    },
+    "shipping_marks": [
+      "BTC",
+      "BUSAN, KOREA",
+      "C/NO. 1-134",
+      "MADE IN CHINA"
+    ]
+  },
+  "printed_fields": {
+    "bill_of_lading": {
+      "bl_no": "PSS2611979784",
+      "carrier": "PACIFIC STAR SHIPPING",
+      "shipper_name": "EASTWIND POWER SOLUTIONS CO., LTD.",
+      "consignee_name": "BUSAN TECH CO., LTD.",
+      "notify_party_name": "BUSAN TECH CO., LTD.",
+      "vessel": "PACIFIC DAWN",
+      "voyage": "070W",
+      "port_of_loading": "SHANGHAI, CHINA",
+      "port_of_discharge": "BUSAN, KOREA",
+      "container_numbers": [
+        "PSSU6789536"
+      ],
+      "seal_numbers": [
+        "PSS7365141"
+      ],
+      "total_packages": 134,
+      "package_type": "CARTONS",
+      "gross_weight_kg": 12462.0,
+      "measurement_cbm": 16.08,
+      "cargo_description": [
+        "LITHIUM-ION BATTERY PACK 48V 100AH"
+      ],
+      "freight_terms": "FREIGHT PREPAID",
+      "on_board_date": "2026-11-18"
+    },
+    "commercial_invoice": {
+      "invoice_no": "EWP-2611-775",
+      "invoice_date": "2026-11-14",
+      "po_no": "PO-BTC-26-9375",
+      "seller_name": "EASTWIND POWER SOLUTIONS CO., LTD.",
+      "buyer_name": "BUSAN TECH CO., LTD.",
+      "incoterms": "CIF",
+      "incoterms_place": "BUSAN",
+      "currency": "USD",
+      "payment_terms": "T/T 30 DAYS AFTER B/L DATE",
+      "line_items": [
+        {
+          "description": "LITHIUM-ION BATTERY PACK 48V 100AH",
+          "quantity": 268,
+          "unit": "PCS",
+          "unit_price": 2145.74,
+          "amount": 575058.32
+        }
+      ],
+      "total_amount": 575058.32,
+      "freight_amount": null,
+      "insurance_amount": null,
+      "country_of_origin": "CHINA"
+    },
+    "packing_list": {
+      "invoice_no_ref": "EWP-2611-775",
+      "date": "2026-11-14",
+      "shipper_name": "EASTWIND POWER SOLUTIONS CO., LTD.",
+      "consignee_name": "BUSAN TECH CO., LTD.",
+      "line_items": [
+        {
+          "description": "LITHIUM-ION BATTERY PACK 48V 100AH",
+          "quantity": 268,
+          "packages": 134,
+          "net_weight_kg": 12060.0,
+          "gross_weight_kg": 12462.0,
+          "cbm": 16.08
+        }
+      ],
+      "total_packages": 134,
+      "total_net_weight_kg": 12060.0,
+      "total_gross_weight_kg": 21462.0,
+      "total_cbm": 16.08,
+      "shipping_marks": [
+        "BTC",
+        "BUSAN, KOREA",
+        "C/NO. 1-134",
+        "MADE IN CHINA"
+      ]
+    },
+    "certificate_of_origin": {
+      "certificate_no": "CO26CN280866",
+      "issue_date": "2026-11-18",
+      "exporter_name": "EASTWIND POWER SOLUTIONS CO., LTD.",
+      "consignee_name": "BUSAN TECH CO., LTD.",
+      "country_of_origin": "CHINA",
+      "invoice_no_ref": "EWP-2611-775",
+      "invoice_date_ref": "2026-11-14",
+      "items": [
+        {
+          "description": "LITHIUM-ION BATTERY PACK 48V 100AH",
+          "hs_code": "850760",
+          "quantity": 268,
+          "unit": "PCS"
+        }
+      ],
+      "transport": "PACIFIC DAWN 070W / SHANGHAI, CHINA TO BUSAN, KOREA"
+    }
+  },
+  "injected_errors": [
+    {
+      "error_type": "gross_weight_digit_swap",
+      "rule": "gross_weight_match",
+      "documents": [
+        "bill_of_lading",
+        "packing_list"
+      ],
+      "expected_result": "error",
+      "document": "packing_list",
+      "field": "total_gross_weight_kg",
+      "correct_value": 12462.0,
+      "printed_value": 21462.0
+    },
+    {
+      "error_type": "container_check_digit",
+      "rule": "container_check_digit",
+      "documents": [
+        "bill_of_lading"
+      ],
+      "expected_result": "error",
+      "document": "bill_of_lading",
+      "field": "container_numbers[0]",
+      "correct_value": "PSSU6789535",
+      "printed_value": "PSSU6789536"
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule": "gross_weight_match",
+      "severity": "error",
+      "documents": [
+        "bill_of_lading",
+        "packing_list"
+      ]
+    },
+    {
+      "rule": "container_check_digit",
+      "severity": "error",
+      "documents": [
+        "bill_of_lading"
+      ]
+    },
+    {
+      "rule": "pl_gross_weight_sum",
+      "severity": "error",
+      "documents": [
+        "packing_list"
+      ],
+      "note": "PL 품목별 총중량 합계와 PL 합계 칸이 다름. 잡아내면 추가 점수"
+    }
+  ]
+}

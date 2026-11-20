@@ -1,0 +1,276 @@
+{
+  "set_id": "SET-009",
+  "scenario": "normal",
+  "generated_with": {
+    "seed": 20261120,
+    "base_date": "2026-11-19"
+  },
+  "template_variants": {
+    "bill_of_lading": "A",
+    "commercial_invoice": "B",
+    "packing_list": "A",
+    "certificate_of_origin": "B"
+  },
+  "files": {
+    "bill_of_lading": "bl.pdf",
+    "commercial_invoice": "invoice.pdf",
+    "packing_list": "packing_list.pdf",
+    "certificate_of_origin": "certificate_of_origin.pdf"
+  },
+  "corrected_files": {},
+  "scans": [],
+  "shipment_truth": {
+    "set_id": "SET-009",
+    "shipper": {
+      "name": "LOTUS DIGITAL MANUFACTURING CO., LTD.",
+      "address": [
+        "BLOCK C, 16 KEJI SOUTH ROAD, NANSHAN DISTRICT",
+        "SHENZHEN 518057, CHINA"
+      ]
+    },
+    "seller": {
+      "name": "LOTUS DIGITAL MANUFACTURING CO., LTD.",
+      "address": [
+        "BLOCK C, 16 KEJI SOUTH ROAD, NANSHAN DISTRICT",
+        "SHENZHEN 518057, CHINA"
+      ]
+    },
+    "consignee": {
+      "name": "HAEUNDAE TRADING CO., LTD.",
+      "address": [
+        "120, MARINE CITY 2-RO, HAEUNDAE-GU",
+        "BUSAN 48120, KOREA"
+      ]
+    },
+    "notify_party": {
+      "name": "HAEUNDAE TRADING CO., LTD.",
+      "address": [
+        "120, MARINE CITY 2-RO, HAEUNDAE-GU",
+        "BUSAN 48120, KOREA"
+      ]
+    },
+    "buyer": {
+      "name": "HAEUNDAE TRADING CO., LTD.",
+      "address": [
+        "120, MARINE CITY 2-RO, HAEUNDAE-GU",
+        "BUSAN 48120, KOREA"
+      ],
+      "short": "HDT"
+    },
+    "carrier": "NORTHGATE CONTAINER LINES",
+    "bl_no": "NGC2610839246",
+    "vessel": "NORTHGATE MERIDIAN",
+    "voyage": "093W",
+    "port_of_loading": {
+      "locode": "CNYTN",
+      "name": "YANTIAN, SHENZHEN, CHINA"
+    },
+    "port_of_discharge": {
+      "locode": "KRPUS",
+      "name": "BUSAN, KOREA"
+    },
+    "on_board_date": "2026-10-29",
+    "freight_terms": "FREIGHT PREPAID",
+    "containers": [
+      {
+        "container_no": "NGCU1922801",
+        "seal_no": "NGC7980840",
+        "type": "20GP"
+      }
+    ],
+    "reefer_temp": null,
+    "invoice_no": "LDM-2610-126",
+    "invoice_date": "2026-10-28",
+    "po_no": "PO-HDT-26-4800",
+    "incoterms": "CIF",
+    "incoterms_place": "BUSAN",
+    "currency": "USD",
+    "payment_terms": "T/T IN ADVANCE",
+    "freight_amount": null,
+    "insurance_amount": null,
+    "withheld_customs_value": null,
+    "country_of_origin": "CHINA",
+    "co_certificate_no": "CO26CN820406",
+    "co_issue_date": "2026-10-29",
+    "items": [
+      {
+        "line_no": 1,
+        "item_key": "smartphone",
+        "item_code": "LD-SP65128",
+        "description": "SMARTPHONE 6.5 INCH 128GB, UNLOCKED",
+        "quantity": 2080,
+        "unit": "PCS",
+        "unit_price": 173.85,
+        "amount": 361608.0,
+        "packages": 104,
+        "package_type": "CARTONS",
+        "net_weight_kg": 416.0,
+        "gross_weight_kg": 572.0,
+        "cbm": 3.12,
+        "hs6_expected": "851713",
+        "hs6_declared_on_co": "851713"
+      },
+      {
+        "line_no": 2,
+        "item_key": "elec_components",
+        "item_code": "LD-EC-0001",
+        "description": "ELECTRONIC COMPONENTS",
+        "quantity": 7000,
+        "unit": "PCS",
+        "unit_price": 1.253,
+        "amount": 8771.0,
+        "packages": 35,
+        "package_type": "CARTONS",
+        "net_weight_kg": 70.0,
+        "gross_weight_kg": 105.0,
+        "cbm": 0.7,
+        "hs6_expected": null,
+        "hs6_declared_on_co": "854239"
+      }
+    ],
+    "totals": {
+      "quantity": 9080,
+      "amount": 370379.0,
+      "packages": 139,
+      "package_type": "CARTONS",
+      "net_weight_kg": 486.0,
+      "gross_weight_kg": 677.0,
+      "cbm": 3.82
+    },
+    "shipping_marks": [
+      "HDT",
+      "BUSAN, KOREA",
+      "C/NO. 1-139",
+      "MADE IN CHINA"
+    ]
+  },
+  "printed_fields": {
+    "bill_of_lading": {
+      "bl_no": "NGC2610839246",
+      "carrier": "NORTHGATE CONTAINER LINES",
+      "shipper_name": "LOTUS DIGITAL MANUFACTURING CO., LTD.",
+      "consignee_name": "HAEUNDAE TRADING CO., LTD.",
+      "notify_party_name": "HAEUNDAE TRADING CO., LTD.",
+      "vessel": "NORTHGATE MERIDIAN",
+      "voyage": "093W",
+      "port_of_loading": "YANTIAN, SHENZHEN, CHINA",
+      "port_of_discharge": "BUSAN, KOREA",
+      "container_numbers": [
+        "NGCU1922801"
+      ],
+      "seal_numbers": [
+        "NGC7980840"
+      ],
+      "total_packages": 139,
+      "package_type": "CARTONS",
+      "gross_weight_kg": 677.0,
+      "measurement_cbm": 3.82,
+      "cargo_description": [
+        "SMARTPHONE 6.5 INCH 128GB, UNLOCKED",
+        "ELECTRONIC COMPONENTS"
+      ],
+      "freight_terms": "FREIGHT PREPAID",
+      "on_board_date": "2026-10-29"
+    },
+    "commercial_invoice": {
+      "invoice_no": "LDM-2610-126",
+      "invoice_date": "2026-10-28",
+      "po_no": "PO-HDT-26-4800",
+      "seller_name": "LOTUS DIGITAL MANUFACTURING CO., LTD.",
+      "buyer_name": "HAEUNDAE TRADING CO., LTD.",
+      "incoterms": "CIF",
+      "incoterms_place": "BUSAN",
+      "currency": "USD",
+      "payment_terms": "T/T IN ADVANCE",
+      "line_items": [
+        {
+          "description": "SMARTPHONE 6.5 INCH 128GB, UNLOCKED",
+          "quantity": 2080,
+          "unit": "PCS",
+          "unit_price": 173.85,
+          "amount": 361608.0
+        },
+        {
+          "description": "ELECTRONIC COMPONENTS",
+          "quantity": 7000,
+          "unit": "PCS",
+          "unit_price": 1.253,
+          "amount": 8771.0
+        }
+      ],
+      "total_amount": 370379.0,
+      "freight_amount": null,
+      "insurance_amount": null,
+      "country_of_origin": "CHINA"
+    },
+    "packing_list": {
+      "invoice_no_ref": "LDM-2610-126",
+      "date": "2026-10-28",
+      "shipper_name": "LOTUS DIGITAL MANUFACTURING CO., LTD.",
+      "consignee_name": "HAEUNDAE TRADING CO., LTD.",
+      "line_items": [
+        {
+          "description": "SMARTPHONE 6.5 INCH 128GB, UNLOCKED",
+          "quantity": 2080,
+          "packages": 104,
+          "net_weight_kg": 416.0,
+          "gross_weight_kg": 572.0,
+          "cbm": 3.12
+        },
+        {
+          "description": "ELECTRONIC COMPONENTS",
+          "quantity": 7000,
+          "packages": 35,
+          "net_weight_kg": 70.0,
+          "gross_weight_kg": 105.0,
+          "cbm": 0.7
+        }
+      ],
+      "total_packages": 139,
+      "total_net_weight_kg": 486.0,
+      "total_gross_weight_kg": 677.0,
+      "total_cbm": 3.82,
+      "shipping_marks": [
+        "HDT",
+        "BUSAN, KOREA",
+        "C/NO. 1-139",
+        "MADE IN CHINA"
+      ]
+    },
+    "certificate_of_origin": {
+      "certificate_no": "CO26CN820406",
+      "issue_date": "2026-10-29",
+      "exporter_name": "LOTUS DIGITAL MANUFACTURING CO., LTD.",
+      "consignee_name": "HAEUNDAE TRADING CO., LTD.",
+      "country_of_origin": "CHINA",
+      "invoice_no_ref": "LDM-2610-126",
+      "invoice_date_ref": "2026-10-28",
+      "items": [
+        {
+          "description": "SMARTPHONE 6.5 INCH 128GB, UNLOCKED",
+          "hs_code": "851713",
+          "quantity": 2080,
+          "unit": "PCS"
+        },
+        {
+          "description": "ELECTRONIC COMPONENTS",
+          "hs_code": "854239",
+          "quantity": 7000,
+          "unit": "PCS"
+        }
+      ],
+      "transport": "NORTHGATE MERIDIAN 093W / YANTIAN, SHENZHEN, CHINA TO BUSAN, KOREA"
+    }
+  },
+  "injected_errors": [],
+  "expected_findings": [
+    {
+      "rule": "hs_clarification_needed",
+      "severity": "info",
+      "documents": [
+        "commercial_invoice"
+      ],
+      "note": "'ELECTRONIC COMPONENTS' 품명만으로 HS 분류 불가. 재질·용도를 되물어야 함"
+    }
+  ]
+}

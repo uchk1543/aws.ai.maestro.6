@@ -1,0 +1,272 @@
+{
+  "set_id": "SET-001",
+  "scenario": "normal",
+  "generated_with": {
+    "seed": 20261120,
+    "base_date": "2026-11-19"
+  },
+  "template_variants": {
+    "bill_of_lading": "A",
+    "commercial_invoice": "B",
+    "packing_list": "A",
+    "certificate_of_origin": "B"
+  },
+  "files": {
+    "bill_of_lading": "bl.pdf",
+    "commercial_invoice": "invoice.pdf",
+    "packing_list": "packing_list.pdf",
+    "certificate_of_origin": "certificate_of_origin.pdf"
+  },
+  "corrected_files": {},
+  "scans": [
+    "scans/bl.jpg",
+    "scans/invoice.jpg",
+    "scans/packing_list.jpg",
+    "scans/certificate_of_origin.jpg"
+  ],
+  "shipment_truth": {
+    "set_id": "SET-001",
+    "shipper": {
+      "name": "EASTWIND POWER SOLUTIONS CO., LTD.",
+      "address": [
+        "NO. 88 JINQIAO ROAD, PUDONG NEW DISTRICT",
+        "SHANGHAI 201206, CHINA"
+      ]
+    },
+    "seller": {
+      "name": "EASTWIND POWER SOLUTIONS CO., LTD.",
+      "address": [
+        "NO. 88 JINQIAO ROAD, PUDONG NEW DISTRICT",
+        "SHANGHAI 201206, CHINA"
+      ]
+    },
+    "consignee": {
+      "name": "BUSAN TECH CO., LTD.",
+      "address": [
+        "45, CENTUM JUNGANG-RO, HAEUNDAE-GU",
+        "BUSAN 48058, KOREA"
+      ]
+    },
+    "notify_party": {
+      "name": "BUSAN TECH CO., LTD.",
+      "address": [
+        "45, CENTUM JUNGANG-RO, HAEUNDAE-GU",
+        "BUSAN 48058, KOREA"
+      ]
+    },
+    "buyer": {
+      "name": "BUSAN TECH CO., LTD.",
+      "address": [
+        "45, CENTUM JUNGANG-RO, HAEUNDAE-GU",
+        "BUSAN 48058, KOREA"
+      ],
+      "short": "BTC"
+    },
+    "carrier": "PACIFIC STAR SHIPPING",
+    "bl_no": "PSS2611232398",
+    "vessel": "PACIFIC DAWN",
+    "voyage": "028S",
+    "port_of_loading": {
+      "locode": "CNSHA",
+      "name": "SHANGHAI, CHINA"
+    },
+    "port_of_discharge": {
+      "locode": "KRPUS",
+      "name": "BUSAN, KOREA"
+    },
+    "on_board_date": "2026-11-02",
+    "freight_terms": "FREIGHT PREPAID",
+    "containers": [
+      {
+        "container_no": "PSSU9686206",
+        "seal_no": "PSS8120033",
+        "type": "20GP"
+      }
+    ],
+    "reefer_temp": null,
+    "invoice_no": "EWP-2610-237",
+    "invoice_date": "2026-10-28",
+    "po_no": "PO-BTC-26-7019",
+    "incoterms": "CIF",
+    "incoterms_place": "BUSAN",
+    "currency": "USD",
+    "payment_terms": "T/T IN ADVANCE",
+    "freight_amount": null,
+    "insurance_amount": null,
+    "withheld_customs_value": null,
+    "country_of_origin": "CHINA",
+    "co_certificate_no": "CO26CN264346",
+    "co_issue_date": "2026-11-01",
+    "items": [
+      {
+        "line_no": 1,
+        "item_key": "battery",
+        "item_code": "EW-BP48100",
+        "description": "LITHIUM-ION BATTERY PACK 48V 100AH",
+        "quantity": 194,
+        "unit": "PCS",
+        "unit_price": 2231.29,
+        "amount": 432870.26,
+        "packages": 97,
+        "package_type": "CARTONS",
+        "net_weight_kg": 8730.0,
+        "gross_weight_kg": 9021.0,
+        "cbm": 11.64,
+        "hs6_expected": "850760",
+        "hs6_declared_on_co": "850760"
+      },
+      {
+        "line_no": 2,
+        "item_key": "led",
+        "item_code": "EW-LED9E26",
+        "description": "LED LAMP BULB E26 9W 6500K",
+        "quantity": 5700,
+        "unit": "PCS",
+        "unit_price": 0.867,
+        "amount": 4941.9,
+        "packages": 57,
+        "package_type": "CARTONS",
+        "net_weight_kg": 285.0,
+        "gross_weight_kg": 342.0,
+        "cbm": 2.28,
+        "hs6_expected": "853952",
+        "hs6_declared_on_co": "853952"
+      }
+    ],
+    "totals": {
+      "quantity": 5894,
+      "amount": 437812.16,
+      "packages": 154,
+      "package_type": "CARTONS",
+      "net_weight_kg": 9015.0,
+      "gross_weight_kg": 9363.0,
+      "cbm": 13.92
+    },
+    "shipping_marks": [
+      "BTC",
+      "BUSAN, KOREA",
+      "C/NO. 1-154",
+      "MADE IN CHINA"
+    ]
+  },
+  "printed_fields": {
+    "bill_of_lading": {
+      "bl_no": "PSS2611232398",
+      "carrier": "PACIFIC STAR SHIPPING",
+      "shipper_name": "EASTWIND POWER SOLUTIONS CO., LTD.",
+      "consignee_name": "BUSAN TECH CO., LTD.",
+      "notify_party_name": "BUSAN TECH CO., LTD.",
+      "vessel": "PACIFIC DAWN",
+      "voyage": "028S",
+      "port_of_loading": "SHANGHAI, CHINA",
+      "port_of_discharge": "BUSAN, KOREA",
+      "container_numbers": [
+        "PSSU9686206"
+      ],
+      "seal_numbers": [
+        "PSS8120033"
+      ],
+      "total_packages": 154,
+      "package_type": "CARTONS",
+      "gross_weight_kg": 9363.0,
+      "measurement_cbm": 13.92,
+      "cargo_description": [
+        "LITHIUM-ION BATTERY PACK 48V 100AH",
+        "LED LAMP BULB E26 9W 6500K"
+      ],
+      "freight_terms": "FREIGHT PREPAID",
+      "on_board_date": "2026-11-02"
+    },
+    "commercial_invoice": {
+      "invoice_no": "EWP-2610-237",
+      "invoice_date": "2026-10-28",
+      "po_no": "PO-BTC-26-7019",
+      "seller_name": "EASTWIND POWER SOLUTIONS CO., LTD.",
+      "buyer_name": "BUSAN TECH CO., LTD.",
+      "incoterms": "CIF",
+      "incoterms_place": "BUSAN",
+      "currency": "USD",
+      "payment_terms": "T/T IN ADVANCE",
+      "line_items": [
+        {
+          "description": "LITHIUM-ION BATTERY PACK 48V 100AH",
+          "quantity": 194,
+          "unit": "PCS",
+          "unit_price": 2231.29,
+          "amount": 432870.26
+        },
+        {
+          "description": "LED LAMP BULB E26 9W 6500K",
+          "quantity": 5700,
+          "unit": "PCS",
+          "unit_price": 0.867,
+          "amount": 4941.9
+        }
+      ],
+      "total_amount": 437812.16,
+      "freight_amount": null,
+      "insurance_amount": null,
+      "country_of_origin": "CHINA"
+    },
+    "packing_list": {
+      "invoice_no_ref": "EWP-2610-237",
+      "date": "2026-10-28",
+      "shipper_name": "EASTWIND POWER SOLUTIONS CO., LTD.",
+      "consignee_name": "BUSAN TECH CO., LTD.",
+      "line_items": [
+        {
+          "description": "LITHIUM-ION BATTERY PACK 48V 100AH",
+          "quantity": 194,
+          "packages": 97,
+          "net_weight_kg": 8730.0,
+          "gross_weight_kg": 9021.0,
+          "cbm": 11.64
+        },
+        {
+          "description": "LED LAMP BULB E26 9W 6500K",
+          "quantity": 5700,
+          "packages": 57,
+          "net_weight_kg": 285.0,
+          "gross_weight_kg": 342.0,
+          "cbm": 2.28
+        }
+      ],
+      "total_packages": 154,
+      "total_net_weight_kg": 9015.0,
+      "total_gross_weight_kg": 9363.0,
+      "total_cbm": 13.92,
+      "shipping_marks": [
+        "BTC",
+        "BUSAN, KOREA",
+        "C/NO. 1-154",
+        "MADE IN CHINA"
+      ]
+    },
+    "certificate_of_origin": {
+      "certificate_no": "CO26CN264346",
+      "issue_date": "2026-11-01",
+      "exporter_name": "EASTWIND POWER SOLUTIONS CO., LTD.",
+      "consignee_name": "BUSAN TECH CO., LTD.",
+      "country_of_origin": "CHINA",
+      "invoice_no_ref": "EWP-2610-237",
+      "invoice_date_ref": "2026-10-28",
+      "items": [
+        {
+          "description": "LITHIUM-ION BATTERY PACK 48V 100AH",
+          "hs_code": "850760",
+          "quantity": 194,
+          "unit": "PCS"
+        },
+        {
+          "description": "LED LAMP BULB E26 9W 6500K",
+          "hs_code": "853952",
+          "quantity": 5700,
+          "unit": "PCS"
+        }
+      ],
+      "transport": "PACIFIC DAWN 028S / SHANGHAI, CHINA TO BUSAN, KOREA"
+    }
+  },
+  "injected_errors": [],
+  "expected_findings": []
+}

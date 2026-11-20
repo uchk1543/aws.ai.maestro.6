@@ -1,0 +1,74 @@
+[
+ {
+  "scene": "s2_upload_d003",
+  "t": 4.13,
+  "url": "http://localhost:5173/#/dashboard",
+  "note": ""
+ },
+ {
+  "scene": "s2_processing",
+  "t": 10.62,
+  "url": "http://localhost:5173/#/jobs/job-7c1e",
+  "note": "job-7c1e"
+ },
+ {
+  "scene": "s2_done",
+  "t": 22.85,
+  "url": "http://localhost:5173/#/jobs/job-7c1e",
+  "note": "job-7c1e"
+ },
+ {
+  "scene": "s3_dashboard",
+  "t": 25.35,
+  "url": "http://localhost:5173/#/jobs/job-7c1e",
+  "note": ""
+ },
+ {
+  "scene": "s4_review",
+  "t": 35.8,
+  "url": "http://localhost:5173/#/jobs/job-7c1e",
+  "note": "http://localhost:5173/#/jobs/job-7c1e"
+ },
+ {
+  "scene": "s5_hs",
+  "t": 51.13,
+  "url": "http://localhost:5173/#/jobs/job-7c1e",
+  "note": ""
+ },
+ {
+  "scene": "s6_upload_d054",
+  "t": 69.75,
+  "url": "http://localhost:5173/#/jobs/job-7c1e",
+  "note": ""
+ },
+ {
+  "scene": "s6_d054_done",
+  "t": 76.02,
+  "url": "http://localhost:5173/#/jobs/job-7c1e",
+  "note": "job-7c1e"
+ },
+ {
+  "scene": "s6_upload_d064",
+  "t": 94.41,
+  "url": "http://localhost:5173/#/jobs/job-7c1e",
+  "note": ""
+ },
+ {
+  "scene": "s6_d064_done",
+  "t": 100.68,
+  "url": "http://localhost:5173/#/jobs/job-7c1e",
+  "note": "job-7c1e"
+ },
+ {
+  "scene": "s7_hs_pending",
+  "t": 104.83,
+  "url": "http://localhost:5173/#/dashboard",
+  "note": ""
+ },
+ {
+  "scene": "error",
+  "t": 126.67,
+  "url": "http://localhost:5173/#/jobs/job-1a2b",
+  "note": "TimeoutError: Locator.scroll_into_view_if_needed: Timeout 15000ms exceeded.\nCall log:\n  - waiting for get_by_role(\"tab\", name=\"2. 서류 대조\").first\n"
+ }
+]
