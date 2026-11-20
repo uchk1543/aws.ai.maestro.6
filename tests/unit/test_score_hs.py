@@ -98,3 +98,26 @@ def test_실제_정답지로_돌려_틀린_자동_확정이_없다():
         assert r["auto"] + r["human"] == r["rows"]
         assert r["wrong_auto"] == 0
         assert r["answer_not_in_table"] == 0
+
+def test_bedrock_모드는_모델_함수를_부르고_가짜로_바꾸면_Bedrock을_부르지_않는다(table, monkeypatch):
+    """#132: bedrock 모드는 검색어 뽑기와 후보 고르기를 모델에게 맡긴다. 여기서는 _ask_model을 가짜로 바꿔 Bedrock 호출이 없다."""
+    import tools.hs as hs_module
+    from tools.models import HSCandidate, HSPick, HSSearchTerms
+
+    calls = []
+
+    def fake_ask(prompt, user_text, output_model):
+        calls.append(output_model)
+        if output_model is HSSearchTerms:
+            return HSSearchTerms(terms=["lithium battery"])
+        return HSPick(picks=[HSCandidate(hs=ANSWER, name="n", reason="품명 칸")])
+
+    monkeypatch.setattr(hs_module, "_ask_model", fake_ask)
+    r = score_hs(_inputs([_hs_row("D001", item="볼트 같은 엉뚱한 품명")]), table, "bedrock")
+    assert calls == [HSSearchTerms, HSPick]  # 검색어 한 번, 고르기 한 번
+    assert (r["mode"], r["human"], r["human_in_top3"]) == ("bedrock", 1, 1)  # 품명만으로는 못 찾지만 모델 검색어로 찾는다
+
+
+def test_bedrock_모드는_기본_모드_목록에_없다():
+    """돈이 드는 모드라서 --hs만으로는 돌지 않는다."""
+    assert "bedrock" not in HS_MODES
