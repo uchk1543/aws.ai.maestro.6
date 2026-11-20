@@ -1,0 +1,317 @@
+/* 화면 공통 스타일 */
+:root {
+  --bg: #f4f5f7;
+  --panel: #ffffff;
+  --menu: #2f3a4a;
+  --menu-active: #4a5a70;
+  --text: #1f2933;
+  --muted: #6b7785;
+  --line: #d9dee5;
+  --primary: #1f5fbf;
+  --danger: #c0392b;
+  --warn: #b7791f;
+  font-family: system-ui, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+h1 {
+  font-size: 1.4rem;
+  margin: 0 0 0.5rem;
+}
+
+h2 {
+  font-size: 1.05rem;
+  margin: 0 0 0.75rem;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* 왼쪽 메뉴 + 오른쪽 화면 */
+.layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+.menu {
+  width: 200px;
+  flex-shrink: 0;
+  background: var(--menu);
+  padding: 1rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.menu-item {
+  border: 0;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  text-align: left;
+  color: #fff;
+  background: transparent;
+}
+
+.menu-item:hover,
+.menu-item.active {
+  background: var(--menu-active);
+}
+
+.content {
+  flex: 1;
+  padding: 1.5rem 2rem;
+  max-width: 1100px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  margin: 1rem 0;
+}
+
+.hint,
+.empty,
+.file-meta {
+  color: var(--muted);
+}
+
+.error {
+  color: var(--danger);
+}
+
+.warn {
+  color: var(--warn);
+}
+
+.primary {
+  border: 0;
+  border-radius: 8px;
+  padding: 0.7rem 1.6rem;
+  color: #fff;
+  background: var(--primary);
+}
+
+/* 업로드 */
+.file-pick {
+  display: inline-block;
+  border: 1px dashed var(--primary);
+  border-radius: 8px;
+  padding: 0.7rem 1.2rem;
+  color: var(--primary);
+  cursor: pointer;
+  background: var(--panel);
+}
+
+.file-pick input {
+  display: block;
+  margin-top: 0.4rem;
+}
+
+.file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.file-card {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.75rem 2.2rem 0.75rem 0.9rem;
+}
+
+.file-card.invalid {
+  border-color: var(--warn);
+}
+
+.file-remove {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.45rem;
+  border: 0;
+  background: transparent;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: var(--muted);
+}
+
+.file-remove:hover {
+  color: var(--danger);
+}
+
+.file-name {
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.file-type {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+}
+
+/* 진행 */
+.status {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0.2rem 0.75rem;
+  font-weight: 600;
+  background: var(--line);
+}
+
+.status-running,
+.status-queued {
+  background: #dbe7fb;
+  color: var(--primary);
+}
+
+.status-waiting_approval {
+  background: #fdf0d5;
+  color: var(--warn);
+}
+
+.status-done {
+  background: #d9f2e3;
+  color: #1e7a46;
+}
+
+.status-failed {
+  background: #f9dcd8;
+  color: var(--danger);
+}
+
+.steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.step {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.step.ok .step-mark {
+  color: #1e7a46;
+}
+
+.step.fail .step-mark {
+  color: var(--danger);
+}
+
+.step-tool {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+/* 결과: 오류 목록 */
+.grade {
+  display: inline-block;
+  border-radius: 6px;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.grade-mismatch {
+  background: #f9dcd8;
+  color: var(--danger);
+}
+
+.grade-check {
+  background: #fdf0d5;
+  color: var(--warn);
+}
+
+.grade-note {
+  background: #e6e9ee;
+  color: var(--muted);
+}
+
+.grade-counts {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+}
+
+.issues {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.issue {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+}
+
+.issue-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+
+.issue-evidence {
+  font-weight: 600;
+}
+
+.issue-meta {
+  margin: 0.5rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+table.cells {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+table.cells th,
+table.cells td {
+  border-bottom: 1px solid var(--line);
+  padding: 0.4rem 0.5rem;
+  text-align: left;
+}
+
+table.cells th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+table.cells tr.suspect td {
+  background: #fff8e8;
+}

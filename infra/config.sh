@@ -19,7 +19,7 @@ ROLE_WORKER=team06-worker-role
 
 # 데이터 (테이블 키 약속은 infra/README.md "테이블")
 TABLE=team06-jobs                       # 키 job_id
-HS_TABLE=team06-hs-history              # 키 pk = "<수입자>#<품목 키>" (F4, C2)
+HS_HISTORY_TABLE=team06-hs-history      # 키 importer(파티션) + item_key(정렬). 4번 C3 설계 (#76)
 WMS_TABLE=team06-wms                    # 키 idempotency_key = "<B/L 번호>#<작업 ID>" (F4, D1)
 SHIPMENTS_TABLE=team06-shipments        # 키 bl_no (E2, 시드: infra/seed_shipments.py)
 BUCKET="team06-docs-${ACCOUNT_ID}"      # 서류 원본(uploads/)과 배포 zip(deploy/)
