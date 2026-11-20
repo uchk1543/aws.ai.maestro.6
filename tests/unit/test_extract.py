@@ -79,6 +79,14 @@ def test_pounds_are_converted_to_kg():
     assert doc.items[0].gross_kg.value == pytest.approx(453.592, abs=0.001)
 
 
+
+def test_unit_keeps_digits_like_square_meters():
+    """'2,475 M2'의 단위가 'M'(미터)으로 잘리지 않는다 (B2 측정에서 발견)."""
+    raw = {"items": [{"line": 1, "qty": {"raw": "2,475 M2"}}], "total_qty": {"raw": "TOTAL: 2,475 M2"}}
+    doc = read_document("x.pdf", b"x", "packing_list", reader=fake_reader(raw))
+    assert (doc.items[0].qty.value, doc.items[0].qty.unit) == (2475, "M2")
+    assert (doc.total_qty.value, doc.total_qty.unit) == (2475, "M2")
+
 def test_validation_failure_retries_once_then_read_error():
     calls = []
 

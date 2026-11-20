@@ -193,7 +193,7 @@ def parse_number(raw: str) -> float | None:
 def _unit_after_number(raw: str) -> str | None:
     match = _NUMBER.search(raw)
     rest = raw[match.end():] if match else raw
-    word = re.search(r"[A-Za-z]+", rest)
+    word = re.search(r"[A-Za-z][A-Za-z0-9]*", rest)  # 'M2'(제곱미터)가 'M'으로 잘리지 않게 숫자도 붙인다
     return word.group().upper() if word else None
 
 
