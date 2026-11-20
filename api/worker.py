@@ -4,7 +4,9 @@ API Lambda(api/handler.py의 POST /jobs)가 작업을 queued로 저장한 뒤 �
     받는 이벤트: {"job_id": "job-xxxxxxxx", "files": [{"key", "doc_type"}]}
     하는 일: running으로 바꾸고 run_job을 돌린다. 단계가 늘 때마다 저장해 화면 진행 단계에 보이고,
             끝나면 waiting_approval · done · failed로 저장한다.
-            HS는 recommend_hs(C1·C2)로 품목마다 추천한다 (모델 없이 품명 검색, 확정 이력은 team06-hs-history).
+            HS는 recommend_hs(C1·C2)로 품목마다 추천한다 (확정 이력은 team06-hs-history. 이력이 없으면 모델이 검색어를 뽑고
+            후보 안에서 고른다, #132). 품목 행마다 모델 호출이 두 번이라, 처리 시작부터 HS_MODEL_SECONDS까지만 기다리고
+            넘거나 실패하면 품명 검색·앞 후보로 대신한다. 모델을 못 쓴 행은 단계 기록(hs_model)에 남긴다.
             마지막 저장 때 읽은 서류(docs)와 수입자(importer)를 같은 줄에 넣는다. HS 선택(C3)·승인(D3)이 읽는다 (#122).
             waiting_approval·done이고 읽은 서류가 있으면 마지막 저장 직전에 차례로 한다 (#154):
               1. 신고서 초안을 채운다 (C5 draft_declaration). 문제가 남은 칸과 확정 안 된 HS 칸은 비운다
@@ -15,7 +17,8 @@ API Lambda(api/handler.py의 POST /jobs)가 작업을 queued로 저장한 뒤 �
             넘긴다. PDF는 쪽 그림(JPEG)을 그려 S3(uploads/…)에 두고 그 그림을 OCR 한다. OCR 결과(ocr 칸)와 쪽 그림 목록(pages 칸)은
             같은 줄에 저장해 서류 보기(GET /jobs/{id}/files)의 쪽 그림·칸 위치에 쓴다.
             OCR은 처리 시작부터 OCR_WAIT_SECONDS까지만 기다린다. 넘으면 그 서류는 OCR 없이 진행한다 (Lambda 300초 안에 끝나게).
-제한 시간 300초. 환경 변수: JOBS_TABLE, DOCS_BUCKET, MODEL_ID, HS_HISTORY_TABLE, SHIPMENTS_TABLE, WMS_TABLE
+제한 시간 300초. 시간 상한: OCR 대기 OCR_WAIT_SECONDS(100초), 에이전트 루프 AGENT_SECONDS(150초, agent/),
+HS 모델 HS_MODEL_SECONDS(240초). 모두 처리 시작부터 잰다. 마지막 60초는 초안·등록·저장에 남긴다. 환경 변수: JOBS_TABLE, DOCS_BUCKET, MODEL_ID, HS_HISTORY_TABLE, SHIPMENTS_TABLE, WMS_TABLE
 
 비동기 호출은 함수가 오류·시간 초과로 끝나면 Lambda가 같은 이벤트를 다시 보낸다. 그래서 저장된 상태를 보고 한 번만 처리한다.
     queued   → 처리한다
@@ -47,6 +50,11 @@ _PDFIUM_LOCK = threading.Lock()
 OCR_MAX_LINES = 600  # 서류 한 장에 저장할 OCR 줄 수 상한 (DynamoDB 한 줄 400KB)
 # OCR 을 기다리는 상한(처리 시작부터, 초). 서류 10장 × 5쪽 × Textract(5초 × 2회)가 겹쳐도 Lambda 300초 안에 끝나게 (#194 리뷰)
 OCR_WAIT_SECONDS = 100
+# HS 모델 호출(검색어 뽑기·후보 고르기)을 기다리는 상한(처리 시작부터, 초) (#132 리뷰).
+# 모델 호출 하나가 읽기 타임아웃 120초 × 재시도로 멈춰도, 남은 60초 안에 초안·등록·저장을 끝내 Lambda 300초를 넘지 않게 한다.
+# 넘으면 그 호출은 기다리지 않고 recommend_hs가 품명 검색·앞 후보로 대신한다.
+HS_MODEL_SECONDS = 240
+HS_MODEL_WORKERS = 4  # HS 모델 호출을 동시에 몇 개까지 (상한을 넘겨 버려진 호출이 자리를 차지해도 다음 행이 돌게)
 
 
 def _save(job: Job, item: dict) -> None:
@@ -91,16 +99,73 @@ def _hs_table() -> hs.CsvHSTable:
     return hs.load_hs_table()
 
 
-def recommend_line(docs: list[ExtractedDocument], line: int) -> HSResult:
-    """run_job에 넘기는 hs_recommender. 품목 한 행의 HS를 recommend_hs로 추천한다.
+class HsModelRun:
+    """작업 하나의 HS 추천. recommend를 run_job의 hs_recommender로 넘긴다 (#132).
 
-    언제: run_job이 품목 행마다 부른다. 모델(terms_reader·picker)은 넘기지 않아 품명 검색만 한다.
-    받는 것: docs(읽은 서류, files 순서), line(품목 행).
-    반환: HSResult. 수입자를 알면 그 수입자의 확정 이력(team06-hs-history)을 쓰고, 모르면 빈 이력으로 부른다.
+    확정 이력이 없으면 모델이 품명에서 검색어를 뽑고(bedrock_terms_reader), 코드가 찾은 후보 안에서 모델이 고른다(bedrock_picker).
+    모델 호출은 처리 시작부터 HS_MODEL_SECONDS까지만 기다린다. 넘거나 실패하면 그 호출만 포기하고 recommend_hs가 대신한다:
+      검색어 뽑기 → 품명을 그대로 검색어로 쓴다
+      후보 고르기 → 모델 선택 없이 찾은 후보의 앞 3개를 보여 준다 (자동 확정 auto_match는 하지 않는다)
+    어느 행에서 모델을 못 썼는지 모아 두었다가 step()으로 작업 단계 기록에 남긴다 (agent-design.md 1번).
     """
-    importer = importer_of(docs)
-    history = handler._hs_history() if importer else _NoHistory()
-    return hs.recommend_hs(docs, line, importer or "", history=history, table=_hs_table())
+
+    def __init__(self, seconds: float | None = None):
+        self.seconds = HS_MODEL_SECONDS if seconds is None else seconds
+        self.deadline = time.monotonic() + self.seconds
+        self.pool = ThreadPoolExecutor(max_workers=HS_MODEL_WORKERS)
+        self.lock = threading.Lock()
+        self.asked: set[int] = set()  # 모델을 부르려 한 행
+        self.missed: dict[int, list[str]] = {}  # 행 → 모델을 못 쓴 이유
+
+    def _miss(self, line: int, why: str) -> None:
+        print(f"[warn] hs_model line={line} {why}")
+        with self.lock:
+            self.missed.setdefault(line, []).append(why)
+
+    def _call(self, what: str, line: int, fn, *args):
+        """모델 호출 하나를 상한까지만 기다린다. 못 쓰면 예외를 내서 recommend_hs가 대신하게 한다."""
+        with self.lock:
+            self.asked.add(line)
+        left = self.deadline - time.monotonic()
+        if left <= 0:
+            self._miss(line, f"{what} 건너뜀(시간 상한 {self.seconds:g}초)")
+            raise TimeoutError(f"HS 모델 시간 상한 {self.seconds:g}초")
+        future = self.pool.submit(fn, *args)
+        try:
+            return future.result(timeout=left)
+        except FutureTimeout:
+            self._miss(line, f"{what} 시간 초과(상한 {self.seconds:g}초)")
+            raise TimeoutError(f"HS 모델 시간 상한 {self.seconds:g}초") from None
+        except Exception as exc:
+            self._miss(line, f"{what} 실패({type(exc).__name__})")
+            raise
+
+    def recommend(self, docs: list[ExtractedDocument], line: int) -> HSResult:
+        """run_job에 넘기는 hs_recommender. 품목 한 행의 HS를 recommend_hs로 추천한다.
+
+        언제: run_job이 품목 행마다 부른다.
+        받는 것: docs(읽은 서류, files 순서), line(품목 행).
+        반환: HSResult. 수입자를 알면 그 수입자의 확정 이력(team06-hs-history)을 쓰고, 모르면 빈 이력으로 부른다.
+        """
+        importer = importer_of(docs)
+        history = handler._hs_history() if importer else _NoHistory()
+        return hs.recommend_hs(
+            docs, line, importer or "", history=history, table=_hs_table(),
+            terms_reader=lambda name: self._call("검색어 뽑기", line, hs.bedrock_terms_reader, name),
+            picker=lambda name, cands: self._call("후보 고르기", line, hs.bedrock_picker, name, cands),
+        )
+
+    def step(self) -> Step | None:
+        """모델을 부르려 한 행이 있으면 그 결과를 단계 기록 한 줄로. 없으면(이력으로 끝남, 품목 없음) None.
+        남은 호출은 기다리지 않는다."""
+        self.pool.shutdown(wait=False, cancel_futures=True)
+        if not self.asked:
+            return None
+        if not self.missed:
+            return Step(tool="hs_model", summary=f"HS 모델 검색어·후보 고르기 {len(self.asked)}행 모두 사용", ok=True)
+        detail = ", ".join(f"{line}행 {'·'.join(why)}" for line, why in sorted(self.missed.items()))
+        summary = f"HS 모델 {len(self.asked)}행 중 {len(self.missed)}행 못 씀 → 품명 검색·앞 후보로 대신: {detail}"
+        return Step(tool="hs_model", summary=summary, ok=False)
 
 
 def _docs_columns(docs: list[ExtractedDocument]) -> dict:
@@ -334,9 +399,10 @@ def lambda_handler(event, context):
 
     started = time.perf_counter()
     ocr_run = OcrRun([f["key"] for f in files])  # run_job 과 동시에 돈다 (F10 #188)
+    hs_run = HsModelRun()  # HS 모델 호출은 처리 시작부터 HS_MODEL_SECONDS까지만 (#132 리뷰)
     try:
         result = run_job(
-            job_id, files, handler.fetch_object, on_step=on_step, hs_recommender=recommend_line, on_docs=read.extend,
+            job_id, files, handler.fetch_object, on_step=on_step, hs_recommender=hs_run.recommend, on_docs=read.extend,
             rereader=_rereader_with(ocr_run),
         )
     except Exception as exc:  # 예상 못 한 오류도 작업 상태로 남긴다 (Lambda가 다시 돌리지 않게 여기서 끝낸다)
@@ -344,6 +410,8 @@ def lambda_handler(event, context):
         result = Job(job_id=job_id, status="failed", steps=latest.steps, error=f"{type(exc).__name__}: {exc}")
     ocr = ocr_run.finish()
     result.steps.append(_ocr_step(ocr, ocr_run.timed_out))
+    if (hs_step := hs_run.step()) is not None:
+        result.steps.append(hs_step)
     print(f"[job] {job_id} status={result.status} {time.perf_counter() - started:.1f}초")
     if result.status in ("waiting_approval", "done") and read:  # 실패한 작업은 초안·등록·화물 기록을 하지 않는다
         _draft(result, read)
