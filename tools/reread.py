@@ -72,23 +72,38 @@ def _squash(text: str) -> str:
 _NUMBER_TOKEN = re.compile(r"\d[\d,]*(?:\.\d+)?")
 
 
+def _has(needle: str, hays: tuple[str, ...]) -> bool:
+    """needle이 hays 중 하나에 있는지. 숫자로 시작·끝나면 더 긴 숫자의 일부는 안 친다 (#120).
+
+    예: '241.4'는 '1241.40'에서, '6,520.00'은 '16,520.00'에서 찾지 않는다.
+    띄어쓰기를 지운 글자(줄바꿈으로 갈라진 칸)와 원래 글자(옆 칸 숫자와 붙지 않게) 둘 다 본다.
+    """
+    if not needle:
+        return False
+    head = r"(?<![\d.,])" if needle[0].isdigit() else ""
+    tail = r"(?![\d]|[.,]\d)" if needle[-1].isdigit() else ""
+    pattern = re.compile(head + re.escape(needle) + tail)
+    return any(pattern.search(hay) for hay in hays)
+
+
 def find_in_text(raw: str, text: str) -> str | None:
     """판독한 raw가 문서 글자에 그대로 있는지 본다. 있으면 찾은 글자, 없으면 None.
 
     raw 전체가 있으면 raw. 없으면 raw 안의 숫자(적힌 그대로, 예 '6,520.00')가 있으면 그 숫자.
-    행을 더한 raw('a + b')는 조각이 모두 있어야 한다.
+    행을 더한 raw('a + b')는 조각이 모두 있어야 한다. 더 긴 숫자의 일부로만 있으면 없는 것으로 본다.
     """
-    hay = _squash(text)
-    if not hay:
+    squashed = _squash(text)
+    if not squashed:
         return None
+    hays = (squashed, text.upper())
     parts = [p for p in raw.split(" + ")] if " + " in raw else [raw]
     found = []
     for part in parts:
-        if _squash(part) and _squash(part) in hay:
+        if _has(_squash(part), (squashed,)):
             found.append(part)
             continue
         numbers = _NUMBER_TOKEN.findall(part)
-        if numbers and all(n in hay for n in numbers):
+        if numbers and all(_has(n, hays) for n in numbers):
             found.append(" ".join(numbers))
             continue
         return None

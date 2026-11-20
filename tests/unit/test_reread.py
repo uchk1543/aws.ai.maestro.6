@@ -34,6 +34,18 @@ def test_find_in_text_ignores_spacing_and_needs_every_part():
     assert find_in_text("6,520.00", "") is None
 
 
+def test_find_in_text_needs_number_boundary():  # #120
+    assert find_in_text("241.4 kg", "Total 1241.40") is None  # 앞뒤로 더 긴 숫자
+    assert find_in_text("6,520.00", "TOTAL 16,520.00 KGS") is None  # 앞에 숫자가 더 있음
+    assert find_in_text("6,520.00 KGS", "TOTAL 16,520.00 KGS") is None  # raw 전체 비교도 같다
+    assert find_in_text("241.4 kg", "Total 241.4 KG") == "241.4 kg"
+
+
+def test_find_in_text_keeps_adjacent_columns():  # 옆 칸 숫자와 붙어 있어도 경계는 띄어쓰기로 본다
+    assert find_in_text("2,520.00 KGS", "4,000.00 2,520.00") == "2,520.00"
+    assert find_in_text("6,520.00 KGS", "TOTAL 6,520.\n00 KGS") == "6,520.00 KGS"  # 줄바꿈으로 갈라진 칸
+
+
 def test_text_pdf_uses_pdf_text_without_model():
     def no_model(blocks, prompt):
         raise AssertionError("텍스트 PDF에서 모델을 부름")
