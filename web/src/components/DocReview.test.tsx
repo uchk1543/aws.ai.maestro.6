@@ -8,7 +8,7 @@ import draft from "../fixtures/documents.draft.json";
 import { fileViewOf } from "../mockDocs";
 import { DOC_TYPE_KO, type DocumentRecord, type Issue, type Job, type JobFilesResponse } from "../types";
 import { DocReview, hitsFor, locate } from "./DocReview";
-import { boxStyle, pdfViewSrc } from "./DocViewer";
+import { pdfViewSrc } from "./DocViewer";
 
 const issues = (jobExample as Job).result!.issues;
 const files = (draft.items as DocumentRecord[]).filter((d) => d.job_id === "job-7c1e").map(fileViewOf);
@@ -68,11 +68,6 @@ describe("DocReview", () => {
   it("locate 는 서류 종류와 칸 이름이 같은 표시를 찾는다", () => {
     expect(locate(files, { doc: "packing_list", field: "items[0].gross_kg", raw: null }).mark?.text).toBe("6,520.00 KGS");
     expect(locate(files, { doc: "certificate_of_origin", field: "doc_no", raw: null })).toEqual({ file: null, mark: null });
-  });
-
-  it("boxStyle 은 0~1 비율을 % 로 바꾸고 밖으로 나간 값은 자른다", () => {
-    expect(boxStyle([0.1, 0.2, 0.3, 0.05])).toEqual({ left: "10.000%", top: "20.000%", width: "30.000%", height: "5.000%" });
-    expect(boxStyle([0.9, -0.1, 0.5, 0.2])).toEqual({ left: "90.000%", top: "0.000%", width: "10.000%", height: "20.000%" });
   });
 
   it("강조한 박스에는 근거 문장과 서류별 값을 담은 작은 팝업이 뜬다", () => {

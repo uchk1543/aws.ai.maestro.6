@@ -924,3 +924,35 @@ def test_classify_by_ocr_is_off_by_default(table, monkeypatch):
     worker.lambda_handler({"job_id": JOB, "files": FILES}, None)
 
     assert seen["classifier"] is None  # run_job 기본(Bedrock 분류)
+
+
+def test_pdf_pages_are_rendered_one_at_a_time(monkeypatch):
+    """pdfium은 스레드 여럿이 동시에 쓰면 프로세스가 죽는다 (배포본 Runtime.ExitError, #39). 쪽 그리기는 한 번에 하나만."""
+    import threading
+    import time as _time
+    from concurrent.futures import ThreadPoolExecutor
+
+    from tools.ocr import PageImage
+
+    active, peak, guard = [0], [0], threading.Lock()
+
+    def slow_render(data, **kwargs):
+        with guard:
+            active[0] += 1
+            peak[0] = max(peak[0], active[0])
+        _time.sleep(0.02)
+        with guard:
+            active[0] -= 1
+        return [PageImage(data=b"jpeg", width=10, height=10)]
+
+    monkeypatch.setattr(worker, "render_pages", slow_render)
+    monkeypatch.setattr(worker, "ocr_document", lambda key, data, *, client=None, pages=None: OcrResult(file=key, lines=[]))
+    monkeypatch.setattr(handler, "fetch_object", lambda key: b"%PDF")
+    monkeypatch.setattr(handler, "store_object", lambda key, data, content_type: None)
+
+    keys = [f"uploads/s1/{n}.pdf" for n in range(8)]
+    with ThreadPoolExecutor(max_workers=worker.OCR_WORKERS) as pool:
+        results = list(pool.map(worker.ocr_one, keys))
+
+    assert peak[0] == 1
+    assert all(ocr is not None and len(pages) == 1 for ocr, pages in results)

@@ -50,6 +50,9 @@ INTERRUPTED = "처리가 중간에 멈췄습니다 (시간 초과 등). 서류�
 # done인데 자동 등록 조건을 못 채웠을 때 단계 기록에 남기는 이유 (register_if_ready는 조건 미달에 이유를 붙이지 않는다)
 NOT_READY = "자동 등록 조건(남은 문제 없음, 모든 품목 HS 확정)을 채우지 못했습니다. 승인하면 등록합니다"
 OCR_WORKERS = 4  # 서류 OCR 을 동시에 몇 장까지
+# PDF 쪽 그리기(pypdfium2)는 한 번에 하나만. pdfium은 스레드 안전하지 않아 동시에 부르면 파이썬 오류 없이 프로세스가 죽는다.
+# Textract 호출·S3 저장은 그대로 동시에 돈다
+_PDFIUM_LOCK = threading.Lock()
 OCR_MAX_LINES = 600  # 서류 한 장에 저장할 OCR 줄 수 상한 (DynamoDB 한 줄 400KB)
 # OCR 을 기다리는 상한(처리 시작부터, 초). 서류 10장 × 5쪽 × Textract(5초 × 2회)가 겹쳐도 Lambda 300초 안에 끝나게 (#194 리뷰)
 OCR_WAIT_SECONDS = 100
@@ -206,7 +209,8 @@ def ocr_one(key: str) -> tuple[OcrResult | None, list[dict]]:
         data = handler.fetch_object(key)
         images = None
         if is_pdf(key):
-            rendered = render_pages(data)
+            with _PDFIUM_LOCK:  # pdfium은 스레드 여럿이 동시에 쓰면 프로세스가 통째로 죽는다 (Runtime.ExitError, #39)
+                rendered = render_pages(data)
             for number, page in enumerate(rendered, start=1):
                 handler.store_object(page_key(key, number), page.data, "image/jpeg")
                 pages.append({"key": page_key(key, number), "width": page.width, "height": page.height})
