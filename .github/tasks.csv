@@ -20,21 +20,21 @@ C3,사람 HS 선택 POST /jobs/{id}/hs,서버,P1,C2 C5,api/handler.py,hs.confirm
 C4,신고서 칸 목록과 출처,검증,P1,B2,docs/schema.md tools/declaration.py,칸마다 서류·칸
 C5,신고서 초안 draft_declaration,검증,P1,C4,tools/declaration.py,문제 남은 칸은 비움 · 사람 검토 전 초안 표시
 C6,신고서 PDF,검증,P2,C5,tools/declaration.py,한글 글꼴 포함
-D1,가상 WMS 테이블과 어댑터,서버,P1,F1,tools/wms.py infra/,멱등 키 B/L+작업 ID
+D1,가상 WMS 테이블과 어댑터,서버,P1,F1,tools/wms.py infra/,멱등 키 B/L+작업 ID · 테이블 정의는 infra/ PR로 올리고 생성은 PM
 D2,WMS 자동 등록 조건,서버,P1,D1 B9,tools/wms.py,문제 없는 건은 사람 손 없이 등록
 D3,승인 POST /jobs/{id}/approve,서버,P1,D1,api/handler.py,불일치가 남았으면 409
 D4,ERP용 CSV 내보내기,서버,P2,D1,tools/wms.py,시간이 모자라면 가장 먼저 뺌
 E1,통관 상태 값과 통관 지연 기준,검증,P1,,docs/schema.md,입항 뒤 며칠인지 숫자로
-E2,화물 기록 테이블과 시드 넣기,서버,P1,F1 A5,infra/,data/seed가 team06-shipments에 들어감
+E2,화물 기록 테이블과 시드 넣기,PM,P1,F1 A5,infra/,data/seed가 team06-shipments에 들어감
 E3,작업이 끝나면 화물 기록 쓰기,판독,P1,B9 E2,tools/report.py,처리한 건이 현황 조회에 나옴
 E4,현황 조회 query_shipments,판독,P1,E1,tools/query.py,기간은 한국 시간으로 코드가 계산 · 건수는 코드가 셈
 E5,현황 조회 Agent와 POST /chat,판독,P1,E4,agent/query_agent.py api/handler.py,chat_response 형식 · 0건이면 0건
-F1,뼈대 배포,서버,P0,,infra/,"curl로 {""ok"": true}"
+F1,뼈대 배포,PM,P0,,infra/,"curl로 {""ok"": true}"
 F2,POST /uploads 미리 서명된 URL,서버,P0,F1,api/handler.py,화면에서 S3로 직접 올림
 F3,비동기 처리,서버,P1,F1,api/ infra/,POST는 바로 job_id · 화면 코드는 그대로
-F4,권한 추가 (Textract · 새 테이블),서버,P1,F1,infra/,필요한 것만
-F5,화면 호스팅,서버,P0,G1,infra/,데모 주소 하나
-F6,합치는 시각마다 배포와 8장 점검,서버,P0,F1,infra/,team06- 밖·서울 밖 리소스 없음
+F4,권한 추가 (Textract · 새 테이블),PM,P1,F1,infra/,필요한 것만
+F5,화면 호스팅,PM,P0,G1,infra/,데모 주소 하나
+F6,합치는 시각마다 배포와 8장 점검,PM,P0,F1,infra/,team06- 밖·서울 밖 리소스 없음
 G1,화면 기술과 구조 정하기,화면,P0,,web/README.md,정한 내용을 web/README.md에
 G2,업로드 화면,화면,P0,G1,web/,여러 장 올림 · 서류 종류 고치기
 G3,진행 화면,화면,P0,G1,web/,GET /jobs/{id} 2초마다 · steps 표시

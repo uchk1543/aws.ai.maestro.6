@@ -1,6 +1,6 @@
 """recommend_hs. 담당: 검증. 규칙: .kiro/steering/agent-design.md 6번, 형식: docs/schema.md
 
-작업: e2e-plan.md C1·C2 (P1). HS부호 표는 data/hs/, 확정 이력 테이블(team06-hs-history)은 서버 담당이 만든다.
+작업: e2e-plan.md C1·C2 (P1). HS부호 표는 data/hs/, 확정 이력 테이블(team06-hs-history)은 4번이 infra/ PR로 정의하고 PM이 만든다.
 """
 
 from collections.abc import Callable

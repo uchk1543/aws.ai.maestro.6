@@ -15,7 +15,7 @@
   DynamoDB team06-jobs, S3 버킷. 모두 infra/ 스크립트로 만든다. `curl` → `{"ok": true}`.
 - R5 끝까지 한 번: POST /jobs(S3 키)에서 R2→R3을 처리해 team06-jobs에 저장하고 job_id를 반환한다.
   GET /jobs/{id}는 약속 2 형식(steps 포함)으로 돌려준다.
-- R6 인계: infra/README.md만 보고 서버 담당이 재배포할 수 있다.
+- R6 인계: infra/README.md만 보고 PM이 다시 배포할 수 있다.
 
 ## 범위 밖 (tasks.md '나중')
 분류(classify_document), B/L·원산지증명서, OCR, 다시 확인, HS, 신고서, WMS, 현황 조회, 판독 캐시, POST /uploads.

@@ -7,7 +7,8 @@ inclusion: always
 - Bedrock 모델 ID는 환경 변수 MODEL_ID로 읽는다. 코드에 모델 ID를 적지 않는다.
 - 액세스 키를 코드, 설정 파일, 테스트에 적지 않는다. 로컬은 aws login을 쓴다.
 - Lambda 실행 역할에는 필요한 권한만 붙인다. AdministratorAccess를 쓰지 않는다.
-- AWS 리소스 생성과 배포는 서버 담당(4번) 한 명만 한다. 인계 전 뼈대 배포만 PM이 한다. 리소스는 infra/ 의 스크립트로만 만든다.
+- AWS 리소스 생성과 배포 실행은 PM 한 명만 한다. 리소스는 infra/ 의 스크립트로만 만든다.
+  다른 사람(주로 4번 서버)은 infra/ 스크립트·정책을 PR로 고칠 수 있지만 실행하지 않는다. 합쳐지면 PM이 실행한다.
 ## 에이전트
 - 에이전트는 Strands Agents SDK만 쓴다. 문서 처리 Agent와 현황 조회 Agent 두 개다.
 - AI는 서류 분류와 읽기, HS 후보 고르기, 질문을 조회 조건으로 바꾸기만 한다.
@@ -34,6 +35,7 @@ inclusion: always
 - 공용 파일(.kiro/, docs/schema.md, docs/examples/, tools/models.py, pyproject.toml, uv.lock, .github/, TEAM.md)은 PR에서 따로 표시하고, 바꾸면 단톡에 알린다.
 - 크기: Kiro 작업 하나는 30분, 파일 서너 개 이하이고 끝나면 테스트하고 커밋한다.
   GitHub 이슈 하나는 Kiro 작업 여러 개(반나절 이하)이고, 이슈 하나 = 브랜치 하나 = PR 하나다.
+- 합치기: 모두 PR로만 main에 올린다. 팀원 PR은 승인 1명 + CI, PM의 PR은 CI 통과 뒤 PM이 승인 없이 합친다.
 - 단계: 팀 전체로 P0(agent-design.md 0번)가 끝까지 도는 것을 먼저 한다. P0 몫이 없거나 끝난 사람만 P1을 시작한다.
 - 빈 함수 모양(NotImplementedError)과 이슈는 협업을 위해 미리 만들어 두었다. "미리 만들지 않는다"는 규칙은 몸통(동작)에 적용한다.
 - Spec은 .kiro/specs/<번호>-<기능>/ 안에서만 만든다. 남의 Spec 폴더는 고치지 않는다.
