@@ -9,14 +9,18 @@ PDF는 쪽마다 그림(JPEG)으로 그려(pypdfium2) 그 그림을 OCR 한다. 
 """
 
 import io
+import hashlib
 import os
 import re
+import threading
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cache
 from pathlib import PurePath
 from typing import Protocol
 
-from tools.models import DocMark, OcrLine, OcrResult, ReadField
+from tools.models import Classification, DocMark, OcrLine, OcrResult, ReadField
 
 MAX_PAGES = 5  # PDF는 앞 5쪽만 그리고 OCR 한다 (쪽당 과금, 처리 Lambda 시간)
 MAX_BYTES = 10_000_000  # Textract 동기 API 한 번에 보낼 수 있는 크기
@@ -24,6 +28,11 @@ TIMEOUT_SECONDS = 5  # team.md: 외부 API 타임아웃 5초, 재시도 1회
 RENDER_DPI = 150  # PDF 쪽 그림 해상도. A4 가 약 1240×1754 px
 MAX_SIDE_PX = 3000  # 쪽 그림 긴 변 상한 (큰 용지 PDF 로 메모리가 바닥나지 않게, #194 리뷰)
 JPEG_QUALITY = 85
+# Textract 동기 API 계정 한도: 서울 리전 DetectDocumentText·AnalyzeDocument 초당 1건 (service-quotas, 2026-11-20 확인).
+# 처리 Lambda 는 서류마다 스레드로 OCR 하므로, 한 컨테이너 안에서 호출 사이를 이만큼 띄운다. 한도를 올리면 TEXTRACT_TPS 로 바꾼다
+TEXTRACT_MIN_INTERVAL = 1.0 / float(os.environ.get("TEXTRACT_TPS", "1"))
+_PACE_LOCK = threading.Lock()
+_last_call = 0.0
 
 
 class TextractClient(Protocol):
@@ -43,6 +52,10 @@ class PageImage:
     height: int
 
 
+# boto3 기본 세션은 스레드에 안전하지 않다. 처리 Lambda 는 서류마다 스레드로 OCR 하므로 클라이언트는 이 잠금 안에서 한 번만 만든다
+_CLIENT_LOCK = threading.Lock()
+
+
 @cache
 def _client() -> TextractClient:
     import boto3
@@ -54,6 +67,16 @@ def _client() -> TextractClient:
         retries={"total_max_attempts": 2, "mode": "standard"},  # 처음 한 번 + 재시도 1회
     )
     return boto3.client("textract", region_name=os.environ.get("AWS_REGION", "ap-northeast-2"), config=config)
+
+
+def _pace() -> None:
+    """Textract 호출 사이를 TEXTRACT_MIN_INTERVAL 이상 띄운다 (한 프로세스 안, 스레드끼리). 한도 초과(Throttling)로 OCR 이 빠지지 않게."""
+    global _last_call
+    with _PACE_LOCK:
+        wait = _last_call + TEXTRACT_MIN_INTERVAL - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        _last_call = time.monotonic()
 
 
 def is_pdf(file: str) -> bool:
@@ -125,13 +148,16 @@ def ocr_document(
     타임아웃 5초, 재시도 1회. 실패하면 예외를 그대로 올린다 (부른 쪽이 그 서류만 OCR 없이 진행한다).
     """
     print(f"[tool] ocr_document file={file} bytes={len(data)}")
-    client = client or _client()
+    if client is None:
+        with _CLIENT_LOCK:
+            client = _client()
     if pages is None:
         pages = [p.data for p in render_pages(data)] if is_pdf(file) else [data]
     lines: list[OcrLine] = []
     for number, page in enumerate(pages, start=1):
         if len(page) > MAX_BYTES:
             raise ValueError(f"Textract 동기 한도를 넘습니다 ({len(page):,}바이트, 최대 {MAX_BYTES:,})")
+        _pace()
         response = client.detect_document_text(Document={"Bytes": page})
         for block in response.get("Blocks", []):
             if block.get("BlockType") != "LINE" or not block.get("Text"):
@@ -140,6 +166,119 @@ def ocr_document(
             lines.append(OcrLine(page=number, text=block["Text"], bbox=(box["Left"], box["Top"], box["Width"], box["Height"])))
     print(f"[tool] ocr_document file={file} 쪽 {len(pages)}, 줄 {len(lines)}개")
     return OcrResult(file=file, lines=lines)
+
+
+# ---------------------------------------------------------------------------
+# OCR 원본 저장과 캐시 (B4-L0, l0: 서류 전체 글자)
+# 작업 줄(team06-jobs의 ocr 칸)은 DynamoDB 400KB 한도 때문에 600줄에서 자른다. 자르지 않은 결과는 S3 cache/ocr/ 에 둔다.
+# 키는 파일 바이트 해시라서 같은 파일을 다시 올리면 Textract 를 다시 부르지 않는다 (데모 재현·평가 반복).
+
+OCR_CACHE_PREFIX = "cache/ocr/"
+# Textract API(DetectDocumentText)나 쪽 그림을 만드는 방식(render_pages·upright_image)이 바뀌면 올린다. 옛 저장분을 쓰지 않게 된다.
+# 쪽 그림 설정 상수(MAX_PAGES·RENDER_DPI·MAX_SIDE_PX·JPEG_QUALITY)는 키에 들어가므로 바꿔도 올리지 않아도 된다
+OCR_VERSION = "detect-v1"
+
+
+class OcrCache(Protocol):
+    """OCR 저장소. 값은 OcrResult JSON 문자열. 테스트에서는 메모리판으로 바꾼다."""
+
+    def get(self, key: str) -> str | None: ...
+
+    def put(self, key: str, value: str) -> None: ...
+
+
+class S3OcrCache:
+    """S3 판 OCR 저장소. DOCS_BUCKET 의 cache/ocr/<ocr_cache_key>.json. 권한: infra/policy-textract.json (worker 만)."""
+
+    def __init__(self, bucket: str, client=None):
+        self.bucket = bucket
+        self._client = client
+
+    def _s3(self):
+        if self._client is None:
+            with _CLIENT_LOCK:
+                self._client = _s3_client()
+        return self._client
+
+    def get(self, key: str) -> str | None:
+        try:
+            return self._s3().get_object(Bucket=self.bucket, Key=f"{OCR_CACHE_PREFIX}{key}.json")["Body"].read().decode("utf-8")
+        except Exception as exc:  # 없는 키는 그냥 없음. 다른 오류도 캐시 없이 OCR 하게 한다
+            code = getattr(exc, "response", {}).get("Error", {}).get("Code")
+            # ListBucket 권한이 없으면 없는 키도 403(AccessDenied)이다. 진짜 권한 문제는 put 실패 경고로 드러난다
+            if code not in ("NoSuchKey", "404", "AccessDenied", "403"):
+                print(f"[warn] ocr_cache get 실패: {type(exc).__name__}: {exc}")
+            return None
+
+    def put(self, key: str, value: str) -> None:
+        self._s3().put_object(
+            Bucket=self.bucket, Key=f"{OCR_CACHE_PREFIX}{key}.json", Body=value.encode("utf-8"), ContentType="application/json"
+        )
+
+
+@cache
+def _s3_client():
+    """OCR 저장소가 쓰는 S3 클라이언트. 모든 S3OcrCache 가 하나를 같이 쓴다 (부르는 쪽이 _CLIENT_LOCK 을 잡는다)."""
+    import boto3
+    from botocore.config import Config
+
+    config = Config(connect_timeout=TIMEOUT_SECONDS, read_timeout=TIMEOUT_SECONDS, retries={"total_max_attempts": 2, "mode": "standard"})
+    return boto3.client("s3", config=config)
+
+
+def default_ocr_cache() -> OcrCache | None:
+    """환경 변수로 정한 OCR 저장소. NO_CACHE=1 이거나 DOCS_BUCKET 이 없으면 None(저장·재사용 안 함)."""
+    if os.environ.get("NO_CACHE") == "1":
+        return None
+    bucket = os.environ.get("DOCS_BUCKET")
+    return S3OcrCache(bucket) if bucket else None
+
+
+def ocr_cache_key(data: bytes) -> str:
+    """OCR 캐시 키. 파일 바이트·OCR_VERSION·쪽 그림 설정(쪽 수 상한·해상도·긴 변 상한·JPEG 품질) 중 하나라도 다르면 다른 키다."""
+    parts = [hashlib.sha256(data).hexdigest(), OCR_VERSION, str(MAX_PAGES), str(RENDER_DPI), str(MAX_SIDE_PX), str(JPEG_QUALITY)]
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+
+def ocr_cached(
+    file: str,
+    data: bytes,
+    *,
+    pages: list[bytes] | None = None,
+    cache: OcrCache | None = None,
+    run: Callable[..., OcrResult] = ocr_document,
+) -> OcrResult:
+    """같은 파일이면 저장해 둔 OCR 을 쓰고, 없으면 OCR 해서 자르지 않고 저장한다.
+
+    언제: 처리 Lambda 가 서류마다 (api/worker.py 의 ocr_one).
+    받는 것: file(S3 키), data(파일 바이트), pages(ocr_document 에 넘길 쪽 그림), cache(저장소, None 이면 저장·재사용 안 함),
+             run(실제 OCR 함수. 기본 ocr_document, 테스트·부른 쪽이 바꿀 수 있다).
+    반환: OcrResult. 저장분이면 file 만 지금 키로 바꾼다. 저장소 오류는 OCR 을 막지 않는다.
+    글자 줄이 하나도 없는 결과는 저장하지도 쓰지도 않는다 (잠깐의 오류가 그 파일에 영원히 남지 않게).
+    """
+    key = ocr_cache_key(data) if cache is not None else None
+    if key is not None:
+        try:
+            hit = cache.get(key)
+        except Exception as exc:
+            print(f"[warn] ocr_cache get 실패: {type(exc).__name__}: {exc}")
+            hit = None
+        if hit is not None:
+            try:
+                res = OcrResult.model_validate_json(hit)
+            except ValueError as exc:
+                print(f"[warn] ocr_cache 값이 형식에 안 맞아 새로 OCR: {type(exc).__name__}")
+            else:
+                if res.lines:
+                    print(f"[tool] ocr_document file={file} 저장분 사용 key={key[:12]} 줄 {len(res.lines)}개")
+                    return res.model_copy(update={"file": file})
+    res = run(file, data, pages=pages)
+    if key is not None and res.lines:
+        try:
+            cache.put(key, res.model_dump_json())
+        except Exception as exc:
+            print(f"[warn] ocr_cache put 실패: {type(exc).__name__}: {exc}")
+    return res
 
 
 # ---------------------------------------------------------------------------
@@ -230,3 +369,43 @@ def locate_marks(fields: list[ReadField], ocr: OcrResult, reason: str = "") -> l
         if field.raw and (hit := finder.find(field.raw)):
             marks.append(DocMark(kind="field", label=field.label, text=field.raw, field=field.field, page=hit[0].page, bbox=hit[1]))
     return marks
+
+
+# ---------------------------------------------------------------------------
+# Textract 글자로 서류 종류 고르기 (비용 줄이기: 서류마다 Bedrock 분류 호출 하나를 줄인다)
+# 근거: 개발용 24세트 92장(pdf·png·스캔본, 스타일 1·2, 원산지증명서 KCFTA·AK·VK)에서 92/92. 실험은 B4-L0 이슈에 적었다.
+# 확신이 없으면 None 을 돌려주고 부른 쪽이 모델로 분류한다 (제목이 없음, 위쪽에 없음, 두 종류 제목이 비슷함).
+
+_TITLES: dict[str, str] = {
+    "commercial_invoice": r"^\s*COMMERCIAL\s+INVOICE\s*$",
+    "packing_list": r"^\s*PACKING\s+LIST\s*$",
+    "bill_of_lading": r"^\s*(OCEAN\s+|COMBINED\s+TRANSPORT\s+)?BILL\s+OF\s+LADING\s*$",
+    "certificate_of_origin": r"^\s*CERTIFICATE\s+OF\s+ORIGIN\b",
+}
+TITLE_MAX_TOP = 0.3  # 제목은 첫 쪽 위쪽 30% 안에 있다
+TITLE_MARGIN = 1.3  # 1등 제목 글자 높이가 2등의 1.3배는 되어야 확신한다
+
+
+def classify_from_ocr(ocr: OcrResult | None) -> Classification | None:
+    """Textract 글자에서 서류 제목 줄을 찾아 서류 종류를 고른다. 모델 호출 없음.
+
+    언제: 처리 Lambda 가 분류할 때 모델보다 먼저 (CLASSIFY_BY_OCR=1, api/worker.py).
+    받는 것: 그 서류의 OcrResult (없으면 None).
+    반환: Classification(종류, 근거 '제목 ... (Textract)'), 확신이 없으면 None (부른 쪽이 모델로 분류한다).
+    """
+    if ocr is None:
+        return None
+    best: dict[str, OcrLine] = {}
+    for line in ocr.lines:
+        if line.page != 1 or line.bbox[1] > TITLE_MAX_TOP:
+            continue
+        for doc_type, pattern in _TITLES.items():
+            if re.search(pattern, line.text, re.I) and (doc_type not in best or line.bbox[3] > best[doc_type].bbox[3]):
+                best[doc_type] = line
+    if not best:
+        return None
+    ranked = sorted(best.items(), key=lambda kv: kv[1].bbox[3], reverse=True)
+    if len(ranked) > 1 and ranked[0][1].bbox[3] < ranked[1][1].bbox[3] * TITLE_MARGIN:
+        return None
+    doc_type, line = ranked[0]
+    return Classification(doc_type=doc_type, reason=f"제목 '{line.text.strip()}' (Textract 글자, 모델 호출 없음)")

@@ -9,6 +9,12 @@ from tools import ocr
 from tools.models import OcrLine, OcrResult, ReadField
 
 
+@pytest.fixture(autouse=True)
+def no_pacing(monkeypatch):
+    """Textract 호출 간격(초당 1건)은 간격 테스트에서만 본다."""
+    monkeypatch.setattr(ocr, "TEXTRACT_MIN_INTERVAL", 0.0)
+
+
 def line(text, left=0.1, top=0.1, width=0.4, height=0.02):
     return {"BlockType": "LINE", "Text": text, "Geometry": {"BoundingBox": {"Left": left, "Top": top, "Width": width, "Height": height}}}
 
@@ -176,3 +182,258 @@ def test_upright_image_turns_rotated_photo_and_skips_others():
     assert ocr.upright_image(jpeg((40, 20))) is None
     assert ocr.upright_image(jpeg((40, 20), orientation=1)) is None
     assert ocr.upright_image(b"not an image") is None
+
+
+# ---------------------------------------------------------------------------
+# OCR 원본 저장과 캐시 (B4-L0): 자르지 않은 OcrResult 를 S3 cache/ocr/ 에 두고, 같은 파일이면 Textract 를 다시 부르지 않는다
+# ---------------------------------------------------------------------------
+class MemoryOcrCache:
+    def __init__(self):
+        self.items: dict[str, str] = {}
+
+    def get(self, key):
+        return self.items.get(key)
+
+    def put(self, key, value):
+        self.items[key] = value
+
+
+def counting_ocr(calls):
+    def run(file, data, *, client=None, pages=None):
+        calls.append(file)
+        return OcrResult(file=file, lines=[OcrLine(page=1, text=f"line {i}", bbox=(0.1, 0.1, 0.4, 0.02)) for i in range(700)])
+
+    return run
+
+
+def test_same_file_bytes_use_saved_ocr_without_textract():
+    cache, calls = MemoryOcrCache(), []
+
+    first = ocr.ocr_cached("uploads/a/scan.jpg", b"jpeg", cache=cache, run=counting_ocr(calls))
+    again = ocr.ocr_cached("uploads/b/scan.jpg", b"jpeg", cache=cache, run=counting_ocr(calls))
+
+    assert calls == ["uploads/a/scan.jpg"]
+    assert again.file == "uploads/b/scan.jpg"  # 저장분이어도 지금 올린 파일의 키로 돌려준다
+    assert again.lines == first.lines
+
+
+def test_saved_ocr_keeps_every_line():
+    cache = MemoryOcrCache()
+
+    ocr.ocr_cached("uploads/a/scan.jpg", b"jpeg", cache=cache, run=counting_ocr([]))
+
+    [saved] = cache.items.values()
+    assert len(OcrResult.model_validate_json(saved).lines) == 700  # 작업 줄(ocr 칸)처럼 600줄에서 자르지 않는다
+
+
+def test_different_bytes_get_different_cache_keys():
+    assert ocr.ocr_cache_key(b"a") != ocr.ocr_cache_key(b"b")
+    assert ocr.ocr_cache_key(b"a") == ocr.ocr_cache_key(b"a")
+
+
+def test_no_cache_always_calls_textract():
+    calls = []
+
+    ocr.ocr_cached("uploads/a/scan.jpg", b"jpeg", cache=None, run=counting_ocr(calls))
+    ocr.ocr_cached("uploads/a/scan.jpg", b"jpeg", cache=None, run=counting_ocr(calls))
+
+    assert len(calls) == 2
+
+
+def test_broken_cache_falls_back_to_textract():
+    class Broken:
+        def get(self, key):
+            raise RuntimeError("AccessDenied")
+
+        def put(self, key, value):
+            raise RuntimeError("AccessDenied")
+
+    calls = []
+
+    res = ocr.ocr_cached("uploads/a/scan.jpg", b"jpeg", cache=Broken(), run=counting_ocr(calls))
+
+    assert calls == ["uploads/a/scan.jpg"] and len(res.lines) == 700
+
+
+def test_unreadable_saved_value_is_ignored():
+    cache, calls = MemoryOcrCache(), []
+    cache.items[ocr.ocr_cache_key(b"jpeg")] = "{not json"
+
+    ocr.ocr_cached("uploads/a/scan.jpg", b"jpeg", cache=cache, run=counting_ocr(calls))
+
+    assert calls == ["uploads/a/scan.jpg"]
+
+
+def test_default_cache_is_off_with_no_cache_or_without_bucket(monkeypatch):
+    monkeypatch.setenv("DOCS_BUCKET", "team06-docs-test")
+    monkeypatch.setenv("NO_CACHE", "1")
+    assert ocr.default_ocr_cache() is None
+    monkeypatch.delenv("NO_CACHE")
+    assert isinstance(ocr.default_ocr_cache(), ocr.S3OcrCache)
+    monkeypatch.delenv("DOCS_BUCKET")
+    assert ocr.default_ocr_cache() is None
+
+
+def test_s3_cache_reads_and_writes_under_cache_ocr_prefix():
+    class FakeS3:
+        def __init__(self):
+            self.objects = {}
+
+        def put_object(self, *, Bucket, Key, Body, ContentType):
+            self.objects[(Bucket, Key)] = Body
+
+        def get_object(self, *, Bucket, Key):
+            if (Bucket, Key) not in self.objects:
+                raise type("NoSuchKey", (Exception,), {"response": {"Error": {"Code": "NoSuchKey"}}})()
+            return {"Body": io.BytesIO(self.objects[(Bucket, Key)])}
+
+    s3 = FakeS3()
+    store = ocr.S3OcrCache("bkt", client=s3)
+
+    assert store.get("abc") is None
+    store.put("abc", '{"file": "x"}')
+
+    assert list(s3.objects) == [("bkt", "cache/ocr/abc.json")]
+    assert store.get("abc") == '{"file": "x"}'
+
+
+def test_empty_ocr_is_not_saved_so_next_upload_retries_textract():
+    cache, calls = MemoryOcrCache(), []
+
+    def empty(file, data, *, client=None, pages=None):
+        calls.append(file)
+        return OcrResult(file=file, lines=[])
+
+    ocr.ocr_cached("uploads/a/scan.jpg", b"jpeg", cache=cache, run=empty)
+    ocr.ocr_cached("uploads/a/scan.jpg", b"jpeg", cache=cache, run=empty)
+
+    assert cache.items == {} and len(calls) == 2
+
+
+def test_saved_empty_ocr_is_not_served():
+    cache, calls = MemoryOcrCache(), []
+    cache.items[ocr.ocr_cache_key(b"jpeg")] = OcrResult(file="x", lines=[]).model_dump_json()
+
+    ocr.ocr_cached("uploads/a/scan.jpg", b"jpeg", cache=cache, run=counting_ocr(calls))
+
+    assert calls == ["uploads/a/scan.jpg"]
+
+
+@pytest.mark.parametrize("name, value", [("MAX_SIDE_PX", 2000), ("JPEG_QUALITY", 70), ("MAX_PAGES", 3), ("RENDER_DPI", 200)])
+def test_cache_key_changes_with_page_image_settings(monkeypatch, name, value):
+    before = ocr.ocr_cache_key(b"a")
+    monkeypatch.setattr(ocr, name, value)
+
+    assert ocr.ocr_cache_key(b"a") != before  # 쪽 그림이 달라지면 박스 위치도 달라진다 (리뷰 #3)
+
+
+def test_s3_cache_shares_one_client_built_once_across_threads(monkeypatch):
+    import sys
+    import threading
+    import time
+    import types
+
+    made = []
+
+    def slow_client(service, **kwargs):
+        time.sleep(0.02)  # 여러 스레드가 동시에 들어오게
+        made.append(service)
+        return object()
+
+    monkeypatch.setitem(sys.modules, "boto3", types.SimpleNamespace(client=slow_client))
+    ocr._s3_client.cache_clear()
+    caches = [ocr.S3OcrCache("bkt") for _ in range(4)]
+    got = []
+    threads = [threading.Thread(target=lambda c=c: got.append(c._s3())) for c in caches]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    ocr._s3_client.cache_clear()
+
+    assert made == ["s3"] and len({id(c) for c in got}) == 1  # 리뷰 #1: 스레드마다 기본 세션으로 클라이언트를 만들지 않는다
+
+
+def test_s3_cache_treats_access_denied_on_missing_key_as_quiet_miss(capsys):
+    """GetObject 권한만 있고 ListBucket 이 없으면 없는 키에 S3 가 403 을 준다. 처음 올린 파일마다 경고가 찍히지 않게 (리뷰 #2).
+    진짜 권한 문제는 put 실패 경고로 드러난다."""
+
+    class Denied:
+        def get_object(self, **kwargs):
+            raise type("ClientError", (Exception,), {"response": {"Error": {"Code": "AccessDenied"}}})()
+
+    assert ocr.S3OcrCache("bkt", client=Denied()).get("abc") is None
+    assert "[warn]" not in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# Textract 글자로 서류 종류 고르기 (비용: 서류마다 Bedrock 분류 호출 하나를 줄인다)
+# ---------------------------------------------------------------------------
+def ocr_of(*lines):
+    """(글자, top, height) 줄들로 OcrResult. left 는 0.3 고정."""
+    return OcrResult(file="x", lines=[OcrLine(page=1, text=t, bbox=(0.3, top, 0.4, h)) for t, top, h in lines])
+
+
+@pytest.mark.parametrize("title, expected", [
+    ("COMMERCIAL INVOICE", "commercial_invoice"),
+    ("Commercial Invoice", "commercial_invoice"),
+    ("PACKING LIST", "packing_list"),
+    ("BILL OF LADING", "bill_of_lading"),
+    ("CERTIFICATE OF ORIGIN", "certificate_of_origin"),
+    ("CERTIFICATE OF ORIGIN (Combined Declaration and Certificate)", "certificate_of_origin"),
+])
+def test_classify_from_ocr_uses_the_title_line(title, expected):
+    got = ocr.classify_from_ocr(ocr_of((title, 0.1, 0.03), ("Invoice No. INV-1", 0.2, 0.012)))
+
+    assert got is not None and got.doc_type == expected
+    assert title in got.reason and "Textract" in got.reason
+
+
+def test_classify_from_ocr_ignores_titles_inside_body_text():
+    # B/L 약관 문장 속 'Bill of Lading', 상업송장 안의 'Packing List' 언급은 제목이 아니다
+    got = ocr.classify_from_ocr(ocr_of(
+        ("COMMERCIAL INVOICE", 0.15, 0.025),
+        ("One original Bill of Lading must be surrendered duly endorsed", 0.4, 0.01),
+        ("Packing List attached", 0.6, 0.01),
+    ))
+
+    assert got.doc_type == "commercial_invoice"
+
+
+def test_classify_from_ocr_returns_none_when_no_title_so_model_decides():
+    assert ocr.classify_from_ocr(ocr_of(("Shipper", 0.1, 0.012), ("QINGDAO SAMPLE TYRE CO., LTD.", 0.12, 0.012))) is None
+    assert ocr.classify_from_ocr(None) is None
+
+
+def test_classify_from_ocr_returns_none_when_two_titles_look_alike():
+    got = ocr.classify_from_ocr(ocr_of(("COMMERCIAL INVOICE", 0.1, 0.025), ("PACKING LIST", 0.12, 0.025)))
+
+    assert got is None  # 송장·포장명세서를 한 장에 합친 서류 등: 모델이 고른다
+
+
+def test_classify_from_ocr_returns_none_when_title_is_low_on_the_page():
+    assert ocr.classify_from_ocr(ocr_of(("Shipper", 0.1, 0.012), ("COMMERCIAL INVOICE", 0.7, 0.03))) is None
+
+
+def test_textract_calls_are_paced_to_the_account_tps_limit(monkeypatch):
+    """서울 리전 DetectDocumentText 한도가 초당 1건이다. 서류마다 스레드로 OCR 해도 호출 사이를 띄운다."""
+    import threading
+    import time
+
+    monkeypatch.setattr(ocr, "TEXTRACT_MIN_INTERVAL", 0.05)
+    monkeypatch.setattr(ocr, "_last_call", 0.0)
+    stamps = []
+
+    class Stamping(FakeTextract):
+        def detect_document_text(self, **kwargs):
+            stamps.append(time.monotonic())
+            return {"Blocks": [line("X")]}
+
+    threads = [threading.Thread(target=lambda: ocr.ocr_document("a.jpg", b"j", client=Stamping([]))) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    gaps = [b - a for a, b in zip(sorted(stamps), sorted(stamps)[1:])]
+    assert len(stamps) == 4 and min(gaps) >= 0.045

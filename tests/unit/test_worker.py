@@ -54,6 +54,7 @@ def ocr(monkeypatch):
     monkeypatch.setattr(worker, "render_pages", fake_render)
     monkeypatch.setattr(worker, "ocr_document", fake_ocr)
     monkeypatch.setattr(handler, "store_object", lambda key, data, content_type: seen["stored"].__setitem__(key, content_type))
+    monkeypatch.setattr(worker, "ocr_cache", lambda: None)  # S3 OCR 저장소 대신. 캐시를 보는 테스트만 메모리판으로 바꾼다
     return seen
 
 
@@ -846,3 +847,112 @@ def test_waiting_approval_job_is_not_registered(table, monkeypatch, wms_memory):
     assert run_with(table, monkeypatch, read_docs(), hs=WAITING_HS)["status"] == "waiting_approval"
     assert wms_memory.records == {}
     assert "push_to_wms" not in [s.tool for s in saved(table).steps]
+
+
+def test_same_file_reuses_saved_ocr_and_keeps_full_copy(table, monkeypatch, ocr):
+    """B4-L0: 자르지 않은 OCR 을 저장해 두고, 같은 파일이면 Textract(가짜 ocr_document)를 다시 부르지 않는다."""
+    from tests.unit.test_ocr import MemoryOcrCache
+
+    cache = MemoryOcrCache()
+    monkeypatch.setattr(worker, "ocr_cache", lambda: cache)
+    monkeypatch.setattr(document_agent, "run_job", done_run_job)
+
+    put_job(table)
+    worker.lambda_handler({"job_id": JOB, "files": FILES}, None)
+    put_job(table)
+    worker.lambda_handler({"job_id": JOB, "files": FILES}, None)
+
+    assert ocr["ocr"] == ["uploads/s1/invoice.pdf"]  # 두 번째 작업은 저장분을 쓴다
+    assert len(cache.items) == 1
+    assert json.loads(table.items[JOB]["ocr"])["uploads/s1/invoice.pdf"]["lines"][0]["text"] == "COMMERCIAL INVOICE"
+    assert ocr["stored"] == {"uploads/s1/invoice.pdf.p1.jpg": "image/jpeg"}  # 쪽 그림은 화면이 쓰므로 매번 둔다
+
+
+# ---------------------------------------------------------------------------
+# Textract 글자로 분류 (CLASSIFY_BY_OCR=1): 제목이 분명하면 Bedrock 분류 호출을 하지 않는다
+# ---------------------------------------------------------------------------
+def classifying_run_job(seen):
+    """진짜 run_job 처럼 fetch 한 바이트로 content_blocks 를 만들어 classifier 를 부른다."""
+    from tools.extract import content_blocks
+
+    def run(job_id, files, fetch, *, classifier=None, **_):
+        seen["classifier"] = classifier
+        if classifier is not None:
+            for f in files:
+                seen.setdefault("classified", {})[f["key"]] = classifier(content_blocks(f["key"], fetch(f["key"])), "prompt")
+        return Job(job_id=job_id, status="done", result=JobResult())
+
+    return run
+
+
+def test_classify_by_ocr_uses_textract_title_without_model(table, monkeypatch):
+    seen, model_calls = {}, []
+    monkeypatch.setenv("CLASSIFY_BY_OCR", "1")
+    monkeypatch.setattr(worker, "_model_classifier", lambda blocks, prompt: model_calls.append(1))
+    monkeypatch.setattr(document_agent, "run_job", classifying_run_job(seen))
+    put_job(table)
+
+    worker.lambda_handler({"job_id": JOB, "files": [{"key": "uploads/s1/invoice.pdf", "doc_type": None}]}, None)
+
+    got = seen["classified"]["uploads/s1/invoice.pdf"]
+    assert got.doc_type == "commercial_invoice" and "COMMERCIAL INVOICE" in got.reason
+    assert model_calls == []
+
+
+def test_classify_by_ocr_falls_back_to_model_when_ocr_has_no_title(table, monkeypatch):
+    from tools.models import Classification
+
+    seen = {}
+    monkeypatch.setenv("CLASSIFY_BY_OCR", "1")
+    monkeypatch.setattr(worker, "ocr_document", lambda key, data, *, client=None, pages=None: OcrResult(
+        file=key, lines=[OcrLine(page=1, text="Shipper", bbox=(0.1, 0.1, 0.1, 0.01))]))
+    monkeypatch.setattr(worker, "_model_classifier", lambda blocks, prompt: Classification(doc_type="packing_list", reason="모델"))
+    monkeypatch.setattr(document_agent, "run_job", classifying_run_job(seen))
+    put_job(table)
+
+    worker.lambda_handler({"job_id": JOB, "files": [{"key": "uploads/s1/scan.jpg", "doc_type": None}]}, None)
+
+    assert seen["classified"]["uploads/s1/scan.jpg"].reason == "모델"
+
+
+def test_classify_by_ocr_is_off_by_default(table, monkeypatch):
+    seen = {}
+    monkeypatch.delenv("CLASSIFY_BY_OCR", raising=False)
+    monkeypatch.setattr(document_agent, "run_job", classifying_run_job(seen))
+    put_job(table)
+
+    worker.lambda_handler({"job_id": JOB, "files": FILES}, None)
+
+    assert seen["classifier"] is None  # run_job 기본(Bedrock 분류)
+
+
+def test_pdf_pages_are_rendered_one_at_a_time(monkeypatch):
+    """pdfium은 스레드 여럿이 동시에 쓰면 프로세스가 죽는다 (배포본 Runtime.ExitError, #39). 쪽 그리기는 한 번에 하나만."""
+    import threading
+    import time as _time
+    from concurrent.futures import ThreadPoolExecutor
+
+    from tools.ocr import PageImage
+
+    active, peak, guard = [0], [0], threading.Lock()
+
+    def slow_render(data, **kwargs):
+        with guard:
+            active[0] += 1
+            peak[0] = max(peak[0], active[0])
+        _time.sleep(0.02)
+        with guard:
+            active[0] -= 1
+        return [PageImage(data=b"jpeg", width=10, height=10)]
+
+    monkeypatch.setattr(worker, "render_pages", slow_render)
+    monkeypatch.setattr(worker, "ocr_document", lambda key, data, *, client=None, pages=None: OcrResult(file=key, lines=[]))
+    monkeypatch.setattr(handler, "fetch_object", lambda key: b"%PDF")
+    monkeypatch.setattr(handler, "store_object", lambda key, data, content_type: None)
+
+    keys = [f"uploads/s1/{n}.pdf" for n in range(8)]
+    with ThreadPoolExecutor(max_workers=worker.OCR_WORKERS) as pool:
+        results = list(pool.map(worker.ocr_one, keys))
+
+    assert peak[0] == 1
+    assert all(ocr is not None and len(pages) == 1 for ocr, pages in results)
