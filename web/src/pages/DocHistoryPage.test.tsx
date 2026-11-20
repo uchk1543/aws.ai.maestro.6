@@ -4,13 +4,14 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "../api";
 import draft from "../fixtures/documents.draft.json";
+import { fileViewOf } from "../mockDocs";
 import { renderWithQuery } from "../test-utils";
 import type { DocType, DocumentRecord, DocumentsResponse } from "../types";
 import { DocHistoryPage } from "./DocHistoryPage";
 
 vi.mock("../api", async (importOriginal) => {
   const real = await importOriginal<typeof import("../api")>();
-  return { ...real, getDocuments: vi.fn() };
+  return { ...real, getDocuments: vi.fn(), getJobFiles: vi.fn() };
 });
 
 const counts = draft.counts as Record<DocType, number>;
@@ -23,6 +24,7 @@ const page = (docType: DocType, next: string | null = null): DocumentsResponse =
 
 beforeEach(() => {
   vi.mocked(api.getDocuments).mockReset();
+  vi.mocked(api.getJobFiles).mockReset();
 });
 
 describe("DocHistoryPage", () => {
@@ -133,5 +135,53 @@ describe("DocHistoryPage", () => {
     await waitFor(() => expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(1 + 4));
     expect(api.getDocuments).toHaveBeenLastCalledWith("commercial_invoice", "c3");
     expect(screen.queryByRole("button", { name: "더 보기" })).not.toBeInTheDocument();
+  });
+  it("파일 이름을 누르면 서류 그림과 분류 근거 창이 열리고, 근거를 누르면 그 박스가 강조된다", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.getDocuments).mockResolvedValue(page("commercial_invoice"));
+    vi.mocked(api.getJobFiles).mockImplementation((jobId) =>
+      Promise.resolve({ files: all.filter((d) => d.job_id === jobId).map(fileViewOf) }),
+    );
+    renderWithQuery(<DocHistoryPage />);
+
+    await user.click(await screen.findByRole("button", { name: "invoice.pdf" }));
+
+    const dialog = screen.getByRole("dialog", { name: "invoice.pdf" });
+    expect(api.getJobFiles).toHaveBeenCalledWith("job-7c1e");
+    expect(await within(dialog).findByRole("img", { name: "invoice.pdf 1쪽" })).toBeInTheDocument();
+    expect(dialog).toHaveTextContent("AI 자동 분류");
+    expect(dialog).toHaveTextContent("제목 COMMERCIAL INVOICE, Unit Price·Amount 칸");
+
+    const reasons = within(within(dialog).getByRole("list", { name: "근거가 된 곳" })).getAllByRole("button");
+    expect(reasons.map((b) => b.textContent)).toEqual(["제목COMMERCIAL INVOICE", "특징 칸Unit Price", "특징 칸Amount"]);
+    await user.click(reasons[1]);
+    expect(within(dialog).getByRole("button", { name: "분류 근거 · 특징 칸: Unit Price" })).toHaveAttribute("aria-pressed", "true");
+
+    const values = within(within(dialog).getByRole("list", { name: "읽은 값" })).getAllByRole("button");
+    expect(values[0]).toHaveTextContent("송장 번호INV-2026-0214");
+  });
+
+  it("창은 닫기 버튼과 Esc 로 닫히고, '작업 화면 열기'는 그 작업으로 간다", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.getDocuments).mockResolvedValue(page("unknown"));
+    vi.mocked(api.getJobFiles).mockRejectedValue(new api.ApiError(404, "없는 경로입니다"));
+    renderWithQuery(<DocHistoryPage />);
+
+    await user.click(await screen.findByRole("button", { name: "merged_docs.pdf" }));
+    const dialog = screen.getByRole("dialog");
+    // 서버가 그림을 주지 않아도 분류 결과는 보인다
+    expect(await within(dialog).findByText(/서류 그림을 불러오지 못했습니다/)).toBeInTheDocument();
+    expect(dialog).toHaveTextContent("분류 실패: 서류 여러 장이 한 파일에 합쳐져 있음");
+
+    await user.click(within(dialog).getByRole("button", { name: "닫기" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "merged_docs.pdf" }));
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "merged_docs.pdf" }));
+    await user.click(screen.getByRole("button", { name: "작업 화면 열기" }));
+    expect(window.location.hash).toBe("#/jobs/job-c442");
   });
 });

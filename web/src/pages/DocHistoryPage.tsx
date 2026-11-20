@@ -1,11 +1,12 @@
 // G10 문서 분류 내역: 서류 종류를 고르면 그 종류로 분류된 서류 목록 (GET /api/documents, 서버 약속은 제안 중).
 // 종류별 건수(counts)와 분류 근거(reason)는 서버가 준 값을 그대로 쓴다. 화면은 다시 세거나 분류하지 않는다.
-// 모바일·태블릿: 위 종류 칩 + 서류 카드. PC: 왼쪽 종류 목록 | 오른쪽 표.
+// 모바일·태블릿: 위 종류 칩 + 서류 카드. PC: 왼쪽 종류 목록 | 오른쪽 표. 파일 이름을 누르면 서류 보기 창(G11).
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError, getDocuments } from "../api";
+import { DocDetail } from "../components/DocDetail";
 import { navigate } from "../route";
-import { DOC_TYPE_KO, DOC_TYPES, type ClassifiedBy, type DocType, type DocumentsResponse } from "../types";
+import { DOC_TYPE_KO, DOC_TYPES, type ClassifiedBy, type DocType, type DocumentRecord, type DocumentsResponse } from "../types";
 import { STATUS_KO } from "./JobPage";
 
 /** 종류 이름. unknown(분류 실패 포함)은 "분류 못 함"으로 모은다. */
@@ -15,6 +16,7 @@ const BY_KO: Record<ClassifiedBy, string> = { model: "자동", user: "사용자 
 
 export function DocHistoryPage() {
   const [docType, setDocType] = useState<DocType>("commercial_invoice");
+  const [opened, setOpened] = useState<DocumentRecord | null>(null);
   const query = useInfiniteQuery({
     queryKey: ["documents", docType],
     queryFn: ({ pageParam }) => getDocuments(docType, pageParam),
@@ -89,7 +91,10 @@ export function DocHistoryPage() {
               {items.map((d, i) => (
                 <tr key={`${d.job_id}-${d.file_name}-${i}`}>
                   <td data-label="파일 이름" className="doc-file">
-                    <strong>{d.file_name}</strong>
+                    {/* 누르면 서류 그림과 분류 근거를 여는 창 (G11) */}
+                    <button type="button" className="link doc-open" aria-haspopup="dialog" onClick={() => setOpened(d)}>
+                      {d.file_name}
+                    </button>
                   </td>
                   <td data-label="작업">
                     <button type="button" className="link" onClick={() => navigate(`/jobs/${encodeURIComponent(d.job_id)}`)}>
@@ -123,6 +128,15 @@ export function DocHistoryPage() {
           </button>
         )}
       </div>
+
+      {opened && (
+        <DocDetail
+          record={opened}
+          kindLabel={KIND_LABEL[opened.doc_type]}
+          statusLabel={STATUS_KO[opened.job_status]}
+          onClose={() => setOpened(null)}
+        />
+      )}
     </section>
   );
 }
