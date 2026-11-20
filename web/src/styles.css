@@ -4424,3 +4424,56 @@ button.link {
     padding-top: 68px;
   }
 }
+
+/* ── AI chat 결과: PC 에서도 화물 한 건 = 회색 칸 하나 (표는 7칸이라 1040px 대화 칸에 다 들어가지 않는다) ──
+   칸마다 이름(data-label)과 값을 위아래로 두고 격자로 나란히 놓는다. 모바일 카드 방식과 같은 생각. 가로 스크롤 없음 */
+@media (min-width: 768px) {
+  .chat-answer {
+    overflow-x: visible;
+  }
+  .chat-answer table.cards,
+  .chat-answer table.cards tbody {
+    display: block;
+    width: 100%;
+  }
+  .chat-answer table.cards thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .chat-answer table.cards tr {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 10px 16px;
+    margin-bottom: 8px;
+    padding: 14px 18px;
+    background: var(--fill);
+    border-radius: 14px;
+  }
+  .chat-answer table.cards td,
+  .chat-answer table.cards td:nth-child(n) {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    padding: 0;
+    font-size: 15px;
+    white-space: normal;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+    border: 0;
+  }
+  .chat-answer table.cards td::before {
+    content: attr(data-label);
+    font-size: 12px;
+    color: var(--muted);
+  }
+  /* B/L 번호는 한 줄 전체 폭으로 맨 위에 */
+  .chat-answer table.cards td:first-child {
+    grid-column: 1 / -1;
+    font-size: 16px;
+  }
+}
