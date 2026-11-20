@@ -123,7 +123,7 @@
       <rect x="0" y="20" width="118" height="64" rx="10" fill="#fff" stroke="#8892a0"/><text x="59" y="57" text-anchor="middle" fill="#14213d">서류 올리기</text>
       <rect x="148" y="20" width="118" height="64" rx="10" fill="#e8f1ff" stroke="#1f6feb"/><text x="207" y="48" text-anchor="middle" fill="#1f6feb">종류 분류</text><text x="207" y="69" text-anchor="middle" font-size="12.5" font-weight="400" fill="#1f6feb">기능 ②</text>
       <rect x="296" y="20" width="150" height="64" rx="10" fill="#e8f1ff" stroke="#1f6feb"/><text x="371" y="48" text-anchor="middle" fill="#1f6feb">4종 서류 읽기</text><text x="371" y="69" text-anchor="middle" font-size="12.5" font-weight="400" fill="#1f6feb">기능 ① · Bedrock</text>
-      <rect x="476" y="20" width="150" height="64" rx="10" fill="#eceff4" stroke="#3d4757"/><text x="551" y="48" text-anchor="middle" fill="#3d4757">서류끼리 대조</text><text x="551" y="69" text-anchor="middle" font-size="12.5" font-weight="400" fill="#3d4757">기능 ② · 규칙 12개</text>
+      <rect x="476" y="20" width="150" height="64" rx="10" fill="#eceff4" stroke="#3d4757"/><text x="551" y="48" text-anchor="middle" fill="#3d4757">서류끼리 대조</text><text x="551" y="69" text-anchor="middle" font-size="12.5" font-weight="400" fill="#3d4757">기능 ② · 규칙 13개</text>
       <rect x="656" y="20" width="176" height="64" rx="10" fill="#eceff4" stroke="#3d4757"/><text x="744" y="48" text-anchor="middle" fill="#3d4757">어긋난 칸만 다시 확인</text><text x="744" y="69" text-anchor="middle" font-size="12.5" font-weight="400" fill="#3d4757">PDF 글자 · Textract</text>
       <rect x="862" y="20" width="140" height="64" rx="10" fill="#e8f1ff" stroke="#1f6feb"/><text x="932" y="48" text-anchor="middle" fill="#1f6feb">HS 추천</text><text x="932" y="69" text-anchor="middle" font-size="12.5" font-weight="400" fill="#1f6feb">기능 ③ · 확정은 코드·사람</text>
       <rect x="1032" y="20" width="128" height="64" rx="10" fill="#eceff4" stroke="#3d4757"/><text x="1096" y="48" text-anchor="middle" fill="#3d4757">신고서 초안</text><text x="1096" y="69" text-anchor="middle" font-size="12.5" font-weight="400" fill="#3d4757">기능 ③</text>
@@ -190,7 +190,7 @@
       </ol>
     </div>
   </div>
-  <div class="foot"><span class="src">근거: 모델 단독 기준선 PR #125 · 10회 반복 PR #128 · 채점 재실행 (main 5ad0933)</span><span>6</span></div>
+  <div class="foot"><span class="src">근거: 모델 단독 기준선 PR #125 · 10회 반복 PR #128 · 끝까지 75세트 PR #267 #273 (고정 순서, 한 번) · 채점 재실행 (main b5e0dc4)</span><span>6</span></div>
 </section>
 
 <!-- 7 -->
@@ -226,7 +226,7 @@
   <div class="cols">
     <div class="col card" style="background:var(--model-bg)">
       <h2><span class="tag m">1</span>읽기: 비전 모델</h2>
-      <ul><li>처음 보는 양식도 규칙 없이 읽는다</li><li>품목 행까지 읽어 HS와 신고서에 쓴다</li></ul>
+      <ul><li>양식마다 규칙을 짜지 않아도 읽는다</li><li>품목 행까지 읽어 HS와 신고서에 쓴다</li></ul>
       <p class="note" style="margin-top:10px">잰 것: 분류 288/288장, 읽기 450/450칸</p>
     </div>
     <div class="col card" style="background:var(--code-bg)">
@@ -246,7 +246,7 @@
       <table>
         <tr><th style="width:36%">다른 순서</th><th>재 본 결과</th></tr>
         <tr><td>OCR로 먼저 읽기</td><td>질의 방식 63/72칸. 좌표 규칙을 짜면 71/72칸이지만 <span class="strong">우리 양식 전용</span>이고 품목 행을 못 뽑는다</td></tr>
-        <tr><td>모델이 판정까지</td><td>탐지는 같았다(37/37). 오류 없는 <span class="strong">4세트를 불일치로</span> 봤고 근거 칸이 남지 않는다</td></tr>
+        <tr><td>모델이 판정까지</td><td>탐지는 같았다(37/37). 오류 없는 <span class="strong">4세트를 불일치로</span> 봤고 근거 문장도 모델이 쓴다</td></tr>
       </table>
     </div>
   </div>
@@ -291,7 +291,7 @@
   <div class="cols">
     <div class="col" style="flex:.8">
       <div class="card" style="background:var(--model-bg)"><div class="big">22 / 25</div><div class="cap">5시간 43분 동안 닫은 피드백 이슈.<br>관점 13개로 찾은 문제 23건에서 나왔다</div></div>
-      <p class="note" style="margin-top:12px">남긴 것: 열린 이슈 3개, 하지 않기로 한 것 2개 (인증, 다른 양식 시험)</p>
+      <p class="note" style="margin-top:12px">닫은 22개 = 고친 것 19개 + 하지 않기로 정한 것 3개 (종류 고르기 화면, 인증, 다른 양식 시험). 남은 3개는 11/21 새벽에 닫았다</p>
     </div>
     <div class="col" style="flex:1.4">
       <table>
@@ -397,8 +397,8 @@
       <ul>
         <li>합성 데이터이고 양식은 8가지다</li>
         <li>발표용 세트는 아직 열지 않았다</li>
-        <li>다른 회사 양식과 휴대폰 사진은 재지 않았다</li>
-        <li>서류끼리는 맞는데 HS가 틀린 7건은 못 잡는다</li>
+        <li>다른 회사 양식과 휴대폰 사진은 체계적으로 재지 않았다</li>
+        <li>HS가 틀린 7건 가운데 5건은 서류 대조로 못 잡는다</li>
         <li>사람이 처리한 시간을 재지 않아, 시간이 얼마나 주는지는 말하지 않는다</li>
       </ul>
     </div>
@@ -441,14 +441,16 @@
       <table>
         <tr><td>심은 오류 (상업송장·포장명세서)</td><td class="strong">37 / 37건</td></tr>
         <tr><td>오류 없는 세트의 오탐</td><td class="strong">0 / 42세트</td></tr>
-        <tr><td>B/L·원산지증명서까지</td><td class="strong">46 / 53건</td></tr>
+        <tr><td>B/L·원산지증명서까지</td><td class="strong">48 / 53건</td></tr>
         <tr><td>HS 자동 확정 중 틀린 것</td><td class="strong">0 / 70건</td></tr>
         <tr><td>사람 손 없이 등록까지</td><td class="strong">16 / 30세트</td></tr>
       </table>
-      <p class="note" style="margin-top:8px">46건은 불일치 43건과 확인 필요 3건이다. 놓친 7건은 서류끼리는 맞는데 HS가 틀린 경우다.</p>
+      <p class="note" style="margin-top:8px">48건은 불일치 43건과 확인 필요 5건이다. 놓친 5건은 두 서류에 같은 틀린 HS가 적혔거나 송장에 HS 칸이 없는 경우다.</p>
+      <p class="note" style="margin-top:8px">끝까지 75세트의 46/53은 X-HS-01(#266) 전 코드로 잰 값이다(그때 상한도 46).</p>
+      <p class="note" style="margin-top:8px">읽기 450/450은 합계 줄이 없는 송장을 품목 줄의 합으로 채점한 값이다. 끝까지 75세트에서 칸만 보면 412/450이고, 틀린 38칸은 모두 그런 송장의 총수량을 '칸 없음'으로 답한 것이다.</p>
     </div>
   </div>
-  <div class="foot"><span class="src">근거: PR #86 #93 #136 #128 #203 #109 #267 · 채점 재실행 (main 5ad0933). 끝까지 75세트는 고정 순서로 한 번 쟀다(세트당 평균 19초). 분류 288/288은 양식 8가지에서 잰 쉬운 시험이다.</span><span>15</span></div>
+  <div class="foot"><span class="src">근거: PR #86 #93 #136 #128 #203 #109 #266 #267 #273 · 채점 재실행 (main b5e0dc4). 끝까지 75세트는 고정 순서로 한 번 쟀다(세트당 평균 19초). 분류 288/288은 양식 8가지에서 잰 쉬운 시험이다.</span><span>15</span></div>
 </section>
 
 </body>

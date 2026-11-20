@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>6팀 시연영상에 넣을 그림</title>
+<!--
+  시연영상(영상대본.md)에 넣을 그림과 자막. 모두 1920x1080이다. 색과 글꼴은 발표자료.html과 같다(크기만 1.5배).
+  그림으로 뽑기: 이 폴더에서  bash make-video-assets.sh
+  이 파일을 브라우저로 그냥 열면 모든 그림이 차례로 보인다. 주소 끝에 #s1 처럼 붙이면 그 그림만 보인다.
+  class="solid" 는 흰 바탕 전체 화면, class="clear" 는 화면 녹화 위에 얹는 투명 바탕이다.
+-->
+<style>
+  :root {
+    --ink: #14213d; --sub: #4b5568; --line: #d8dee8; --soft: #f4f6fa;
+    --model: #1f6feb; --model-bg: #e8f1ff; --code: #3d4757; --code-bg: #eceff4;
+    --bad: #c62828; --bad-bg: #fdecec; --ok: #1b7f4b; --ok-bg: #e6f5ec;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: transparent; }
+  .frame {
+    width: 1920px; height: 1080px; position: relative; overflow: hidden; display: none;
+    font-family: "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", sans-serif; color: var(--ink); word-break: keep-all;
+  }
+  .frame:target { display: block; }
+  /* 조각 주소 없이 열면 모두 보여 준다 (투명 바탕은 바둑판 무늬로) */
+  body:not(:has(.frame:target)) { background: #777; padding: 24px 0; }
+  body:not(:has(.frame:target)) .frame { display: block; margin: 0 auto 24px; }
+  body:not(:has(.frame:target)) .frame.clear { background: repeating-conic-gradient(#c9c9c9 0% 25%, #e6e6e6 0% 50%) 0 0 / 40px 40px; }
+
+  .solid { background: #fff; padding: 62px 90px 54px; }
+  #s8 { padding-top: 118px; }
+  .kicker { font-size: 27px; font-weight: 700; color: var(--model); letter-spacing: .02em; margin: 0 0 12px; }
+  h1 { font-size: 60px; line-height: 1.25; margin: 0 0 34px; font-weight: 800; }
+  p { margin: 0; }
+  .note { font-size: 24px; color: #6b7482; line-height: 1.5; }
+  .bad { color: var(--bad); }
+
+  /* 1번 장면: 서류 두 장의 총중량 */
+  .doc { background: var(--soft); border-radius: 21px; padding: 24px 30px 28px; margin-bottom: 22px; }
+  .doc-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; }
+  .doc-name { font-size: 36px; font-weight: 800; }
+  .doc-name small { font-size: 25px; font-weight: 500; color: var(--sub); margin-left: 12px; }
+  .val { font-size: 29px; color: var(--sub); font-weight: 600; }
+  .val b { font-size: 78px; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; letter-spacing: -.01em; margin: 0 10px 0 16px; }
+  .val b em { font-style: normal; }
+  .strip { position: relative; background: #fff; border: 1.5px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .strip img { display: block; width: 100%; }
+  .mark { position: absolute; border: 6px solid var(--bad); border-radius: 16px; }
+  .mark.plain { border-color: var(--ink); }
+
+  /* 8번 장면: 숫자 카드 */
+  .cards { display: flex; gap: 30px; }
+  .card { flex: 1; background: var(--soft); border-radius: 21px; padding: 46px 42px 48px; }
+  .card .lab { font-size: 36px; font-weight: 700; color: var(--sub); }
+  .card .big { font-size: 150px; font-weight: 800; line-height: 1.1; margin-top: 18px; font-variant-numeric: tabular-nums; letter-spacing: -.02em; white-space: nowrap; }
+  .card .big span { font-size: 54px; font-weight: 700; color: var(--sub); letter-spacing: 0; margin-left: 10px; }
+  .card .cap { font-size: 29px; color: var(--sub); line-height: 1.55; margin-top: 24px; }
+  .limit { margin-top: 36px; background: var(--ink); color: #fff; border-radius: 21px; padding: 34px 42px; font-size: 36px; line-height: 1.6; font-weight: 700; }
+  .limit small { display: block; font-size: 29px; font-weight: 500; opacity: .86; }
+
+  /* 8번 장면: 대시보드 화면 위에 얹는 판 */
+  .scrim { position: absolute; inset: 0; background: rgba(20, 33, 61, .52); }
+  .panel { position: absolute; left: 150px; right: 150px; top: 232px; background: #fff; border-radius: 30px; padding: 44px 50px 46px; box-shadow: 0 24px 70px rgba(0, 0, 0, .35); }
+  .panel .kicker { margin-bottom: 22px; }
+  .panel .card { padding: 28px 32px 30px; }
+  .panel .card .lab { font-size: 30px; }
+  .panel .card .big { font-size: 112px; margin-top: 10px; }
+  .panel .card .big span { font-size: 44px; }
+  .panel .card .cap { font-size: 24px; margin-top: 14px; }
+  .panel .limit { font-size: 28px; padding: 22px 32px; margin-top: 26px; }
+  .panel .limit small { font-size: 24px; }
+
+  /* 자막: 화면 녹화 위에 얹는다. 주소창과 가운데 아래(말 자막 자리)는 비워 둔다 */
+  .tag { position: absolute; display: flex; align-items: center; gap: 14px; border-radius: 999px; font-weight: 800; white-space: nowrap; box-shadow: 0 6px 20px rgba(0, 0, 0, .28); }
+  .who { left: 56px; bottom: 48px; font-size: 38px; padding: 17px 34px 17px 26px; color: #fff; background: var(--ink); }
+  .who.manager { background: var(--model); }
+  .who i { width: 18px; height: 18px; border-radius: 50%; background: #fff; opacity: .92; }
+  .insight { right: 56px; top: 122px; font-size: 34px; padding: 14px 32px 14px 16px; background: #fff; border: 3px solid var(--model); color: var(--ink); }
+  .insight b { display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; border-radius: 50%; background: var(--model); color: #fff; font-size: 31px; }
+  .speed { right: 56px; bottom: 48px; font-size: 34px; padding: 15px 30px; color: #fff; background: rgba(20, 33, 61, .92); }
+  .small { font-size: 29px; font-weight: 700; padding: 13px 28px; background: #fff; color: var(--ink); border: 2px solid var(--line); }
+  .small span { font-weight: 500; color: var(--sub); }
+  .refresh { right: 56px; bottom: 136px; }
+  .demo { left: 56px; bottom: 136px; }
+
+  /* 자막 위치 미리보기 */
+  .mock { position: absolute; inset: 0; background: #e9edf3; }
+  .mock .bar { position: absolute; left: 0; right: 0; top: 0; height: 104px; background: #cfd6e0; display: flex; align-items: center; padding-left: 190px; font-size: 26px; color: #4b5568; }
+  .mock .mid { position: absolute; left: 0; right: 0; top: 440px; text-align: center; font-size: 40px; color: #8892a0; font-weight: 700; line-height: 1.6; }
+  .mock .sub { position: absolute; left: 500px; right: 500px; bottom: 44px; height: 66px; border: 2px dashed #8892a0; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 25px; color: #6b7482; }
+</style>
+</head>
+<body>
+
+<!-- 1번 장면 (0:00~0:12): 상업송장과 포장명세서의 총중량 -->
+<section class="frame solid" id="s1">
+  <p class="kicker">같은 화물, 서류 두 장</p>
+  <h1>총중량의 앞 두 자리가 다릅니다</h1>
+  <div class="doc">
+    <div class="doc-head">
+      <span class="doc-name">상업송장<small>Commercial Invoice</small></span>
+      <span class="val">총중량<b><em class="bad">21</em>,683.10</b>KGS</span>
+    </div>
+    <div class="strip"><img src="d003-ci-total-hd.png" alt="상업송장의 총중량 줄"><i class="mark" style="left:39.68%;top:68.44%;width:8.94%;height:25.01%"></i></div>
+  </div>
+  <div class="doc">
+    <div class="doc-head">
+      <span class="doc-name">포장명세서<small>Packing List</small></span>
+      <span class="val">총중량<b>12,683.10</b>KGS</span>
+    </div>
+    <div class="strip"><img src="d003-pl-total-hd.png" alt="포장명세서의 총중량 줄"><i class="mark plain" style="left:72.03%;top:24.76%;width:10.02%;height:27.47%"></i></div>
+  </div>
+  <p class="note">개발용 합성 서류 D003에서 총중량이 적힌 줄을 그대로 잘랐습니다.</p>
+</section>
+
+<!-- 8번 장면 (2:38~3:00): 숫자 카드, 흰 바탕 전체 화면 -->
+<section class="frame solid" id="s8">
+  <p class="kicker">측정 결과 · 개발용 시험 세트</p>
+  <h1>숫자는 우리가 만든 시험 세트로 잰 값입니다</h1>
+  <div class="cards">
+    <div class="card"><div class="lab">서류 분류</div><div class="big">288<span>/ 288장</span></div><div class="cap">PDF, PNG, 스캔본<br>양식 8가지</div></div>
+    <div class="card"><div class="lab">읽기</div><div class="big">450<span>/ 450칸</span></div><div class="cap">송장 번호, 총수량, 총중량<br>서류 150장</div></div>
+    <div class="card"><div class="lab">같은 판정</div><div class="big">40<span>/ 40번</span></div><div class="cap">4세트를 10번씩<br>에이전트 루프를 켜기 전에 잰 값</div></div>
+  </div>
+  <div class="limit">합성 서류로 잰 값입니다. 실제 양식은 다음 단계입니다.<small>화면의 통관 현황은 시연용 화물 기록입니다.</small></div>
+</section>
+
+<!-- 8번 장면: 대시보드 화면 위에 얹는 판 (투명 바탕) -->
+<section class="frame clear" id="s8-over">
+  <div class="scrim"></div>
+  <div class="panel">
+    <p class="kicker">측정 결과 · 우리가 만든 개발용 시험 세트로 잰 값</p>
+    <div class="cards">
+      <div class="card"><div class="lab">서류 분류</div><div class="big">288<span>/ 288장</span></div><div class="cap">PDF, PNG, 스캔본<br>양식 8가지</div></div>
+      <div class="card"><div class="lab">읽기</div><div class="big">450<span>/ 450칸</span></div><div class="cap">송장 번호, 총수량, 총중량<br>서류 150장</div></div>
+      <div class="card"><div class="lab">같은 판정</div><div class="big">40<span>/ 40번</span></div><div class="cap">4세트를 10번씩<br>에이전트 루프를 켜기 전에 잰 값</div></div>
+    </div>
+    <div class="limit">합성 서류로 잰 값입니다. 실제 양식은 다음 단계입니다.<small>화면의 통관 현황은 시연용 화물 기록입니다.</small></div>
+  </div>
+</section>
+
+<!-- 자막 (투명 바탕). 한 장에 하나씩이라 겹쳐 올려도 서로 가리지 않는다 -->
+<section class="frame clear" id="cap-worker"><div class="tag who"><i></i>작업자 화면</div></section>
+<section class="frame clear" id="cap-manager"><div class="tag who manager"><i></i>관리자 화면</div></section>
+<section class="frame clear" id="cap-insight2"><div class="tag insight"><b>2</b>읽기는 모델, 판정은 코드</div></section>
+<section class="frame clear" id="cap-insight3"><div class="tag insight"><b>3</b>자동은 근거가 둘일 때만</div></section>
+<section class="frame clear" id="cap-4x"><div class="tag speed">▶▶ 4배속</div></section>
+<section class="frame clear" id="cap-refresh"><div class="tag small refresh">대시보드는 1분마다 새로 고침 <span>· 기다린 구간은 잘랐습니다</span></div></section>
+<section class="frame clear" id="cap-demo-data"><div class="tag small demo">통관 현황은 시연용 화물 기록</div></section>
+
+<!-- 자막 위치 미리보기 (영상에 넣지 않는다) -->
+<section class="frame" id="cap-preview">
+  <div class="mock">
+    <div class="bar">브라우저 주소창 자리 (2번 장면에서 주소가 보여야 한다)</div>
+    <div class="mid">화면 녹화<br>자막 위치 미리보기</div>
+    <div class="sub">말을 글자로도 넣는다면 이 자리</div>
+  </div>
+  <div class="tag who manager"><i></i>관리자 화면</div>
+  <div class="tag insight"><b>3</b>자동은 근거가 둘일 때만</div>
+  <div class="tag speed">▶▶ 4배속</div>
+  <div class="tag small refresh">대시보드는 1분마다 새로 고침 <span>· 기다린 구간은 잘랐습니다</span></div>
+  <div class="tag small demo">통관 현황은 시연용 화물 기록</div>
+</section>
+
+</body>
+</html>
