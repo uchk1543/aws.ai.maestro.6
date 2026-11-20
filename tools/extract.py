@@ -480,7 +480,7 @@ _DOC_KINDS = {
 }
 _ITEM_KINDS = {
     "item_code": "text", "name": "name", "hs_code": "hs", "qty": "qty", "gross_kg": "kg", "net_kg": "kg",
-    "unit_price": "amount", "amount": "amount", "origin_criterion": "text",
+    "unit_price": "amount", "amount": "amount", "origin_criterion": "text", "packages": "qty",
 }
 
 
@@ -499,7 +499,7 @@ def to_extracted(raw_doc: BaseModel, doc_type: DocType, file: str) -> ExtractedD
     cells = {
         name: _cell(getattr(raw_doc, name), _DOC_KINDS.get(name, "text"))
         for name in type(raw_doc).model_fields
-        if name != "items"
+        if name not in ("items", "containers")
     }
     return ExtractedDocument(doc_type=doc_type, file=file, items=items, **cells)
 

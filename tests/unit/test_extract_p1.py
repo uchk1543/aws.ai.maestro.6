@@ -5,7 +5,9 @@ import pytest
 from tools import extract
 from tools.declaration import draft_declaration
 from tools.extract import parse_date, read_document, system_prompt, to_extracted
-from tools.models import RAW_MODELS, RAW_REQUIRED_NEW, RawBillOfLading, RawDocument, RawItem, RawOrigin
+from tools.models import (
+    RAW_MODELS, RAW_REQUIRED_NEW, SITE_FIELDS, RawBillOfLading, RawDocument, RawItem, RawOrigin,
+)
 
 
 def cell(raw):
@@ -142,3 +144,35 @@ def test_declaration_draft_fills_sources_that_were_missing():
     assert filled["인도조건"] == "FOB HO CHI MINH CITY" and filled["결제금액"] == 9828.0 and filled["결제방법"] == "T/T 30 DAYS"
     assert filled["총포장갯수"] == 176 and filled["단가"] == 28.0 and filled["금액"] == 9828.0
     assert filled["원산지"] == "VIETNAM" and filled["원산지결정기준"] == "RVC 40%"
+
+
+# ---------------------------------------------------------------------------
+# 현장 칸: 화인·컨테이너 줄·품목별 포장 수 (B12 #228)
+# ---------------------------------------------------------------------------
+def _optional_count(node) -> int:
+    """JSON 스키마에서 필수가 아닌 속성 수 (Bedrock 구조화 출력 한도 12개)."""
+    if isinstance(node, list):
+        return sum(_optional_count(v) for v in node)
+    if not isinstance(node, dict):
+        return 0
+    own = len(set(node.get("properties", {})) - set(node.get("required", [])))
+    return own + sum(_optional_count(v) for v in node.values())
+
+
+def test_현장_칸도_선택_속성_한도_안():
+    for model in (RawDocument, RawBillOfLading):
+        assert _optional_count(model.model_json_schema()) <= 12
+    assert "marks" in RawDocument.model_json_schema()["required"]
+    assert {"marks", "containers"} <= set(RawBillOfLading.model_json_schema()["required"])
+
+
+def test_새_칸_없는_옛_응답도_받는다():
+    raw = RawDocument.model_validate({"doc_no": {"raw": "X"}, "items": [{"line": 1, "qty": {"raw": "1 PCS"}}]})
+    assert raw.marks is None and raw.items[0].packages is None
+
+
+def test_현장_칸_목록():
+    assert "containers.seal_no" in SITE_FIELDS["bill_of_lading"]
+    assert "items.packages" in SITE_FIELDS["packing_list"]
+    assert "total_amount" not in SITE_FIELDS["commercial_invoice"]  # 관리자만
+    assert SITE_FIELDS["certificate_of_origin"] == frozenset()

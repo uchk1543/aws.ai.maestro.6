@@ -12,7 +12,7 @@
       "marks": [],
       "fields": [
         {"field": "doc_no", "label": "서류 번호", "raw": "SAMPLE-INV-0259", "value": "SAMPLE-INV-0259", "unit": null, "unreadable": null},
-        {"field": "total_gross_kg", "label": "총중량", "raw": "21,683.10 KGS", "value": 21683.1, "unit": "KG", "unreadable": null},
+        {"field": "total_gross_kg", "label": "총중량", "raw": "21,683.10 KGS", "value": 21683.1, "unit": "KG", "unreadable": null, "site": false},
         {"field": "consignee_name", "label": "수하인", "raw": "SAMPLE TRADING KOREA CO., LTD.", "value": "SAMPLE TRADING KOREA CO., LTD.", "unit": null, "unreadable": null},
         {"field": "items[0].name", "label": "1행 품명", "raw": "WOODEN DINING CHAIR, OAK FRAME", "value": "WOODEN DINING CHAIR, OAK FRAME", "unit": null, "unreadable": null},
         {"field": "items[0].qty", "label": "1행 수량", "raw": "1,200 PCS", "value": 1200, "unit": "EA", "unreadable": null}
@@ -32,7 +32,7 @@
       "marks": [],
       "fields": [
         {"field": "doc_no", "label": "서류 번호", "raw": "SAMPLE-BL-21841", "value": "SAMPLE-BL-21841", "unit": null, "unreadable": null},
-        {"field": "total_gross_kg", "label": "총중량", "raw": "12,683.100", "value": 12683.1, "unit": null, "unreadable": null},
+        {"field": "total_gross_kg", "label": "총중량", "raw": "12,683.100", "value": 12683.1, "unit": null, "unreadable": null, "site": true},
         {"field": "vessel_voyage", "label": "선명·항차", "raw": null, "value": null, "unit": null, "unreadable": "흐림"}
       ]
     }
