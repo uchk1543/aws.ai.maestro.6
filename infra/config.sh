@@ -17,8 +17,10 @@ HANDLER_WORKER=api.worker.lambda_handler
 ROLE_API=team06-api-role
 ROLE_WORKER=team06-worker-role
 
-# 데이터
-TABLE=team06-jobs
+# 데이터 (테이블 키 약속은 infra/README.md "테이블")
+TABLE=team06-jobs                       # 키 job_id
+HS_TABLE=team06-hs-history              # 키 pk = "<수입자>#<품목 키>" (F4, C2)
+WMS_TABLE=team06-wms                    # 키 idempotency_key = "<B/L 번호>#<작업 ID>" (F4, D1)
 BUCKET="team06-docs-${ACCOUNT_ID}"      # 서류 원본(uploads/)과 배포 zip(deploy/)
 WEB_BUCKET="team06-web-${ACCOUNT_ID}"   # 화면 빌드 파일 (CloudFront만 읽음)
 
