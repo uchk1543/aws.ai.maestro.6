@@ -13,6 +13,7 @@ CloudFront가 /api/*를 API Gateway로 보내고, rawPath에 /api가 붙어 온�
          거르기(F11 #195): job_status · grade · rule_id · hs=pending
     GET  /api/stats           → StatsResponse          (F11 #195, 대시보드 통계. team06-jobs·team06-shipments Scan)
     GET  /api/jobs/{id}/files → JobFilesResponse        (F7 #156, 서류 보기: 원본 주소 + 읽은 칸)
+    GET  /api/jobs/{id}/notice?format=md|html → 파일    (F9 #155, 불일치 통지 문서 내려받기. C7 notice_document)
     GET  /api/chat/{id}      → {"messages"}            (E6 #157, 대화 기록 최근 50줄 오래된 순)
 서류 처리(run_job)는 처리 Lambda team06-worker(api/worker.py)가 한다. API Gateway는 요청 하나를 30초 안에 끝내야 한다.
 
@@ -1180,6 +1181,54 @@ def job_files(job_id: str) -> dict:
     return _response(200, JobFilesResponse(files=views).model_dump(mode="json"))
 
 
+# ---------------------------------------------------------------------------
+# 불일치 통지 문서 내려받기 (F9 #155). 문서는 C7(#158) tools.validate.notice_document가 코드로 만든다
+# ---------------------------------------------------------------------------
+NOTICE_FORMATS = {"md": ("text/markdown; charset=utf-8", "markdown"), "html": ("text/html; charset=utf-8", "html")}
+
+
+def _notice_name(subject: str, job_id: str, ext: str) -> str:
+    """내려받을 파일 이름. 제목의 B/L 번호(영문·숫자)를 쓰고, 없으면 작업 ID. 헤더에 넣으므로 영문·숫자·-·_만 남긴다."""
+    match = re.search(r"B/L\s+([A-Za-z0-9-]+)", subject)
+    stem = re.sub(r"[^A-Za-z0-9_-]", "", match.group(1) if match else job_id)[:60] or job_id
+    return f"notice-{stem}.{ext}"
+
+
+def job_notice(job_id: str, query: dict | None) -> dict:
+    """GET /jobs/{id}/notice?format=md|html. 불일치 통지 문서를 파일로 내려받는다 (F9 #155). 모델 호출 없음.
+
+    언제: 위변조 확인 화면(G12)의 '관리자에게 보낼 문서 받기'. 보내기 전에 사람이 검토한다 (메일 보내기는 하지 않는다).
+    받는 것: format(md 또는 html, 없으면 html).
+    반환: 200 파일(content-disposition: attachment) / 400 형식 / 404 없는 작업 / 409 처리 중이거나 서류 기록이 없음.
+    """
+    from tools.validate import notice_document
+
+    fmt = (query or {}).get("format") or "html"
+    if fmt not in NOTICE_FORMATS:
+        return _error(400, f"format은 {', '.join(NOTICE_FORMATS)} 중 하나입니다")
+    if not JOB_ID.match(job_id):
+        return _error(404, "작업을 찾을 수 없습니다")
+    item = _load_item(job_id)
+    if item is None:
+        return _error(404, "작업을 찾을 수 없습니다")
+    job = Job.model_validate_json(item["data"])
+    if job.status in ("queued", "running") or job.result is None:
+        return _error(409, f"처리가 끝난 작업에서만 문서를 만들 수 있습니다 (지금: {job.status})")
+    context = load_job_docs(item)
+    if context is None:
+        return _error(409, "이 작업에는 저장된 서류 기록이 없어 문서를 만들 수 없습니다")
+    docs, _ = context
+    notice = notice_document(job_id, docs, job.result.issues)
+    content_type, attr = NOTICE_FORMATS[fmt]
+    name = _notice_name(notice.subject, job_id, fmt)
+    print(f"[api] notice job={job_id} format={fmt} 불일치 {notice.mismatch_count} 확인 필요 {notice.check_count}")
+    return {
+        "statusCode": 200,
+        "headers": {"content-type": content_type, "content-disposition": f'attachment; filename="{name}"'},
+        "body": getattr(notice, attr),
+    }
+
+
 # 약속 2에 있지만 아직 없는 경로 → 작업 ID (e2e-plan.md). 만들면 여기서 지운다.
 _PLANNED: dict[tuple[str, str], str] = {}
 
@@ -1221,6 +1270,8 @@ def lambda_handler(event, context):
             return get_chat_history(parts[2])
         if method == "GET" and len(parts) == 4 and parts[1] == "jobs" and parts[3] == "files":
             return job_files(parts[2])
+        if method == "GET" and len(parts) == 4 and parts[1] == "jobs" and parts[3] == "notice":
+            return job_notice(parts[2], event.get("queryStringParameters"))
         if method == "POST" and len(parts) == 4 and parts[1] == "jobs" and parts[3] == "hs":
             return choose_hs(parts[2], _body(event))
         if method == "POST" and len(parts) == 4 and parts[1] == "jobs" and parts[3] == "approve":

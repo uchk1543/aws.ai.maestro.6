@@ -91,8 +91,14 @@ VITE_API_PROXY=https://<CloudFront 주소> npm run dev:api
 - 서류 원본이나 키를 화면 코드에 넣지 않는다.
 
 ## 대시보드 영상 (G15)
-`public/dashboard/`의 영상은 부산항 Blender 장면(발표 영상과 같은 렌더, 1920×1080 PNG 900장)에서 만들었다.
-- `port-intro.mp4`: 오프닝(1~240 프레임, 바다에서 터미널로 내려옴) 8초, 한 번 재생
-- `port-loop.mp4`: 마무리 항공샷(691~900 프레임)을 앞으로·뒤로 이어 붙인 14초, 되풀이 (끊김 없게)
-- `port-poster.jpg`: 첫 프레임. 영상을 못 틀 때와 불러오는 동안 보인다
-- 모두 1280×720 H.264(CRF 27~28), 소리 없음. 합쳐서 약 4.5MB. 다시 만들 때는 ffmpeg로 같은 설정을 쓴다
+`public/dashboard/`의 영상은 대시보드용으로 따로 만든 Blender 장면(흰 클레이 항구, 파랑·주황 컨테이너)이다. 장면은 `scene/build_scene.py` 하나로 만들고, 렌더한 프레임은 `scene/encode.py`로 묶는다 (빌드에는 들어가지 않는다).
+  ```
+  blender -b -P scene/build_scene.py                          # scene/dash_port.blend 저장 (Blender 4.0, EEVEE)
+  blender -b scene/dash_port.blend -o //frames/f#### -s 1 -e 888 -a   # 노트북 내장 그래픽으로 장당 10~20초 (888장, 약 3~4시간)
+  FFMPEG=<ffmpeg 경로> uv run --no-project --with pillow python scene/encode.py public/dashboard
+  ```
+- `port-intro.mp4`: 24초, 한 번 재생. 컨테이너 하나를 따라간다: 배 입항 → 안벽 크레인 하역 → 트럭으로 장치장 사이 이동 → 검사대 → 게이트 반출 → 항구 전체로 빠짐
+  - 화면 위 통관 단계(입항 → … → 반출)가 영상 시간에 맞춰 바뀐다. 단계가 시작하는 초는 `DashboardPage.tsx`의 `STAGE_TIMES`. 영상을 다시 만들면 함께 고친다
+- `port-loop.mp4`: 12초, 되풀이. 항구 전체 항공샷에서 트럭·크레인이 12초 주기로 돌아 끊김이 없다 (물결만 앞뒤 1초를 겹쳐 섞음)
+- `port-poster.jpg`: 인트로 첫 장. 영상을 못 틀 때와 불러오는 동안 보인다
+- 모두 1440×630, 24fps H.264(CRF 20, 화질 우선), 소리 없음. 합쳐서 약 14MB

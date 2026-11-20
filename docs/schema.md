@@ -46,6 +46,7 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 | `GET /api/chat/{session_id}` | - | `docs/examples/chat_history.json` (대화 기록 최근 50줄, 오래된 순. #157) |
 | `GET /api/documents?doc_type=<종류>&cursor=<다음 쪽>` | - | `docs/examples/documents.json` (문서 분류 내역, #143) |
 | `GET /api/jobs/{id}/files` | - | `docs/examples/job_files.json` (서류 보기: 원본 주소 + 읽은 칸, #156) |
+| `GET /api/jobs/{id}/notice?format=md\|html` | - | 불일치 통지 문서 파일 (`content-disposition: attachment`, `notice-<B/L 또는 작업 ID>.md\|html`, 기본 html). 처리 중이면 409 (#155, 문서는 C7 `NoticeDocument`) |
 | `GET /api/jobs/{id}/notice?format=md\|html` | - | 불일치 통지 문서 내려받기 (F9 #155, 아직 없음. 문서 내용은 아래 `NoticeDocument`, 예시 `docs/examples/notice.json`, C7 #158) |
 | `GET /api/stats` | - | `docs/examples/stats.json` (대시보드 통계, F11 #195) |
 

@@ -83,13 +83,14 @@ git switch main && git pull && uv sync && uv run pytest -q
 
 # 처음 한 번: 리소스 만들기 (있으면 건너뜀, 지우지 않음). CloudFront가 퍼지는 데 5~10분
 MODEL_ID=global.anthropic.claude-sonnet-5-5 bash infra/create.sh
-curl -s https://<CloudFront 주소>/api/            # 4번 F3 전: 핸들러 404 JSON / F3 뒤: {"ok": true}
+curl -s https://<CloudFront 주소>/api/            # 4번 F3 전: 핸들러 404 JSON / F3 뒤: {"ok": true, "version": "<배포한 커밋>"} (deploy.sh 전에는 "unknown")
 
 # 가상 화물 기록 넣기 (E2). 시드 파일이 바뀌면 다시 (같은 bl_no는 덮어씀)
 uv run python infra/seed_shipments.py           # 검사만
 uv run python infra/seed_shipments.py --apply
 
 # 배포 시각(15·18·23·03·07시, 데모 직전)마다: 두 Lambda 코드 갱신
+bash infra/deploy.sh --check                    # 배포 전 검사만 (AWS를 부르지 않는다)
 bash infra/deploy.sh
 
 # 화면 빌드가 생기면 (F5)
@@ -97,6 +98,12 @@ WEB_DIST=web/dist bash infra/deploy-web.sh
 ```
 
 모델 ID를 바꿀 때 (설정만 바뀜): 두 함수 모두 `aws lambda update-function-configuration --environment ...`로 바꾼다. 다른 환경 변수도 함께 넣어야 한다(덮어쓰기).
+
+**배포한 버전 확인 (#174)**
+- `deploy.sh`는 AWS를 부르기 전에 두 가지를 검사하고, 어긋나면 멈춘다. 작업 폴더에 커밋하지 않은 변경이 없어야 하고(`.gitignore` 대상 제외), HEAD가 `origin/main`과 같은 커밋이어야 한다. branch 이름은 보지 않으므로 `git worktree add --detach tmp/deploy-main origin/main`으로 받은 깨끗한 폴더에서 `bash tmp/deploy-main/infra/deploy.sh`를 해도 된다. 검사만 보려면 `--check`.
+- 통과하면 짧은 커밋 SHA를 API Lambda 환경 변수 `GIT_SHA`로 넣는다. `GET /api/` 의 `version`이 이 값이다 (`{"ok": true, "version": "20594b3"}`). 값이 없으면 `"unknown"`.
+- `GIT_SHA`는 `deploy.sh`만 쓴다. `create.sh`의 `sync_env`는 환경 변수를 맞출 때 `GIT_SHA`를 비교에서 빼고 지우지 않는다. 그래서 `create.sh`를 다시 실행해도 `version`이 `"unknown"`으로 돌아가지 않는다.
+- 데모 직전에는 `curl .../api/`의 `version`이 배포하려던 커밋(`git rev-parse --short origin/main`)과 같은지 본다.
 
 ## 끝까지 한 번 (F3 뒤)
 화면과 같은 순서(업로드 URL → S3 PUT → 작업, doc_type null → 조회)를 공개 주소로 돌린다. AWS 자격 증명이 필요 없다.
@@ -120,7 +127,7 @@ curl -s "$URL/api/jobs/<job_id>"                # queued → running → waiting
 
 ## 남은 일
 - [x] F1 `create.sh` 실행, CloudFront → API Gateway → Lambda 연결 확인
-- [x] F3(4번) 합친 뒤 `deploy.sh`, `/api/` → `{"ok": true}`, 끝까지 한 번 (2026-11-20, `scripts/e2e_upload.py`, D003 4장 14.7초)
+- [x] F3(4번) 합친 뒤 `deploy.sh`, `/api/` → `{"ok": true}` (지금은 version도 함께, #174), 끝까지 한 번 (2026-11-20, `scripts/e2e_upload.py`, D003 4장 14.7초)
 - [x] F4 Textract 권한(worker), team06-hs-history·team06-wms 테이블과 권한, 환경 변수 (HS 이력 키는 C3 설계로 맞춤)
 - [x] E2 team06-shipments 테이블과 시드 넣기 (`infra/seed_shipments.py`)
 - [x] F5 화면 빌드 올리기 (`deploy-web.sh`)

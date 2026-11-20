@@ -1,0 +1,7 @@
+# 렌더 결과물은 올리지 않는다 (영상만 public/dashboard/)
+*.blend
+*.blend1
+frames/
+loopframes/
+stills/
+*.log

@@ -2022,60 +2022,92 @@ video.port-media.on {
   opacity: 0.9;
 }
 
-/* 컨테이너에서 서류가 떠오른다 */
-.port-docs {
+/* 영상 속 컨테이너가 지나는 통관 단계 (영상 시간에 맞춰 바뀐다) */
+.port-stages {
   position: absolute;
-  inset: 0;
+  top: 14px;
+  left: var(--gutter);
+  right: var(--gutter);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
   pointer-events: none;
 }
 
-.port-doc {
-  position: absolute;
-  bottom: -40px;
-  left: calc(8% + var(--n) * 15%);
-  width: 22px;
-  height: 28px;
-  background: rgba(255, 255, 255, 0.92);
-  border-radius: 3px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.18);
-  opacity: 0;
-  animation: doc-float 9s calc(var(--n) * 1.4s + 1.5s) infinite ease-in-out;
+.port-stages li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  color: #8a8f98;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 2px 10px rgba(10, 20, 40, 0.12);
+  transition: background 0.4s ease, color 0.4s ease;
 }
 
-.port-doc::before,
-.port-doc::after {
-  content: "";
-  position: absolute;
-  left: 4px;
-  right: 4px;
-  height: 2px;
-  background: #b9b9b9;
-  border-radius: 1px;
+.port-stages li.done {
+  color: #111;
 }
 
-.port-doc::before {
-  top: 7px;
+.port-stages li.now {
+  background: #111;
+  color: #fff;
 }
 
-.port-doc::after {
-  top: 13px;
-  right: 8px;
+.port-stage-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.45;
 }
 
-@keyframes doc-float {
-  0% {
-    opacity: 0;
-    transform: translateY(0) rotate(-8deg) scale(0.8);
+.port-stages li.done .port-stage-dot,
+.port-stages li.now .port-stage-dot {
+  opacity: 1;
+}
+
+.port-stages li.now .port-stage-dot {
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.port-stage-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+/* 모바일: 지금 단계만 글자로, 나머지는 점 */
+@media (max-width: 767px) {
+  .port-stages li:not(.now) {
+    padding: 0 8px;
   }
-  12% {
-    opacity: 0.95;
+
+  .port-stages li:not(.now) .port-stage-name,
+  .port-stages li:not(.now) .port-stage-count {
+    display: none;
   }
-  70% {
-    opacity: 0.85;
+}
+
+@media (min-width: 768px) {
+  .port-stages {
+    top: 20px;
+    left: 32px;
+    right: auto;
   }
-  100% {
-    opacity: 0;
-    transform: translateY(-220px) translateX(18px) rotate(10deg) scale(1);
+}
+
+@media (min-width: 1200px) {
+  .port-stages {
+    left: 44px;
+    top: 26px;
   }
 }
 
@@ -2471,10 +2503,6 @@ video.port-media.on {
   .dash.fx *::after {
     animation: none !important;
     transition: none !important;
-  }
-
-  .port-doc {
-    display: none;
   }
 }
 

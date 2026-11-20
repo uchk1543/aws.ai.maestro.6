@@ -157,19 +157,24 @@ COMMON_ENV="MODEL_ID=${MODEL_ID},JOBS_TABLE=${TABLE},HS_HISTORY_TABLE=${HS_HISTO
 # 판독 캐시(READ_CACHE_BUCKET)는 켜 둔다. 라이브 데모·반복 측정은 NO_CACHE=1 로 판독·OCR 캐시를 끈다 (agent-design.md 2번).
 # CLASSIFY_BY_OCR=1 이면 서류 종류를 Textract 제목 줄로 고르고 못 정하면 Bedrock 으로 분류한다 (기본 0, B4-L0).
 # TEXTRACT_TPS: 계정의 Textract 초당 한도 (서울 기본 1). 한도를 올리면 같이 올린다.
-WORKER_ENV="${COMMON_ENV},READ_CACHE_BUCKET=${BUCKET},NO_CACHE=${NO_CACHE:-0},CLASSIFY_BY_OCR=${CLASSIFY_BY_OCR:-0},TEXTRACT_TPS=${TEXTRACT_TPS:-1}"
+# AGENT_LOOP=1: 문서 처리 Agent가 도구를 고르는 루프로 돈다 (FB05 #162, PM 결정). 끄려면 AGENT_LOOP=0 bash infra/create.sh
+WORKER_ENV="${COMMON_ENV},READ_CACHE_BUCKET=${BUCKET},NO_CACHE=${NO_CACHE:-0},CLASSIFY_BY_OCR=${CLASSIFY_BY_OCR:-0},TEXTRACT_TPS=${TEXTRACT_TPS:-1},AGENT_LOOP=${AGENT_LOOP:-1}"
 API_ENV="${COMMON_ENV},WORKER_FUNCTION=${FN_WORKER},GUARDRAIL_ID=${GUARDRAIL_ID},GUARDRAIL_VERSION=${GUARDRAIL_VERSION}"
 ensure_function "${FN_WORKER}" "${HANDLER_WORKER}" "${ROLE_WORKER}" 300 1024 "${WORKER_ENV}"
 ensure_function "${FN_API}" "${HANDLER_API}" "${ROLE_API}" 30 512 "${API_ENV}"
 
 # 환경 변수는 이미 있는 함수도 이 스크립트 값으로 맞춘다 (테이블이 늘면 여기만 고친다).
 # 바뀌는 것: 두 함수의 환경 변수만. 코드·메모리·제한 시간은 그대로.
+# GIT_SHA는 infra/deploy.sh가 배포할 때 넣는 값이다 (GET /api/ 의 version, #174). 이 스크립트의 목록에 없으므로
+# 비교에서 빼고, 환경 변수를 맞출 때도 지우지 않고 그대로 이어 붙인다.
 sync_env() {
-  local fn="$1" env="$2" current
+  local fn="$1" env="$2" current sha
   current=$(aws lambda get-function-configuration --function-name "${fn}" --query "Environment.Variables" --output json)
-  if python3 -c 'import json,sys; want=dict(p.split("=",1) for p in sys.argv[1].split(",")); sys.exit(0 if want == (json.loads(sys.argv[2]) or {}) else 1)' "${env}" "${current}"; then
+  if python3 -c 'import json,sys; want=dict(p.split("=",1) for p in sys.argv[1].split(",")); have={k: v for k, v in (json.loads(sys.argv[2]) or {}).items() if k != "GIT_SHA"}; sys.exit(0 if want == have else 1)' "${env}" "${current}"; then
     echo "[create] ${fn} 환경 변수 그대로"
   else
+    sha=$(python3 -c 'import json,sys; print((json.loads(sys.argv[1]) or {}).get("GIT_SHA", ""))' "${current}")
+    if [ -n "${sha}" ]; then env="${env},GIT_SHA=${sha}"; fi
     aws lambda update-function-configuration --function-name "${fn}" --environment "Variables={${env}}" >/dev/null
     aws lambda wait function-updated-v2 --function-name "${fn}"
     echo "[create] ${fn} 환경 변수 맞춤"
