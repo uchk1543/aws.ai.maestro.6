@@ -3984,3 +3984,111 @@ button.link {
 .mark-pop-mismatch {
   background: var(--ink);
 }
+
+/* ── 승인 폼: 세로 한 줄 (승인자 → 안내 → 판독 오류 상자 → 꽉 찬 버튼) ──────────
+   앞의 .wms-approve 는 가로 나열(flex-wrap)이라 판독 오류 상자와 버튼이 한 줄에 서고,
+   .wms-approve label 규칙이 상자 안 체크박스·사유 칸까지 세로로 늘렸다. */
+.wms-approve {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.wms-approve > label,
+.wms-approve .primary,
+.wms-approver-note,
+.wms-override {
+  flex: none;
+  width: 100%;
+}
+
+.wms-approve > label input {
+  min-height: 52px;
+  padding: 0 16px;
+  font: inherit;
+  font-size: 16px;
+  color: var(--ink);
+  background: var(--fill);
+  border: 0;
+  border-radius: 12px;
+}
+
+.wms-approver-note {
+  margin-top: -4px;
+}
+
+.wms-override {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 4px 0 0;
+  padding: 18px 20px;
+  border-radius: 16px;
+}
+
+.wms-override legend {
+  float: left;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  font-size: 16px;
+}
+
+.wms-override > .hint {
+  margin: 0;
+  font-size: 14px;
+}
+
+/* 체크박스와 글자는 한 줄 */
+.wms-override label.wms-override-check {
+  display: flex;
+  flex: none;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.wms-override-check input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--primary);
+}
+
+/* 사유: 이름 위, 입력칸 아래. 늘어나지 않는다 */
+.wms-override label:not(.wms-override-check) {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--ink-secondary);
+}
+
+.wms-override textarea {
+  min-height: 72px;
+  padding: 12px 14px;
+  font-size: 15px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.wms-override textarea:focus {
+  border-color: var(--primary-line);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(49, 130, 246, 0.2);
+}
+
+/* WMS '승인 대기'는 오류가 아니라 대기 상태라 회색 배지 */
+.wms-state .grade-check {
+  color: var(--ink-secondary);
+  background: var(--fill);
+  box-shadow: none;
+}
