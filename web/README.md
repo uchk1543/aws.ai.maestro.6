@@ -12,18 +12,48 @@
   - 스타일: 일반 CSS 또는 CSS Modules (UI 라이브러리는 쓰지 않는다)
   - 테스트: Vitest + Testing Library. AWS와 서버를 부르지 않고 `docs/examples/`의 가짜 응답을 쓴다
   - 패키지 관리: npm (Node 20 이상)
-- [x] 개발 중 가짜 응답 모드: 환경 변수 `VITE_MOCK=1`이면 `/api` 호출을 `docs/examples/*.json`으로 대신 답한다. 기본값은 켜짐(`npm run dev`). API 호출은 한 파일(`src/api.ts`)에 모아 두고, 코드에서는 항상 상대 경로(`/api/...`)로 부른다
-- [x] 로컬 개발 서버에서 `/api`를 어디로 보낼지: `VITE_MOCK=0`이면 Vite 개발 서버 프록시가 `/api`를 `VITE_API_PROXY`(배포된 CloudFront 주소)로 보낸다. 배포 전에는 이 값이 없으므로 가짜 응답만 쓴다
+- [x] 개발 중 가짜 응답 모드: Vite 모드 `mock`(`npm run dev`)에서는 `/api` 호출을 `docs/examples/*.json`으로 대신 답한다. 예시 파일을 직접 읽으므로 예시가 바뀌면 가짜 응답도 같이 바뀐다. 빌드(`npm run build`)에는 가짜 응답이 들어가지 않는다. API 호출은 `src/api.ts` 한 곳에 모으고, 코드에서는 항상 상대 경로(`/api/...`)로 부른다
+- [x] 로컬 개발 서버에서 `/api`를 어디로 보낼지: `npm run dev:api`는 Vite 개발 서버 프록시로 `/api`를 환경 변수 `VITE_API_PROXY`(배포된 CloudFront 주소)에 보낸다. 배포 전에는 `npm run dev`(가짜 응답)만 쓴다
+  - S3 업로드 CORS는 CloudFront 주소에서 오는 PUT만 허용한다(`infra/s3-cors-docs.json`). 그래서 `localhost`에서는 S3에 파일을 올릴 수 없고, 실제 업로드는 배포된 주소에서 확인한다
+
+## 구조 (G1)
+왼쪽에 메뉴, 오른쪽에 고른 화면이 열린다. 사용자와 관리자를 나누지 않는다. 주소는 해시 방식이다.
+
+| 주소 | 메뉴 | 화면 | 작업 |
+|---|---|---|---|
+| `#/upload` (첫 화면) | 파일 업로드 | 파일 고르기 → 선택된 파일 목록(X로 빼기, 서류 종류 고치기) → 업로드 | G2 |
+| `#/jobs/{job_id}` | (업로드가 끝나면 열림) | 진행 단계, 결과(오류 목록 · HS 선택 · 신고서 초안 · WMS 상태·승인) | G3~G7 |
+| `#/chat` | AI chat | 대화, 입력창. 답마다 조건과 표 | G8 |
+
+```
+web/
+  index.html
+  package.json, tsconfig.json
+  vite.config.ts        개발 서버 프록시, docs/examples 읽기 허용, 테스트 설정
+  src/
+    main.tsx            시작점 (TanStack Query 준비)
+    App.tsx             메뉴와 해시 주소
+    api.ts              /api 호출을 모은 곳. 가짜 응답 모드면 mock.ts가 답한다
+    mock.ts             docs/examples/*.json으로 답하는 가짜 서버
+    types.ts            약속 2의 모양 (tools/models.py와 칸 이름이 같다)
+    pages/              UploadPage, JobPage, ChatPage
+    components/         결과 화면의 부분 (오류 목록, HS 선택, 신고서 표, WMS)
+    *.test.ts(x)        테스트는 고친 파일 옆에 둔다
+```
 
 ## 실행·빌드 방법
 프로젝트 파일(`package.json` 등)은 G2에서 만든다. 만든 뒤 아래 명령을 쓴다.
 ```
 cd web
 npm install
-npm run dev                                   # 개발 서버, 가짜 응답 모드
-VITE_MOCK=0 VITE_API_PROXY=<CloudFront 주소> npm run dev   # 배포된 API에 붙이기
-npm test                                      # 단위 테스트
-npm run build                                 # dist/ 생성. PM이 이 폴더를 S3에 올린다
+npm run dev            # 개발 서버, 가짜 응답 모드 (http://localhost:5173)
+npm test               # 단위 테스트
+npm run build          # dist/ 생성. PM이 infra/deploy-web.sh로 이 폴더를 S3에 올린다
+
+# 배포된 API에 붙이기 (PowerShell)
+$env:VITE_API_PROXY="https://<CloudFront 주소>"; npm run dev:api
+# 배포된 API에 붙이기 (bash)
+VITE_API_PROXY=https://<CloudFront 주소> npm run dev:api
 ```
 
 ## 화면과 쓰는 API (docs/schema.md 약속 2)
