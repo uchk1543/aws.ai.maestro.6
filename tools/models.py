@@ -105,6 +105,25 @@ class ExtractedItem(_Strict):
         default=None,
         description="원산지 기준 칸(Origin Criterion, 원산지증명서 8번). 적힌 그대로. 예: 'PSR', 'WP', 'CTC', 'RVC 40%'",
     )
+    packages: Cell | None = Field(
+        default=None,
+        description=(
+            "그 행의 포장 개수 칸(No. of Pkgs, CTNS, 포장명세서). 품목 수량(qty)과 다르다. "
+            "value는 개수, unit은 포장 단위. 예: '286' (현장 칸, B12 #228)"
+        ),
+    )
+
+
+class ExtractedContainer(_Strict):
+    """B/L 컨테이너 한 줄 (CONTAINER DETAILS). 항만 현장(게이트·보세창고)이 실물과 맞춰 보는 칸 (B12 #228)."""
+
+    line: int = Field(description="컨테이너 줄 순서. 1부터 센다")
+    container_no: Cell | None = Field(default=None, description="컨테이너 번호(Container No.). 봉인 번호와 다르다. 예: 'EXMU6058591'")
+    seal_no: Cell | None = Field(default=None, description="봉인 번호(Seal No.). 컨테이너 번호와 다르다. 예: 'EX1470293'")
+    size_type: Cell | None = Field(default=None, description="컨테이너 규격(Size-Type). 적힌 그대로. 예: \"20'GP (22G1)\"")
+    packages: Cell | None = Field(default=None, description="그 컨테이너의 포장 개수. value는 개수, unit은 포장 단위. 예: '53 CTNS'")
+    gross_kg: Cell | None = Field(default=None, description="그 컨테이너의 총중량. 예: '842.700 KGS'")
+    cbm: Cell | None = Field(default=None, description="그 컨테이너의 용적(Measurement, CBM). 예: '3.710 CBM'")
 
 
 class ExtractedDocument(_Strict):
@@ -187,6 +206,17 @@ class ExtractedDocument(_Strict):
     issued_retroactively: Cell | None = Field(
         default=None, description="원산지증명서의 'ISSUED RETROACTIVELY' 표시(체크·도장)가 있으면 그 글자. 없으면 비운다"
     )
+    # 현장 칸 (B12 #228). 항만 현장이 실물과 맞춰 보는 칸. 기존 container_no는 그대로 두고 containers를 덧붙인다
+    marks: Cell | None = Field(
+        default=None,
+        description=(
+            "화인 칸(Marks & Numbers, Shipping Marks)의 글자. 여러 줄은 공백 하나로 잇는다. value는 대문자·공백 하나로 맞춘 글자. "
+            "예: 'EXAMPLE DISTRIBUTION KOREA INC. BUSAN, KOREA C/NO. 1-53 MADE IN CHINA' (B/L·포장명세서)"
+        ),
+    )
+    containers: list[ExtractedContainer] = Field(
+        default_factory=list, description="B/L 컨테이너 줄 목록 (CONTAINER DETAILS). 줄마다 하나. 다른 서류는 빈 목록"
+    )
 
 
 # 모델이 실제로 채우는 모양: raw와 못 읽은 이유만 낸다 (value는 코드가 푼다)
@@ -214,18 +244,21 @@ class RawItem(_Strict):
     net_kg: RawCell | None = Field(default=None, description=ExtractedItem.model_fields["net_kg"].description)
     unit_price: RawCell | None = Field(default=None, description=ExtractedItem.model_fields["unit_price"].description)
     amount: RawCell | None = Field(default=None, description=ExtractedItem.model_fields["amount"].description)
+    packages: RawCell | None = Field(default=None, description=ExtractedItem.model_fields["packages"].description)
 
     # 선택 속성 한도(12개) 때문에 새 칸은 스키마에서 필수(null 허용)로 둔다 (RawDocument와 같은 방식)
     model_config = {
         **_Strict.model_config,
         "json_schema_extra": lambda schema: schema.update(
-            required=sorted({*schema.get("required", []), "unit_price", "amount"})
+            required=sorted({*schema.get("required", []), "unit_price", "amount", "packages"})
         ),
     }
 
 
 # RawDocument에서 스키마로만 필수(null 허용)로 표시하는 칸 (#133 consignee_name과 B2 P1의 남은 칸)
-RAW_REQUIRED_NEW = ("consignee_name", "exporter_name", "total_amount", "incoterms", "payment_term", "origin", "total_packages")
+RAW_REQUIRED_NEW = (
+    "consignee_name", "exporter_name", "total_amount", "incoterms", "payment_term", "origin", "total_packages", "marks",
+)
 
 
 class RawDocument(_Strict):
@@ -248,6 +281,7 @@ class RawDocument(_Strict):
     total_packages: RawCell | None = Field(
         default=None, description=ExtractedDocument.model_fields["total_packages"].description
     )
+    marks: RawCell | None = Field(default=None, description=ExtractedDocument.model_fields["marks"].description)
 
     # Bedrock 구조화 출력은 필수가 아닌 속성을 전체 12개까지만 받는다 (agent-design.md 10번).
     # 지금까지 12개라서 새 칸은 스키마에서 필수(null 허용)로 둔다. 파이썬에서는 기본값 None이라 기존 가짜 응답도 그대로 검증된다.
@@ -269,6 +303,18 @@ def _item_desc(name: str) -> str:
     return field.description or ""
 
 
+class RawContainer(_Strict):
+    """B/L 컨테이너 한 줄. 칸은 모두 필수 + null 허용 (선택 속성 한도)."""
+
+    line: int = Field(description="CONTAINER DETAILS 줄 순서. 1부터 센다")
+    container_no: RawCell | None = Field(description=ExtractedContainer.model_fields["container_no"].description)
+    seal_no: RawCell | None = Field(description=ExtractedContainer.model_fields["seal_no"].description)
+    size_type: RawCell | None = Field(description=ExtractedContainer.model_fields["size_type"].description)
+    packages: RawCell | None = Field(description=ExtractedContainer.model_fields["packages"].description)
+    gross_kg: RawCell | None = Field(description=ExtractedContainer.model_fields["gross_kg"].description)
+    cbm: RawCell | None = Field(description=ExtractedContainer.model_fields["cbm"].description)
+
+
 class RawBillOfLading(_Strict):
     """모델이 B/L 한 장을 읽은 결과. 품목 행은 옮기지 않는다."""
 
@@ -287,6 +333,19 @@ class RawBillOfLading(_Strict):
         description="Gross Weight 칸의 총중량. Measurement(CBM)와 다르다. 단위가 칸 제목에만 있으면 숫자만 옮긴다"
     )
     total_cbm: RawCell | None = Field(description=_doc_desc("total_cbm"))
+    # 현장 칸 (B12 #228). 옛 가짜 응답도 받게 파이썬 기본값을 두고, 스키마에서는 필수로 표시한다 (RawDocument와 같은 방식)
+    marks: RawCell | None = Field(default=None, description=_doc_desc("marks"))
+    containers: list[RawContainer] = Field(
+        default_factory=list,
+        description="CONTAINER DETAILS(Container No. / Seal No. ...) 줄마다 하나. 적힌 줄을 빠짐없이 옮긴다. 줄이 없으면 빈 목록",
+    )
+
+    model_config = {
+        **_Strict.model_config,
+        "json_schema_extra": lambda schema: schema.update(
+            required=sorted({*schema.get("required", []), "marks", "containers"})
+        ),
+    }
 
 
 class RawOriginItem(_Strict):
@@ -589,6 +648,22 @@ class DocMark(_Strict):
     bbox: list[float] = Field(description="left, top, width, height (0~1 비율) 네 개")
 
 
+# 현장 칸 (B12 #228): 항만 현장 작업자에게 보여 줄 칸. 관리자는 모든 칸을 보므로 관리자 목록은 두지 않는다.
+# 품목·컨테이너 칸은 줄 번호 없이 'items.qty', 'containers.seal_no'로 적는다. 금액·단가·결제 조건은 현장 칸이 아닐 뿐 읽기·대조·통지에서 빠지지 않는다
+_CONTAINER_SITE = frozenset(f"containers.{name}" for name in ("container_no", "seal_no", "size_type", "packages", "gross_kg", "cbm"))
+SITE_FIELDS: dict[str, frozenset[str]] = {
+    "bill_of_lading": frozenset({
+        "doc_no", "consignee_name", "vessel_voyage", "port_discharge", "container_no", "total_packages", "total_gross_kg",
+        "total_cbm", "marks",
+    }) | _CONTAINER_SITE,
+    "packing_list": frozenset({
+        "marks", "total_packages", "total_gross_kg", "items.item_code", "items.name", "items.qty", "items.packages", "items.gross_kg",
+    }),
+    "commercial_invoice": frozenset({"items.name", "origin"}),
+    "certificate_of_origin": frozenset(),
+}
+
+
 class ReadField(_Strict):
     """읽은 칸 하나 (OCR 결과 표의 한 줄)."""
 
@@ -598,6 +673,7 @@ class ReadField(_Strict):
     value: str | int | float | None = Field(default=None, description="코드가 푼 값")
     unit: str | None = Field(default=None, description="단위나 통화")
     unreadable: Unreadable | None = Field(default=None, description="못 읽은 이유")
+    site: bool = Field(default=False, description="현장 칸인지 (SITE_FIELDS). 관리자는 모든 칸을 본다 (B12 #228)")
 
 
 class JobFileView(_Strict):

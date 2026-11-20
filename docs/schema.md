@@ -18,12 +18,17 @@
   | 서류 | 칸 |
   |---|---|
   | 상업송장 | `doc_no` `exporter_name` `consignee_name` `incoterms` `payment_term` `origin` `total_qty` `total_gross_kg` `total_amount`, 품목 `item_code` `name` `hs_code` `qty` `unit_price` `amount` `gross_kg` `net_kg` |
-  | 포장명세서 | `doc_no` `exporter_name` `consignee_name` `total_qty` `total_gross_kg` `total_packages`, 품목 `item_code` `name` `qty` `gross_kg` `net_kg` |
-  | 선하증권 | `doc_no`(B/L No.) `shipper_name` `consignee_name` `notify_name` `vessel_voyage` `port_loading` `port_discharge` `onboard_date` `container_no` `freight_term` `total_packages` `total_gross_kg` `total_cbm`. 품목 행은 없다 |
+  | 포장명세서 | `doc_no` `exporter_name` `consignee_name` `total_qty` `total_gross_kg` `total_packages` `marks`, 품목 `item_code` `name` `qty` `gross_kg` `net_kg` `packages` |
+  | 선하증권 | `doc_no`(B/L No.) `shipper_name` `consignee_name` `notify_name` `vessel_voyage` `port_loading` `port_discharge` `onboard_date` `container_no` `freight_term` `total_packages` `total_gross_kg` `total_cbm` `marks`, 컨테이너 줄 `containers[]`(`container_no` `seal_no` `size_type` `packages` `gross_kg` `cbm`). 품목 행은 없다 |
   | 원산지증명서 | `doc_no`(송장 번호) `co_no` `exporter_name` `consignee_name` `departure_date` `invoice_date` `issue_date` `issued_retroactively`, 품목 `name` `hs_code` `qty` `origin_criterion` |
 - 이름 칸(`*_name`)은 첫 이름 줄만 담고 주소는 뺀다. 선하증권의 'TO ORDER OF SHIPPER', 'SAME AS CONSIGNEE'는 적힌 그대로다.
 - 날짜 칸의 `value`는 `YYYY-MM-DD`이고, 숫자만 쓴 날짜(`10/11/2026`)는 일/월/연으로 푼다. 금액(`total_amount`·`unit_price`·`amount`)은 `value` 숫자, `unit` 통화.
 - `total_packages`는 포장 개수의 합계(`unit` CTN 등)로 `total_qty`(품목 수량)와 다르다. `container_no`는 여러 개면 공백 하나로 잇는다.
+- 현장 칸 (B12 #228): 항만 현장이 실물과 맞춰 보는 칸이다. 칸이 없는 양식은 `raw` null, `unreadable` '칸 없음'.
+  - `marks`: 화인(Marks & Numbers). 여러 줄은 공백 하나로 잇고, `value`는 대문자·공백 하나로 맞춘 글자.
+  - `containers[]`: 선하증권 CONTAINER DETAILS 줄마다 하나(`line` 1부터). `container_no`는 그대로 두고 덧붙인 것이다. 다른 서류는 빈 목록.
+  - 품목 `packages`: 포장명세서 그 행의 포장 개수(No. of Pkgs). `value` 개수, `unit` 포장 단위. 품목 수량 `qty`와 다르다.
+  - 현장 칸 목록은 `tools/models.py`의 `SITE_FIELDS`(서류 종류별). 관리자는 모든 칸을 보고, 금액·단가·결제 조건도 지금처럼 읽고 대조한다.
 - 모델이 채우는 모양: 상업송장·포장명세서는 `RawDocument`(새 칸은 필수 + null 허용), 선하증권·원산지증명서는 종류별 `RawBillOfLading`·`RawOrigin`(칸 모두 필수 + null 허용). 코드가 위 칸으로 바꾼다.
 - 예시: `docs/examples/extract_packing_list.json`
 ## 약속 2. 작업 API (화면 ↔ Lambda)
@@ -71,7 +76,7 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 - 서류마다 `url`(원본, 미리 서명된 GET 300초, inline), `content_type`. 화면은 PDF는 iframe, 이미지는 img로 띄운다
 - `pages`: 이미지 서류는 원본 한 장과 크기(px). PDF는 처리 Lambda가 그려 둔 쪽 그림(JPEG, 150dpi, 앞 5쪽, `uploads/<원본 키>.pN.jpg`). 그리지 못한 PDF는 빈 목록 (F10 #188)
 - `marks`: 서류 위 표시와 위치(bbox, 쪽 그림에 대한 0~1 비율). 처리 Lambda가 서류마다 매번 Textract OCR을 돌려 저장하고(작업 줄의 `ocr` 칸), 코드가 OCR 글자 줄에서 분류 근거의 제목(`title`)·특징 칸(`feature`)과 읽은 칸의 raw(`field`)를 찾는다. 못 찾은 것은 넣지 않는다. OCR이나 쪽 그림이 없으면 빈 목록 (F10 #188)
-- `fields[]`: 읽은 칸 `{field, label, raw, value, unit, unreadable}`. `field`는 `IssueCell.field`와 같은 이름이라 `issues[].cells`의 `doc`+`field`로 불일치 칸을 바로 짚는다. 읽지 않은 서류는 빈 목록
+- `fields[]`: 읽은 칸 `{field, label, raw, value, unit, unreadable, site}`. `site`는 현장 칸이면 true (`SITE_FIELDS`, B12 #228. 채우는 것은 F12 #230). `field`는 `IssueCell.field`와 같은 이름이라 `issues[].cells`의 `doc`+`field`로 불일치 칸을 바로 짚는다. 읽지 않은 서류는 빈 목록
 - 분류 전(queued·running)인 서류는 빼고, 종류·근거는 문서 분류 내역과 같은 규칙
 
 문서 분류 내역 (`GET /api/documents`, G10 #143. 모양은 `tools/models.py`의 `DocumentsResponse`)

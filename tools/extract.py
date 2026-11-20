@@ -25,6 +25,7 @@ from agent import text_of, today_kst
 from tools.models import (
     DOC_TYPE_KO,
     Cell,
+    ExtractedContainer,
     Classification,
     DocType,
     ExtractedDocument,
@@ -247,6 +248,8 @@ _DOC_RULES: dict[str, str] = {
         "상업송장과 맞춰 보는 번호라서 Packing List No.가 따로 있어도 송장 번호를 옮긴다. 같은 칸의 날짜는 뺀다.\n"
         "- exporter_name은 수출자(Exporter, Seller, Shipper) 칸의 회사 이름 한 줄이다. 주소는 뺀다.\n"
         "- total_packages는 포장 개수의 합계(Total Packages, SAY TOTAL ... CARTONS)다. 품목 수량 합계(total_qty)와 다르다.\n"
+        "- marks는 Marks and Numbers(Shipping Marks) 칸의 줄을 공백 하나로 이어 옮긴다. 칸이 없으면 칸 없음.\n"
+        "- 품목 행의 packages는 그 행의 포장 개수(No. of Pkgs, CTNS) 열이다. 품목 수량(qty)과 다르다. 열이 없으면 칸 없음.\n"
     ),
     "bill_of_lading": (
         "- doc_no는 B/L No. 칸의 번호만 옮긴다. Booking No., Container No., 송장 번호와 다르다.\n"
@@ -259,6 +262,10 @@ _DOC_RULES: dict[str, str] = {
         "- total_packages는 No. of Pkgs 칸, total_cbm은 Measurement 칸의 숫자다. 단위가 칸 제목에만 있으면 숫자만 옮긴다.\n"
         "- onboard_date는 'SHIPPED ON BOARD' 날짜를 적힌 그대로 옮긴다. container_no는 컨테이너 번호만 옮기고 봉인 번호(Seal No.)는 뺀다. "
         "여러 개면 공백 하나로 잇는다. freight_term은 'FREIGHT PREPAID'·'FREIGHT COLLECT' 같은 운임 조건이다.\n"
+        "- marks는 MARKS & NUMBERS 칸의 줄을 공백 하나로 이어 옮긴다. 줄 안의 글자는 고치지 않는다.\n"
+        "- containers는 CONTAINER DETAILS(또는 Container No. / Seal No.) 줄마다 하나다. 컨테이너 번호(container_no)와 "
+        "봉인 번호(seal_no)를 섞지 않는다. size_type은 규격(예 20'GP), packages·gross_kg·cbm은 그 줄의 포장 수·총중량·용적을 "
+        "적힌 그대로 옮긴다. 그런 줄이 없으면 빈 목록이다.\n"
     ),
     "certificate_of_origin": (
         "- doc_no는 10번 칸(Number and date of invoices)의 송장 번호다. 증명서 번호(Reference No., Certificate No.)는 co_no에 옮긴다.\n"
@@ -451,6 +458,8 @@ def _cell(raw_cell: RawCell | None, kind: str) -> Cell | None:
         return Cell(raw=raw, value=raw.strip())
     if kind == "name":
         return Cell(raw=raw, value=" ".join(raw.lower().split()))
+    if kind == "marks":  # 화인: 줄바꿈·여러 칸 공백을 공백 하나로, 대문자로 (B12 #228)
+        return Cell(raw=raw, value=" ".join(raw.upper().split()))
     if kind == "hs":
         return Cell(raw=raw, value=re.sub(r"\D", "", raw) or None)
     number = parse_number(raw)
@@ -476,18 +485,23 @@ def _cell(raw_cell: RawCell | None, kind: str) -> Cell | None:
 # 칸 이름 → 푸는 방식. 표에 없는 서류 칸은 글자(text)로 둔다
 _DOC_KINDS = {
     "total_gross_kg": "kg", "total_qty": "qty", "total_packages": "qty", "total_amount": "amount", "total_cbm": "number",
-    "onboard_date": "date", "issue_date": "date", "departure_date": "date", "invoice_date": "date",
+    "onboard_date": "date", "issue_date": "date", "departure_date": "date", "invoice_date": "date", "marks": "marks",
 }
 _ITEM_KINDS = {
     "item_code": "text", "name": "name", "hs_code": "hs", "qty": "qty", "gross_kg": "kg", "net_kg": "kg",
-    "unit_price": "amount", "amount": "amount", "origin_criterion": "text",
+    "unit_price": "amount", "amount": "amount", "origin_criterion": "text", "packages": "qty",
+}
+# B/L 컨테이너 줄 칸 (B12 #228)
+_CONTAINER_KINDS = {
+    "container_no": "text", "seal_no": "text", "size_type": "text", "packages": "qty", "gross_kg": "kg", "cbm": "number",
 }
 
 
 def to_extracted(raw_doc: BaseModel, doc_type: DocType, file: str) -> ExtractedDocument:
     """모델이 낸 raw(RawDocument 또는 종류별 Raw 모델)를 약속 1 형식으로 바꾼다. value·unit은 여기서만 채운다.
 
-    Raw 모델에 있는 칸만 옮긴다. 같은 이름의 ExtractedDocument·ExtractedItem 칸으로 가고, 푸는 방식은 _DOC_KINDS·_ITEM_KINDS.
+    Raw 모델에 있는 칸만 옮긴다. 같은 이름의 ExtractedDocument·ExtractedItem·ExtractedContainer 칸으로 가고,
+    푸는 방식은 _DOC_KINDS·_ITEM_KINDS·_CONTAINER_KINDS.
     """
     items = [
         ExtractedItem(
@@ -496,12 +510,19 @@ def to_extracted(raw_doc: BaseModel, doc_type: DocType, file: str) -> ExtractedD
         )
         for item in getattr(raw_doc, "items", [])
     ]
+    containers = [
+        ExtractedContainer(
+            line=row.line,
+            **{name: _cell(getattr(row, name), _CONTAINER_KINDS[name]) for name in type(row).model_fields if name != "line"},
+        )
+        for row in getattr(raw_doc, "containers", [])
+    ]
     cells = {
         name: _cell(getattr(raw_doc, name), _DOC_KINDS.get(name, "text"))
         for name in type(raw_doc).model_fields
-        if name != "items"
+        if name not in ("items", "containers")
     }
-    return ExtractedDocument(doc_type=doc_type, file=file, items=items, **cells)
+    return ExtractedDocument(doc_type=doc_type, file=file, items=items, containers=containers, **cells)
 
 
 # ---------------------------------------------------------------------------
