@@ -9,7 +9,10 @@ import inspect
 import json
 import os
 import re
+import threading
+from collections import OrderedDict
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import date
 from functools import cache
 from pathlib import PurePath
@@ -127,15 +130,104 @@ def _default_cache() -> ReadCache | None:
 # 모델 호출
 # ---------------------------------------------------------------------------
 _IMAGE_FORMATS = {".jpg": "jpeg", ".jpeg": "jpeg", ".png": "png", ".webp": "webp", ".gif": "gif"}
+# Bedrock Converse 이미지 블록 한도 (API Reference Message.content). 문서(PDF) 블록은 4.5MB (agent/document_agent.py MAX_BYTES)
+IMAGE_LIMIT_BYTES = 3_750_000
+IMAGE_LIMIT_SIDE = 8000
+# 한도를 넘는 이미지를 줄일 때 긴 변(px)과 JPEG 품질. 글자가 읽힐 해상도부터 시작해 한도 안에 들 때까지 줄인다 (B10 #148).
+# 판독 캐시 키는 원본 바이트라서, 줄이는 방법을 바꾸면 PROMPT_VERSION을 올린다
+SHRINK_SIDES = (2400, 2000, 1600, 1200)
+SHRINK_QUALITY = 85
+_SHRUNK_KEEP = 8  # 줄인 결과를 원본 해시로 몇 개 기억할지 (분류·읽기·다시 확인이 같은 파일을 쓴다)
+
+
+@dataclass(frozen=True)
+class Shrunk:
+    """줄인 이미지. data는 JPEG."""
+
+    data: bytes
+    before: int  # 원본 바이트 수
+    side: int  # 줄인 뒤 긴 변(px)
+
+
+_shrunk: OrderedDict[str, Shrunk | None] = OrderedDict()
+_shrunk_lock = threading.Lock()
+
+
+def shrink_image(file_name: str, data: bytes) -> Shrunk | None:
+    """Bedrock 이미지 한도(IMAGE_LIMIT_BYTES·IMAGE_LIMIT_SIDE)를 넘는 이미지를 JPEG로 줄인다.
+
+    언제: content_blocks가 이미지 블록을 만들 때, 처리 Agent가 파일을 받을 때(단계 기록에 남기려고). 같은 바이트는 한 번만 줄인다.
+    받는 것: file_name(확장자로 이미지인지 본다), data(원본 바이트).
+    반환: Shrunk(줄인 JPEG, 원본 크기, 긴 변). 이미지가 아니거나 한도 안이면 None(원본 그대로 쓴다).
+      휴대폰 사진의 EXIF 회전을 먼저 바로잡는다. 투명 PNG는 흰 바탕에 놓는다.
+    실패: 한도를 넘는데 이미지를 열지 못하면 ReadError. 한도 안이면 열지 못해도 None(지금처럼 모델에 그대로 보낸다).
+    """
+    if PurePath(file_name).suffix.lower() not in _IMAGE_FORMATS:
+        return None
+    digest = hashlib.sha256(data).hexdigest()
+    with _shrunk_lock:
+        if digest in _shrunk:
+            _shrunk.move_to_end(digest)
+            return _shrunk[digest]
+    result = _shrink(data)
+    with _shrunk_lock:
+        _shrunk[digest] = result
+        while len(_shrunk) > _SHRUNK_KEEP:
+            _shrunk.popitem(last=False)
+    return result
+
+
+def _shrink(data: bytes) -> Shrunk | None:
+    import io
+
+    from PIL import Image, ImageOps
+
+    too_big = len(data) > IMAGE_LIMIT_BYTES
+    try:
+        img = Image.open(io.BytesIO(data))
+        size = img.size
+    except Exception as exc:  # 이미지가 아니거나 깨졌다
+        if too_big:
+            raise ReadError(f"이미지를 열지 못해 줄이지 못했습니다: {type(exc).__name__}") from exc
+        return None
+    if not too_big and max(size) <= IMAGE_LIMIT_SIDE:
+        return None
+    try:
+        img.draft("RGB", (SHRINK_SIDES[0], SHRINK_SIDES[0]))  # JPEG는 줄여서 풀어 메모리·시간을 아낀다 (다른 형식은 그대로)
+        img = ImageOps.exif_transpose(img)
+        if img.mode in ("RGBA", "LA", "P"):
+            img = img.convert("RGBA")
+            flat = Image.new("RGB", img.size, "white")
+            flat.paste(img, mask=img.getchannel("A"))
+            img = flat
+        elif img.mode != "RGB":
+            img = img.convert("RGB")
+        for side in SHRINK_SIDES:
+            small = img.copy()
+            small.thumbnail((side, side))  # 비율을 지키고 긴 변을 side 이하로. 더 작으면 그대로
+            buf = io.BytesIO()
+            small.save(buf, "JPEG", quality=SHRINK_QUALITY)
+            if buf.tell() <= IMAGE_LIMIT_BYTES:
+                print(f"[tool] shrink_image {len(data):,}B {size} → {buf.tell():,}B {small.size}")
+                return Shrunk(data=buf.getvalue(), before=len(data), side=max(small.size))
+    except Exception as exc:
+        raise ReadError(f"이미지를 줄이지 못했습니다: {type(exc).__name__}: {exc}") from exc
+    raise ReadError(f"이미지를 {SHRINK_SIDES[-1]}px로 줄여도 {IMAGE_LIMIT_BYTES:,}바이트를 넘습니다")
 
 
 def content_blocks(file_name: str, data: bytes) -> list[dict]:
-    """파일 하나를 Bedrock document/image 블록으로 바꾼다. PDF와 이미지만 받는다."""
+    """파일 하나를 Bedrock document/image 블록으로 바꾼다. PDF와 이미지만 받는다.
+
+    이미지가 Bedrock 한도(3.75MB·8000px)를 넘으면 JPEG로 줄여 넣는다 (shrink_image, B10 #148). PDF는 그대로다.
+    """
     suffix = PurePath(file_name).suffix.lower()
     if suffix == ".pdf":
         # name 칸은 영문·숫자·공백·하이픈·괄호만 허용되므로 고정 이름을 쓴다
         return [{"document": {"format": "pdf", "name": "document", "source": {"bytes": data}}}]
     if suffix in _IMAGE_FORMATS:
+        shrunk = shrink_image(file_name, data)
+        if shrunk is not None:
+            return [{"image": {"format": "jpeg", "source": {"bytes": shrunk.data}}}]
         return [{"image": {"format": _IMAGE_FORMATS[suffix], "source": {"bytes": data}}}]
     raise ReadError(f"지원하지 않는 파일 형식입니다: {suffix or '확장자 없음'} (PDF, JPG, PNG만)")
 

@@ -134,8 +134,56 @@ def test_user_unknown_also_asks_human():
     m = Models()
     job = run_job("job-1", [{"key": MEMO, "doc_type": "unknown"}], fetch, reader=m.reader, classifier=m.classifier)
     assert m.classified == [] and m.read == [] and job.steps == []
-    assert job.result.issues[0].rule_id == "DOC-UNKNOWN" and job.status == "waiting_approval"
+    assert job.result.issues[0].rule_id == "DOC-UNKNOWN"
     assert_retry_hint(job.result.issues[0].evidence)
+    assert job.status == "failed"  # 읽은 서류가 하나도 없다 (#173)
+
+
+# 읽은 서류가 하나도 없으면 승인할 것이 없다. 승인 대기로 두면 승인이 409로 막히므로 failed로 끝낸다 (#173)
+def test_all_unknown_is_failed_with_reason():
+    m = Models(classes={**CLASSES, "packing.pdf": ("unknown", "제목 없음")})
+    job = run_job("job-1", files(MEMO, PL), fetch, reader=m.reader, classifier=m.classifier)
+    assert m.read == [] and job.status == "failed"
+    assert job.error == "서류를 하나도 읽지 못했습니다: memo.png 종류를 정하지 못함, packing.pdf 종류를 정하지 못함"
+    assert [i.rule_id for i in job.result.issues] == ["DOC-UNKNOWN", "DOC-UNKNOWN"]  # 파일마다 이유는 문제 목록에도 남는다
+    assert tools_of(job) == ["classify_document", "classify_document"]
+
+
+def test_all_read_failures_are_failed_with_reason():
+    def broken_reader(blocks, prompt):
+        raise RuntimeError("모델 오류")
+
+    m = Models()
+    job = run_job("job-1", files(INV, PL), fetch, reader=broken_reader, classifier=m.classifier)
+    assert job.status == "failed"
+    assert job.error == "서류를 하나도 읽지 못했습니다: invoice.pdf 읽기 실패, packing.pdf 읽기 실패"
+    assert [i.rule_id for i in job.result.issues] == ["READ-FAIL", "READ-FAIL", "DOC-MISSING"]  # 선하증권도 없다 (#168)
+    assert [s.ok for s in job.steps if s.tool == "read_document"] == [False, False]
+
+
+def test_classify_failure_and_missing_file_are_failed():
+    """분류 실패와 없는 파일(S3 키 없음)이 섞여도 읽은 서류가 없으면 failed다."""
+    m = Models()
+
+    def classifier(blocks, prompt):
+        raise RuntimeError("모델 오류")
+
+    def fetch_or_missing(key):
+        if key == PL:
+            raise KeyError(key)  # S3 NoSuchKey 대신
+        return fetch(key)
+
+    job = run_job("job-1", files(INV, PL), fetch_or_missing, reader=m.reader, classifier=classifier)
+    assert job.status == "failed" and m.read == []
+    assert job.error == "서류를 하나도 읽지 못했습니다: invoice.pdf 분류 실패, packing.pdf 분류 실패"
+    assert all(i.rule_id == "CLASSIFY-FAIL" for i in job.result.issues)
+
+
+def test_one_read_doc_still_waits_for_approval():
+    """한 장이라도 읽었으면 지금처럼 '확인 필요'를 남기고 승인 대기다 (failed로 바꾸지 않는다)."""
+    m = Models()
+    job = run_job("job-1", files(INV, MEMO), fetch, reader=m.reader, classifier=m.classifier)
+    assert job.status == "waiting_approval" and job.error is None
 
 
 def test_bill_of_lading_and_origin_are_read():
