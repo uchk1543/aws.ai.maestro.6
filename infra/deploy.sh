@@ -21,7 +21,7 @@ git -C "${REPO}" fetch --quiet origin main || { echo "[deploy] origin/main을 �
 DIRTY="$(git -C "${REPO}" status --porcelain)"
 if [ -n "${DIRTY}" ]; then
   echo "[deploy] 작업 폴더에 커밋하지 않은 변경이 있어 배포하지 않습니다:"
-  echo "${DIRTY}" | head -10
+  echo "${DIRTY}" | head -10 || true   # 변경이 아주 많아 head가 먼저 닫혀도(SIGPIPE) 아래 안내를 마저 찍는다
   echo "[deploy] 커밋·되돌리기·치우기 중 하나를 한 뒤 다시 하거나, origin/main을 받은 깨끗한 워크트리에서 배포하세요"
   echo "[deploy]   git worktree add --detach tmp/deploy-main origin/main && bash tmp/deploy-main/infra/deploy.sh"
   exit 1
