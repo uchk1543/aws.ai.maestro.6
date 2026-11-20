@@ -147,9 +147,16 @@ def http_api_event(method, raw_path, body=None, *, encoded=False):
 
 
 @pytest.mark.parametrize("path", ["/api", "/api/", "/"])
-def test_health(path):
-    """배포 확인: GET /api/ → {"ok": true} (F1 끝난 기준). /api 없는 옛 주소도 받는다."""
-    assert call("GET", path) == (200, {"ok": True})
+def test_health(path, monkeypatch):
+    """배포 확인: GET /api/ → {"ok": true, "version": 배포한 커밋} (F1, FB17 #174). /api 없는 옛 주소도 받는다."""
+    monkeypatch.setenv("GIT_SHA", "81699fe")
+    assert call("GET", path) == (200, {"ok": True, "version": "81699fe"})
+
+
+def test_health_version_unknown_without_git_sha(monkeypatch):
+    """GIT_SHA가 없으면(로컬, deploy.sh가 넣기 전) version은 "unknown"이다. 커밋을 지어내지 않는다 (#174)."""
+    monkeypatch.delenv("GIT_SHA", raising=False)
+    assert call("GET", "/api/") == (200, {"ok": True, "version": "unknown"})
 
 
 @pytest.mark.parametrize(
@@ -232,7 +239,8 @@ def test_old_paths_without_api_prefix_still_work(fakes, lambda_client):
 
 def test_http_api_v2_events_end_to_end(fakes, lambda_client):
     """API Gateway HTTP API 2.0 이벤트(본문 base64 포함)로 상태 확인 → 작업 생성 → 처리 → 조회."""
-    assert http_api_event("GET", "/api/") == (200, {"ok": True})
+    status, body = http_api_event("GET", "/api/")
+    assert status == 200 and body["ok"] is True
 
     status, body = http_api_event("POST", "/api/jobs", files("invoice.pdf", "packing_list.pdf"), encoded=True)
     assert status == 200
