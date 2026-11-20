@@ -3,7 +3,15 @@
 // 판정·신고서 채우기는 흉내 내지 않는다. 사람이 고른 값을 상태에 반영하는 것만 한다.
 import jobExample from "../../docs/examples/job_waiting_approval.json";
 import { ApiError } from "./api";
-import type { ChooseHsResponse, CreateJobResponse, HSChoice, Job, UploadRequestFile, UploadsResponse } from "./types";
+import type {
+  ApproveResponse,
+  ChooseHsResponse,
+  CreateJobResponse,
+  HSChoice,
+  Job,
+  UploadRequestFile,
+  UploadsResponse,
+} from "./types";
 
 const DELAY_MS = 300;
 const example = jobExample as Job;
@@ -59,6 +67,27 @@ function chooseHs(body: unknown): ChooseHsResponse {
   return { declaration_draft: copy(result.declaration_draft!) };
 }
 
+/** POST /api/jobs/{id}/approve: 약속 2대로 불일치가 남았으면 409, 아니면 사람 승인으로 등록. */
+function approve(body: unknown): ApproveResponse {
+  const approver = (body as { approver?: unknown } | undefined)?.approver;
+  if (typeof approver !== "string" || approver.trim() === "") throw new ApiError(400, "approver가 필요합니다");
+  const result = finalJob.result;
+  if (finalJob.status !== "waiting_approval" || !result) {
+    throw new ApiError(409, `승인 대기 중인 작업이 아닙니다 (지금: ${finalJob.status})`);
+  }
+  if (result.issues.some((i) => i.grade === "불일치")) {
+    throw new ApiError(409, "불일치가 남아 있어 WMS에 등록할 수 없습니다");
+  }
+  result.wms = { status: "등록됨", by: "human", wms_id: "WMS-MOCK-0001" };
+  finalJob.steps.push({ tool: "push_to_wms", summary: `사람 승인(${approver})으로 WMS 등록`, ok: true });
+  return { wms: { status: "등록됨", wms_id: "WMS-MOCK-0001" } };
+}
+
+/** 가짜 작업의 불일치를 없앤다. 예시에는 불일치가 있어서, 테스트에서 승인 성공 경로를 볼 때 쓴다. */
+export function clearMockMismatches(): void {
+  if (finalJob.result) finalJob.result.issues = finalJob.result.issues.filter((i) => i.grade !== "불일치");
+}
+
 /** api.ts 의 request 대신 불린다. 서버와 같은 경로·모양으로 답한다. */
 export async function mockRequest(method: string, path: string, body: unknown): Promise<unknown> {
   await wait(DELAY_MS);
@@ -85,6 +114,7 @@ export async function mockRequest(method: string, path: string, body: unknown): 
       return mockJobAt(jobId, n, finalJob);
     }
     if (method === "POST" && route[2] === "hs") return chooseHs(body);
+    if (method === "POST" && route[2] === "approve") return approve(body);
   }
   throw new ApiError(404, `가짜 응답이 없는 경로입니다 (${method} ${path})`);
 }

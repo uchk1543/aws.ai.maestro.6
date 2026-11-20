@@ -114,3 +114,8 @@ export interface HSChoice {
 export interface ChooseHsResponse {
   declaration_draft: DeclarationDraft;
 }
+
+// POST /api/jobs/{id}/approve (불일치가 남았으면 409)
+export interface ApproveResponse {
+  wms: { status: WmsStatus; wms_id: string | null };
+}

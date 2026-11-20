@@ -2,6 +2,7 @@
 // 주소는 항상 상대 경로다. 화면과 API 가 같은 CloudFront 주소라 CORS 가 필요 없다.
 // npm run dev(모드 mock)에서는 mock.ts 가 docs/examples/ 로 대신 답한다. 빌드에는 들어가지 않는다.
 import type {
+  ApproveResponse,
   ChooseHsResponse,
   CreateJobResponse,
   HSChoice,
@@ -64,6 +65,11 @@ export function getJob(jobId: string): Promise<Job> {
 /** '사람 확인 필요' 품목에서 사람이 고른 HS 를 보낸다. 서버가 확정하고 신고서 초안을 다시 채운다. */
 export function chooseHs(jobId: string, choices: HSChoice[]): Promise<ChooseHsResponse> {
   return request("POST", `/api/jobs/${encodeURIComponent(jobId)}/hs`, { choices });
+}
+
+/** 사람이 승인해 WMS 에 등록한다. 불일치가 남은 작업은 서버가 409 로 거절한다. */
+export function approveJob(jobId: string, approver: string): Promise<ApproveResponse> {
+  return request("POST", `/api/jobs/${encodeURIComponent(jobId)}/approve`, { approver });
 }
 
 /** 브라우저가 type 을 모르는 파일은 이 값으로 보낸다. */
