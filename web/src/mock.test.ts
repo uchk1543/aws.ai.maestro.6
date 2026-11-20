@@ -2,7 +2,8 @@
 import { describe, expect, it } from "vitest";
 import jobExample from "../../docs/examples/job_waiting_approval.json";
 import { ApiError } from "./api";
-import { mockJobAt, mockRequest } from "./mock";
+import { mockJobAt, mockRequest, resetMock } from "./mock";
+import type { Job } from "./types";
 
 describe("mockRequest", () => {
   it("POST /api/uploads 는 파일마다 uploads/ 로 시작하는 key 를 준다", async () => {
@@ -38,6 +39,31 @@ describe("mockRequest", () => {
     expect(first.status).toBe("queued");
     expect(second.status).toBe("running");
     await expect(mockRequest("GET", "/api/jobs/job-ffffffff", undefined)).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("POST /api/jobs/{id}/hs 는 고른 행을 사람 확정으로 바꾸고 신고서 초안을 준다", async () => {
+    resetMock();
+    const id = jobExample.job_id;
+    const res = (await mockRequest("POST", `/api/jobs/${id}/hs`, { choices: [{ line: 1, hs: "8507600000" }] })) as {
+      declaration_draft: unknown;
+    };
+    expect(res.declaration_draft).toEqual(jobExample.result.declaration_draft);
+
+    // 진행 흉내(queued → running 단계들)를 지나면 최종 상태가 나온다
+    let after: Job | undefined;
+    for (let i = 0; i <= jobExample.steps.length + 1; i++) {
+      after = (await mockRequest("GET", `/api/jobs/${id}`, undefined)) as Job;
+    }
+    expect(after!.result!.hs[0]).toMatchObject({ status: "사람 확정", by: "human", hs_code: "8507600000" });
+    expect(after!.steps.at(-1)?.tool).toBe("confirm_by_human");
+  });
+
+  it("POST /api/jobs/{id}/hs 는 서버처럼 잘못된 요청을 400 으로 거절한다", async () => {
+    resetMock();
+    const id = jobExample.job_id;
+    await expect(mockRequest("POST", `/api/jobs/${id}/hs`, { choices: [] })).rejects.toMatchObject({ status: 400 });
+    await expect(mockRequest("POST", `/api/jobs/${id}/hs`, { choices: [{ line: 9, hs: "8507600000" }] })).rejects.toMatchObject({ status: 400 });
+    await expect(mockRequest("POST", `/api/jobs/${id}/hs`, { choices: [{ line: 1, hs: "8507.60" }] })).rejects.toMatchObject({ status: 400 });
   });
 
   it("가짜 응답이 없는 경로는 404", async () => {
