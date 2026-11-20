@@ -3,11 +3,12 @@
 CloudFront가 /api/*를 API Gateway로 보내고, rawPath에 /api가 붙어 온다 (/api/jobs). 앞의 /api를 떼고 나눈다.
 옮기는 동안 /api 없는 경로(/jobs)도 같은 곳으로 간다.
     GET  /api/               → {"ok": true}            (배포 확인)
+    POST /api/uploads        → {"uploads"}             (F2, 파일마다 S3에 직접 PUT할 미리 서명된 URL)
     POST /api/jobs           → {"job_id"}              (F3, queued로 저장하고 처리 Lambda를 비동기로 부른 뒤 바로 응답)
     GET  /api/jobs/{id}      → Job                     (화면이 2초마다)
     POST /api/jobs/{id}/hs   → {"declaration_draft"}   (C3, 사람이 고른 HS 반영)
     POST /api/jobs/{id}/approve → {"wms"}              (D3, 사람 승인으로 WMS 등록. 불일치가 남았으면 409)
-나머지 경로(/uploads, /chat)는 501을 돌려준다. Spec 2·3에서 채운다.
+나머지 경로(/chat)는 501을 돌려준다. Spec 2·3에서 채운다.
 서류 처리(run_job)는 처리 Lambda team06-worker(api/worker.py)가 한다. API Gateway는 요청 하나를 30초 안에 끝내야 한다.
 
 환경 변수: JOBS_TABLE(team06-jobs), DOCS_BUCKET(team06-docs-...), MODEL_ID, HS_HISTORY_TABLE(team06-hs-history),
@@ -19,6 +20,7 @@ import json
 import os
 import re
 import time
+import unicodedata
 import uuid
 from functools import cache
 
@@ -34,6 +36,11 @@ HS_CODE = re.compile(r"^[0-9]{10}$")  # 10자리 HSK
 APPROVER_MAX = 50  # 승인자 이름 길이. 화면 입력칸(WmsPanel maxLength)과 같다
 KEY_PREFIX = "uploads/"
 API_PREFIX = "/api"  # CloudFront → API Gateway가 rawPath 앞에 붙여 보낸다
+# 올릴 수 있는 형식 (화면 web/src/pages/UploadPage.tsx ACCEPT와 같다). 읽기(tools/extract.py)는 확장자로 PDF·이미지를 가른다
+UPLOAD_TYPES = {".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
+UNKNOWN_TYPE = "application/octet-stream"  # 브라우저가 type을 모를 때 화면이 보내는 값 (web/src/api.ts contentTypeOf)
+UPLOAD_SECONDS = 300  # 미리 서명된 URL 유효 시간. 약속 2 "몇 분 뒤 만료"
+NAME_MAX = 80  # S3 키에 넣는 파일 이름(확장자 뺀) 길이
 _DOCS = TypeAdapter(list[ExtractedDocument])
 
 
@@ -52,7 +59,16 @@ def _s3():
     import boto3
     from botocore.config import Config
 
-    return boto3.client("s3", config=Config(connect_timeout=5, read_timeout=5, retries={"max_attempts": 2}))
+    # s3v4 + virtual: 미리 서명된 URL이 지역 주소(<버킷>.s3.ap-northeast-2.amazonaws.com)로 나온다.
+    # 기본값은 전역 주소(<버킷>.s3.amazonaws.com)라 새 버킷이면 307로 돌려보내고, 브라우저의 CORS 사전 요청이 실패한다.
+    config = Config(
+        signature_version="s3v4",
+        s3={"addressing_style": "virtual"},
+        connect_timeout=5,
+        read_timeout=5,
+        retries={"max_attempts": 2},
+    )
+    return boto3.client("s3", config=config)
 
 
 @cache
@@ -67,6 +83,22 @@ def fetch_object(key: str) -> bytes:
     """DOCS_BUCKET에서 파일을 받는다."""
     print(f"[tool] s3_get key={key}")
     return _s3().get_object(Bucket=os.environ["DOCS_BUCKET"], Key=key)["Body"].read()
+
+
+def presign_upload(key: str, content_type: str) -> str:
+    """DOCS_BUCKET의 key에 PUT할 미리 서명된 URL을 만든다. S3를 부르지 않고 서명만 한다.
+
+    언제: POST /uploads에서 파일마다.
+    받는 것: key(uploads/로 시작), content_type. content-type도 서명에 들어가서, PUT할 때 같은 헤더를 보내야 한다.
+    반환: UPLOAD_SECONDS초 동안 쓸 수 있는 URL. URL에 서명이 들어 있어 로그에는 남기지 않는다.
+    """
+    print(f"[tool] s3_presign_put key={key} content_type={content_type}")
+    return _s3().generate_presigned_url(
+        "put_object",
+        Params={"Bucket": os.environ["DOCS_BUCKET"], "Key": key, "ContentType": content_type},
+        ExpiresIn=UPLOAD_SECONDS,
+        HttpMethod="PUT",
+    )
 
 
 def invoke_worker(job_id: str, files: list[dict]) -> None:
@@ -172,6 +204,46 @@ def _body(event: dict):
     return json.loads(raw) if raw else {}
 
 
+def _safe_name(name: str) -> str | None:
+    """화면이 보낸 파일 이름을 S3 키에 넣을 이름으로 바꾼다. 올릴 수 없는 형식이면 None.
+
+    경로(/, \\)는 버리고, 글자·숫자·_·- 밖의 문자는 _로 바꾼다. 한글은 남긴다 (단계 기록에 파일 이름이 보인다).
+    점도 바뀌므로 '..'이 남지 않는다 (POST /jobs의 key 검사). 확장자는 소문자로 둔다.
+    """
+    base = re.split(r"[\\/]", unicodedata.normalize("NFC", name))[-1].strip()
+    stem, suffix = os.path.splitext(base)
+    suffix = suffix.lower()
+    if suffix not in UPLOAD_TYPES:
+        return None
+    stem = re.sub(r"[^\w-]+", "_", stem).strip("_")[:NAME_MAX] or "file"
+    return stem + suffix
+
+
+def _validate_uploads(body) -> tuple[list[tuple[str, str]] | None, str | None]:
+    """POST /uploads 요청 검사. ([(키에 넣을 파일 이름, content_type)], 오류 메시지)"""
+    files = body.get("files") if isinstance(body, dict) else None
+    if not isinstance(files, list) or not files:
+        return None, "files 목록이 비어 있습니다"
+    from agent.document_agent import MAX_FILES
+
+    if len(files) > MAX_FILES:
+        return None, f"서류는 한 번에 {MAX_FILES}개까지입니다"
+    clean = []
+    for f in files:
+        name = f.get("name") if isinstance(f, dict) else None
+        content_type = f.get("content_type") if isinstance(f, dict) else None
+        if not isinstance(name, str) or not name.strip():
+            return None, "name(파일 이름)이 필요합니다"
+        safe = _safe_name(name)
+        if safe is None:
+            return None, f"PDF, PNG, JPG만 올릴 수 있습니다 ({name[:NAME_MAX]})"
+        expected = UPLOAD_TYPES[os.path.splitext(safe)[1]]
+        if content_type not in (expected, UNKNOWN_TYPE):
+            return None, f"{safe}의 content_type은 {expected}여야 합니다"
+        clean.append((safe, content_type))
+    return clean, None
+
+
 def _validate_files(body) -> tuple[list[dict] | None, str | None]:
     """POST /jobs 요청 검사. (files, 오류 메시지)"""
     files = body.get("files") if isinstance(body, dict) else None
@@ -234,6 +306,28 @@ def _line_doc(docs: list[ExtractedDocument], line: int) -> ExtractedDocument | N
 # ---------------------------------------------------------------------------
 # 경로
 # ---------------------------------------------------------------------------
+def create_uploads(body) -> dict:
+    """POST /uploads. 파일마다 화면이 S3에 직접 PUT할 미리 서명된 URL을 준다 (F2).
+
+    언제: 업로드 화면(G2)에서 '업로드'를 누를 때. 화면은 받은 url로 파일을 PUT한 뒤 key로 POST /jobs를 부른다.
+      파일이 API를 거치지 않아 API Gateway·Lambda 요청 크기 한도에 걸리지 않는다.
+    받는 것: {"files": [{"name", "content_type"}]}. PDF·PNG·JPG, 10개까지.
+      content_type은 확장자에 맞는 값이거나 application/octet-stream. PUT할 때 같은 content-type 헤더를 보내야 한다.
+    반환: 200 {"uploads": [{"key", "url"}]} (요청 순서대로) / 400 요청 형식.
+      key는 uploads/<묶음 ID>/<순번>-<파일 이름>이라 같은 이름을 여러 번 올려도 겹치지 않는다. url은 UPLOAD_SECONDS초 뒤 만료.
+    """
+    files, problem = _validate_uploads(body)
+    if problem:
+        return _error(400, problem)
+    batch = uuid.uuid4().hex
+    uploads = []
+    for n, (name, content_type) in enumerate(files, start=1):
+        key = f"{KEY_PREFIX}{batch}/{n}-{name}"
+        uploads.append({"key": key, "url": presign_upload(key, content_type)})
+    print(f"[api] uploads batch={batch} files={len(uploads)}")
+    return _response(200, {"uploads": uploads})
+
+
 def create_job(body) -> dict:
     """POST /jobs. 작업을 queued로 저장하고 처리 Lambda를 비동기로 부른 뒤 job_id를 바로 돌려준다 (F3).
 
@@ -370,7 +464,6 @@ def approve_job(job_id: str, body) -> dict:
 
 # 약속 2에 있지만 아직 없는 경로 → 작업 ID (e2e-plan.md). 만들면 여기서 지운다.
 _PLANNED = {
-    ("POST", "/uploads"): "F2",
     ("POST", "/chat"): "E5",
 }
 
@@ -401,6 +494,8 @@ def lambda_handler(event, context):
     try:
         if method == "GET" and path == "/":
             return _response(200, {"ok": True})
+        if method == "POST" and path == "/uploads":
+            return create_uploads(_body(event))
         if method == "POST" and path == "/jobs":
             return create_job(_body(event))
         if method == "GET" and path.startswith("/jobs/") and path.count("/") == 2:

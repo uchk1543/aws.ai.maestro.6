@@ -106,6 +106,43 @@ def test_품목명은_후보_쪽_값을_쓴다():
     assert got[0].name == "표의 품목명"
 
 
+def _cat_row(hsk: str, ko: str, en: str, category: str) -> _Row:
+    return _Row(hsk, ko, en, _norm(f"{ko} {en} {category}"), category)
+
+
+def test_이름이_기타뿐인_줄도_상위_분류로_찾는다():
+    t = CsvHSTable([_cat_row("9401699000", "기타", "Other", "가구"), _cat_row("0101219000", "기타", "Other", "말")])
+    assert [c.hs for c in t.search(["가구"])] == ["9401699000"]
+
+
+def test_후보_이름에_상위_분류가_붙는다():
+    t = CsvHSTable([_cat_row("9401699000", "기타", "Other", "가구"), _row("7318152000", "볼트", "Bolts")])
+    names = {c.hs: c.name for c in t.search(["가구", "bolt"])}
+    assert names["9401699000"].endswith("[가구]")
+    assert "[" not in names["7318152000"]
+
+
+def test_숫자가_든_단어는_검색어에서_뺀다():
+    t = CsvHSTable([_row("1111111111", "볼트", "Bolts"), _row("2222222222", "수량 10", "Quantity 10")])
+    assert [c.hs for c in t.search(["BOLT M10X50 A2-70 10 50L"])] == ["1111111111"]
+
+
+def test_드문_단어가_흔한_단어보다_위():
+    common = [_row(f"{i:010d}", "흰색 물건", f"White item {i}") for i in range(1, 30)]
+    t = CsvHSTable(common + [_row("9999999999", "멜라민 접시", "Melamine plate")])
+    assert t.search(["white melamine"])[0].hs == "9999999999"
+
+
+def test_단어_그대로_맞는_줄이_앞부분만_맞는_줄보다_위():
+    t = CsvHSTable([_row("1111111111", "가자미", "Pleuronectes platessa"), _row("2222222222", "접시", "Plate")])
+    assert [c.hs for c in t.search(["plate"])] == ["2222222222", "1111111111"]
+
+
+def test_실제_CSV는_모든_줄에_상위_분류가_있다():
+    table = load_hs_table()
+    assert all(r.category for r in table._rows)
+
+
 def test_실제_CSV를_읽는다():
     table = load_hs_table()
     assert table.exists("0101211000")

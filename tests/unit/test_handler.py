@@ -2,8 +2,11 @@
 
 import base64
 import json
+import re
 from pathlib import Path
+from urllib.parse import parse_qs, unquote, urlsplit
 
+import boto3
 import pytest
 from botocore.exceptions import ClientError
 
@@ -255,10 +258,146 @@ def test_unknown_job_and_path_are_404(fakes):
     assert call("GET", "/apix")[0] == 404
 
 
-@pytest.mark.parametrize("path", ["/uploads", "/chat", "/api/uploads", "/api/chat"])
+@pytest.mark.parametrize("path", ["/chat", "/api/chat"])
 def test_planned_routes_are_501(fakes, path):
     """약속 2의 경로가 모두 자리를 갖고 있다. 만들면 이 목록에서 뺀다."""
     assert call("POST", path, {})[0] == 501
+
+
+# ---------------------------------------------------------------------------
+# POST /uploads (F2). 서명은 가짜 S3 클라이언트로 바꾸고, 실제 botocore 서명 모양은 따로 본다.
+# ---------------------------------------------------------------------------
+class FakeS3:
+    def __init__(self):
+        self.signed = []
+
+    def generate_presigned_url(self, operation, Params, ExpiresIn, HttpMethod):
+        self.signed.append((operation, Params, ExpiresIn, HttpMethod))
+        return f"https://s3.test/{Params['Key']}?sig={len(self.signed)}"
+
+
+@pytest.fixture
+def s3(monkeypatch):
+    fake = FakeS3()
+    monkeypatch.setattr(handler, "_s3", lambda: fake)
+    monkeypatch.setenv("DOCS_BUCKET", "team06-docs-test")
+    return fake
+
+
+def test_uploads_give_one_put_url_per_file(s3):
+    """끝난 기준: 화면이 받은 url로 S3에 직접 PUT한다. key는 요청 순서대로, 같은 이름도 겹치지 않는다."""
+    req = [
+        {"name": "invoice.pdf", "content_type": "application/pdf"},
+        {"name": "포장 명세서.PNG", "content_type": "image/png"},
+        {"name": "invoice.pdf", "content_type": "application/octet-stream"},  # 브라우저가 type을 모를 때
+    ]
+    status, body = call("POST", "/uploads", {"files": req})
+
+    assert status == 200
+    uploads = body["uploads"]
+    batch = uploads[0]["key"].split("/")[1]
+    assert re.fullmatch(r"[0-9a-f]{32}", batch)
+    assert [u["key"] for u in uploads] == [
+        f"uploads/{batch}/1-invoice.pdf",
+        f"uploads/{batch}/2-포장_명세서.png",
+        f"uploads/{batch}/3-invoice.pdf",
+    ]
+    assert [u["url"] for u in uploads] == [f"https://s3.test/{u['key']}?sig={n}" for n, u in enumerate(uploads, 1)]
+    # PUT 서명에 버킷·키·content-type이 들어간다 (화면이 같은 content-type으로 PUT해야 맞는다)
+    assert s3.signed == [
+        ("put_object", {"Bucket": "team06-docs-test", "Key": u["key"], "ContentType": f["content_type"]}, 300, "PUT")
+        for u, f in zip(uploads, req)
+    ]
+    # 받은 key로 바로 POST /jobs를 부를 수 있다
+    jobs = {"files": [{"key": u["key"], "doc_type": "packing_list"} for u in uploads]}
+    assert handler._validate_files(jobs) == (jobs["files"], None)
+
+
+def test_each_upload_request_gets_new_batch(s3):
+    req = {"files": [{"name": "a.pdf", "content_type": "application/pdf"}]}
+    first, second = call("POST", "/uploads", req)[1], call("POST", "/uploads", req)[1]
+    assert first["uploads"][0]["key"] != second["uploads"][0]["key"]
+
+
+def test_uploads_route_with_api_prefix(s3):
+    """배포에서는 rawPath에 /api가 붙어 온다 (F3 _route_path). 화면은 /api/uploads를 부른다."""
+    status, body = call("POST", "/api/uploads/", {"files": [{"name": "a.pdf", "content_type": "application/pdf"}]})
+    assert status == 200 and body["uploads"][0]["key"].endswith("/1-a.pdf")
+    assert len(s3.signed) == 1
+
+
+@pytest.mark.parametrize(
+    "name, safe",
+    [
+        ("invoice.pdf", "invoice.pdf"),
+        ("../../secret/x.PDF", "x.pdf"),  # 경로는 버린다
+        ("C:\\fakepath\\inv.jpeg", "inv.jpeg"),
+        ("a..b.jpg", "a_b.jpg"),  # '..'이 남으면 POST /jobs가 거절한다
+        ("<img src=x onerror=alert(1)>.png", "img_src_x_onerror_alert_1.png"),
+        ("상업송장 (최종).pdf", "상업송장_최종.pdf"),
+        ("\u1109\u1161\u11bc\u110b\u1165\u11b8.pdf", "상업.pdf"),  # macOS의 풀어 쓴 한글(NFD)은 모아 쓴다
+        ("###.pdf", "file.pdf"),  # 남는 글자가 없으면 file
+        ("x" * 200 + ".pdf", "x" * handler.NAME_MAX + ".pdf"),
+        ("memo.txt", None),
+        ("noext", None),
+        (".pdf", None),
+    ],
+)
+def test_upload_names_are_made_safe(name, safe):
+    assert handler._safe_name(name) == safe
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        ["a.pdf"],
+        {"files": []},
+        {"files": "a.pdf"},
+        {"files": [{"name": f"{n}.pdf", "content_type": "application/pdf"} for n in range(11)]},
+        {"files": ["a.pdf"]},
+        {"files": [{"content_type": "application/pdf"}]},
+        {"files": [{"name": "  ", "content_type": "application/pdf"}]},
+        {"files": [{"name": 7, "content_type": "application/pdf"}]},
+        {"files": [{"name": "memo.txt", "content_type": "text/plain"}]},
+        {"files": [{"name": "a.pdf"}]},
+        {"files": [{"name": "a.pdf", "content_type": "image/png"}]},  # 확장자와 다른 형식
+        {"files": [{"name": "a.pdf", "content_type": "text/html"}]},
+        {"files": [{"name": "a.pdf", "content_type": "application/pdf"}, {"name": "b.exe", "content_type": handler.UNKNOWN_TYPE}]},
+    ],
+)
+def test_upload_bad_requests_are_400_and_sign_nothing(s3, body):
+    status, res = call("POST", "/uploads", body)
+    assert status == 400 and res["error"]
+    assert s3.signed == []
+
+
+def test_presigned_url_is_regional_sigv4_with_content_type(monkeypatch):
+    """실제 botocore로 서명만 해 본다 (AWS를 부르지 않는다. 자격 증명은 가짜 문자열).
+
+    지역 주소여야 새 버킷에서도 307 없이 브라우저 PUT이 바로 간다. content-type이 서명에 들어가야
+    화면이 보낸 형식 그대로 저장된다.
+    """
+    for name in ("AWS_PROFILE", "AWS_SESSION_TOKEN", "AWS_ENDPOINT_URL", "AWS_ENDPOINT_URL_S3"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "fake-id")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "fake-secret")
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "ap-northeast-2")
+    monkeypatch.setenv("DOCS_BUCKET", "team06-docs-test")
+    monkeypatch.setattr(boto3, "DEFAULT_SESSION", None)  # 다른 곳에서 만든 세션의 자격 증명을 쓰지 않게
+    handler._s3.cache_clear()
+    try:
+        url = handler.presign_upload("uploads/b1/1-상업송장.pdf", "application/pdf")
+    finally:
+        handler._s3.cache_clear()
+
+    parts = urlsplit(url)
+    query = parse_qs(parts.query)
+    assert (parts.scheme, parts.netloc) == ("https", "team06-docs-test.s3.ap-northeast-2.amazonaws.com")
+    assert unquote(parts.path) == "/uploads/b1/1-상업송장.pdf"
+    assert query["X-Amz-Algorithm"] == ["AWS4-HMAC-SHA256"]
+    assert query["X-Amz-SignedHeaders"] == ["content-type;host"]
+    assert query["X-Amz-Expires"] == [str(handler.UPLOAD_SECONDS)]
 
 
 # ---------------------------------------------------------------------------
