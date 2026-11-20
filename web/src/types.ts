@@ -105,3 +105,12 @@ export interface Job {
   result: JobResult | null;
   error?: string | null;
 }
+
+// POST /api/jobs/{id}/hs
+export interface HSChoice {
+  line: number;
+  hs: string;
+}
+export interface ChooseHsResponse {
+  declaration_draft: DeclarationDraft;
+}
