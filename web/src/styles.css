@@ -1341,7 +1341,9 @@ table.cells tr.suspect td {
 .viewer-page {
   position: relative;
   width: 100%;
-  margin: 0;
+  /* 쓸 수 있는 높이(--fit-h)가 있으면 한 쪽이 그 높이 안에 다 들어오게 너비를 줄인다 */
+  max-width: calc(var(--fit-h, 100000px) * var(--ar, 1));
+  margin: 0 auto;
   background: #fff;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
@@ -1733,9 +1735,6 @@ table.cells tr.suspect td {
     gap: 24px;
   }
 
-  .doc-card .viewer {
-    max-height: calc(100vh - 220px);
-  }
 }
 
 /* 박스 팝업 (G11): 박스를 누르면 그 자리에 무엇을 읽었는지 작게 보여 준다 */
@@ -1836,4 +1835,48 @@ table.cells tr.suspect td {
 iframe.viewer-original {
   height: 70vh;
   min-height: 420px;
+}
+
+/* 문서 분류 내역: 스크롤하지 않아도 서류 한 쪽이 한 화면에 다 들어오게 (화면 높이에서 머리·메뉴 높이를 뺀 만큼) */
+.doc-card {
+  --fit-h: calc(100vh - 430px);
+  --fit-h: calc(100dvh - 430px);
+}
+
+.doc-card .viewer {
+  max-height: calc(var(--fit-h) + 24px);
+  padding: 12px;
+}
+
+@media (max-width: 767px) {
+  /* 모바일은 머리말 설명을 줄여 서류 자리를 넓힌다 */
+  .dochist .lead {
+    display: none;
+  }
+
+  .doc-card {
+    --fit-h: max(260px, calc(100dvh - 330px));
+  }
+
+  .doc-card-head {
+    margin-bottom: 10px;
+  }
+
+  .doc-card-tip {
+    margin: 0 0 8px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .doc-card {
+    --fit-h: calc(100vh - 350px);
+    --fit-h: calc(100dvh - 350px);
+  }
+
+  /* 오른쪽 인식 결과가 길면 그 칸 안에서만 스크롤한다 (카드 전체는 한 화면) */
+  .doc-card-info {
+    max-height: calc(var(--fit-h) + 24px);
+    overflow-y: auto;
+    padding-right: 4px;
+  }
 }
