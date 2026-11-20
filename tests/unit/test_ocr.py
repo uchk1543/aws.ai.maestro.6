@@ -289,3 +289,72 @@ def test_s3_cache_reads_and_writes_under_cache_ocr_prefix():
 
     assert list(s3.objects) == [("bkt", "cache/ocr/abc.json")]
     assert store.get("abc") == '{"file": "x"}'
+
+
+def test_empty_ocr_is_not_saved_so_next_upload_retries_textract():
+    cache, calls = MemoryOcrCache(), []
+
+    def empty(file, data, *, client=None, pages=None):
+        calls.append(file)
+        return OcrResult(file=file, lines=[])
+
+    ocr.ocr_cached("uploads/a/scan.jpg", b"jpeg", cache=cache, run=empty)
+    ocr.ocr_cached("uploads/a/scan.jpg", b"jpeg", cache=cache, run=empty)
+
+    assert cache.items == {} and len(calls) == 2
+
+
+def test_saved_empty_ocr_is_not_served():
+    cache, calls = MemoryOcrCache(), []
+    cache.items[ocr.ocr_cache_key(b"jpeg")] = OcrResult(file="x", lines=[]).model_dump_json()
+
+    ocr.ocr_cached("uploads/a/scan.jpg", b"jpeg", cache=cache, run=counting_ocr(calls))
+
+    assert calls == ["uploads/a/scan.jpg"]
+
+
+@pytest.mark.parametrize("name, value", [("MAX_SIDE_PX", 2000), ("JPEG_QUALITY", 70), ("MAX_PAGES", 3), ("RENDER_DPI", 200)])
+def test_cache_key_changes_with_page_image_settings(monkeypatch, name, value):
+    before = ocr.ocr_cache_key(b"a")
+    monkeypatch.setattr(ocr, name, value)
+
+    assert ocr.ocr_cache_key(b"a") != before  # 쪽 그림이 달라지면 박스 위치도 달라진다 (리뷰 #3)
+
+
+def test_s3_cache_shares_one_client_built_once_across_threads(monkeypatch):
+    import sys
+    import threading
+    import time
+    import types
+
+    made = []
+
+    def slow_client(service, **kwargs):
+        time.sleep(0.02)  # 여러 스레드가 동시에 들어오게
+        made.append(service)
+        return object()
+
+    monkeypatch.setitem(sys.modules, "boto3", types.SimpleNamespace(client=slow_client))
+    ocr._s3_client.cache_clear()
+    caches = [ocr.S3OcrCache("bkt") for _ in range(4)]
+    got = []
+    threads = [threading.Thread(target=lambda c=c: got.append(c._s3())) for c in caches]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    ocr._s3_client.cache_clear()
+
+    assert made == ["s3"] and len({id(c) for c in got}) == 1  # 리뷰 #1: 스레드마다 기본 세션으로 클라이언트를 만들지 않는다
+
+
+def test_s3_cache_treats_access_denied_on_missing_key_as_quiet_miss(capsys):
+    """GetObject 권한만 있고 ListBucket 이 없으면 없는 키에 S3 가 403 을 준다. 처음 올린 파일마다 경고가 찍히지 않게 (리뷰 #2).
+    진짜 권한 문제는 put 실패 경고로 드러난다."""
+
+    class Denied:
+        def get_object(self, **kwargs):
+            raise type("ClientError", (Exception,), {"response": {"Error": {"Code": "AccessDenied"}}})()
+
+    assert ocr.S3OcrCache("bkt", client=Denied()).get("abc") is None
+    assert "[warn]" not in capsys.readouterr().out

@@ -12,6 +12,7 @@ import io
 import hashlib
 import os
 import re
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cache
@@ -43,6 +44,10 @@ class PageImage:
     data: bytes  # JPEG
     width: int
     height: int
+
+
+# boto3 기본 세션은 스레드에 안전하지 않다. 처리 Lambda 는 서류마다 스레드로 OCR 하므로 클라이언트는 이 잠금 안에서 한 번만 만든다
+_CLIENT_LOCK = threading.Lock()
 
 
 @cache
@@ -127,7 +132,9 @@ def ocr_document(
     타임아웃 5초, 재시도 1회. 실패하면 예외를 그대로 올린다 (부른 쪽이 그 서류만 OCR 없이 진행한다).
     """
     print(f"[tool] ocr_document file={file} bytes={len(data)}")
-    client = client or _client()
+    if client is None:
+        with _CLIENT_LOCK:
+            client = _client()
     if pages is None:
         pages = [p.data for p in render_pages(data)] if is_pdf(file) else [data]
     lines: list[OcrLine] = []
@@ -150,7 +157,9 @@ def ocr_document(
 # 키는 파일 바이트 해시라서 같은 파일을 다시 올리면 Textract 를 다시 부르지 않는다 (데모 재현·평가 반복).
 
 OCR_CACHE_PREFIX = "cache/ocr/"
-OCR_VERSION = "detect-v1"  # Textract API·쪽 그림 방식이 바뀌면 올린다. 옛 저장분을 쓰지 않게 된다
+# Textract API(DetectDocumentText)나 쪽 그림을 만드는 방식(render_pages·upright_image)이 바뀌면 올린다. 옛 저장분을 쓰지 않게 된다.
+# 쪽 그림 설정 상수(MAX_PAGES·RENDER_DPI·MAX_SIDE_PX·JPEG_QUALITY)는 키에 들어가므로 바꿔도 올리지 않아도 된다
+OCR_VERSION = "detect-v1"
 
 
 class OcrCache(Protocol):
@@ -162,7 +171,7 @@ class OcrCache(Protocol):
 
 
 class S3OcrCache:
-    """S3 판 OCR 저장소. DOCS_BUCKET 의 cache/ocr/<키>.json. 권한: infra/policy-data.json 의 cache/ocr/*."""
+    """S3 판 OCR 저장소. DOCS_BUCKET 의 cache/ocr/<ocr_cache_key>.json. 권한: infra/policy-textract.json (worker 만)."""
 
     def __init__(self, bucket: str, client=None):
         self.bucket = bucket
@@ -170,19 +179,17 @@ class S3OcrCache:
 
     def _s3(self):
         if self._client is None:
-            import boto3
-            from botocore.config import Config
-
-            config = Config(connect_timeout=TIMEOUT_SECONDS, read_timeout=TIMEOUT_SECONDS, retries={"total_max_attempts": 2, "mode": "standard"})
-            self._client = boto3.client("s3", config=config)
+            with _CLIENT_LOCK:
+                self._client = _s3_client()
         return self._client
 
     def get(self, key: str) -> str | None:
         try:
             return self._s3().get_object(Bucket=self.bucket, Key=f"{OCR_CACHE_PREFIX}{key}.json")["Body"].read().decode("utf-8")
-        except Exception as exc:  # 없는 키는 그냥 없음. 다른 오류(권한 등)도 캐시 없이 OCR 하게 한다
+        except Exception as exc:  # 없는 키는 그냥 없음. 다른 오류도 캐시 없이 OCR 하게 한다
             code = getattr(exc, "response", {}).get("Error", {}).get("Code")
-            if code not in ("NoSuchKey", "404"):
+            # ListBucket 권한이 없으면 없는 키도 403(AccessDenied)이다. 진짜 권한 문제는 put 실패 경고로 드러난다
+            if code not in ("NoSuchKey", "404", "AccessDenied", "403"):
                 print(f"[warn] ocr_cache get 실패: {type(exc).__name__}: {exc}")
             return None
 
@@ -190,6 +197,16 @@ class S3OcrCache:
         self._s3().put_object(
             Bucket=self.bucket, Key=f"{OCR_CACHE_PREFIX}{key}.json", Body=value.encode("utf-8"), ContentType="application/json"
         )
+
+
+@cache
+def _s3_client():
+    """OCR 저장소가 쓰는 S3 클라이언트. 모든 S3OcrCache 가 하나를 같이 쓴다 (부르는 쪽이 _CLIENT_LOCK 을 잡는다)."""
+    import boto3
+    from botocore.config import Config
+
+    config = Config(connect_timeout=TIMEOUT_SECONDS, read_timeout=TIMEOUT_SECONDS, retries={"total_max_attempts": 2, "mode": "standard"})
+    return boto3.client("s3", config=config)
 
 
 def default_ocr_cache() -> OcrCache | None:
@@ -201,8 +218,8 @@ def default_ocr_cache() -> OcrCache | None:
 
 
 def ocr_cache_key(data: bytes) -> str:
-    """OCR 캐시 키. 파일 바이트·OCR_VERSION·쪽 수 상한·해상도 중 하나라도 다르면 다른 키다."""
-    parts = [hashlib.sha256(data).hexdigest(), OCR_VERSION, str(MAX_PAGES), str(RENDER_DPI)]
+    """OCR 캐시 키. 파일 바이트·OCR_VERSION·쪽 그림 설정(쪽 수 상한·해상도·긴 변 상한·JPEG 품질) 중 하나라도 다르면 다른 키다."""
+    parts = [hashlib.sha256(data).hexdigest(), OCR_VERSION, str(MAX_PAGES), str(RENDER_DPI), str(MAX_SIDE_PX), str(JPEG_QUALITY)]
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
 
 
@@ -220,6 +237,7 @@ def ocr_cached(
     받는 것: file(S3 키), data(파일 바이트), pages(ocr_document 에 넘길 쪽 그림), cache(저장소, None 이면 저장·재사용 안 함),
              run(실제 OCR 함수. 기본 ocr_document, 테스트·부른 쪽이 바꿀 수 있다).
     반환: OcrResult. 저장분이면 file 만 지금 키로 바꾼다. 저장소 오류는 OCR 을 막지 않는다.
+    글자 줄이 하나도 없는 결과는 저장하지도 쓰지도 않는다 (잠깐의 오류가 그 파일에 영원히 남지 않게).
     """
     key = ocr_cache_key(data) if cache is not None else None
     if key is not None:
@@ -231,12 +249,14 @@ def ocr_cached(
         if hit is not None:
             try:
                 res = OcrResult.model_validate_json(hit)
-                print(f"[tool] ocr_document file={file} 저장분 사용 key={key[:12]} 줄 {len(res.lines)}개")
-                return res.model_copy(update={"file": file})
             except ValueError as exc:
                 print(f"[warn] ocr_cache 값이 형식에 안 맞아 새로 OCR: {type(exc).__name__}")
+            else:
+                if res.lines:
+                    print(f"[tool] ocr_document file={file} 저장분 사용 key={key[:12]} 줄 {len(res.lines)}개")
+                    return res.model_copy(update={"file": file})
     res = run(file, data, pages=pages)
-    if key is not None:
+    if key is not None and res.lines:
         try:
             cache.put(key, res.model_dump_json())
         except Exception as exc:

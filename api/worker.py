@@ -14,7 +14,7 @@ API Lambda(api/handler.py의 POST /jobs)가 작업을 queued로 저장한 뒤 �
             서류마다 Textract OCR을 매번 돌린다 (F10 #188). run_job과 동시에 돌리고, 다시 확인(reread_field)의 두 번째 근거로
             넘긴다. PDF는 쪽 그림(JPEG)을 그려 S3(uploads/…)에 두고 그 그림을 OCR 한다. OCR 결과(ocr 칸)와 쪽 그림 목록(pages 칸)은
             같은 줄에 저장해 서류 보기(GET /jobs/{id}/files)의 쪽 그림·칸 위치에 쓴다.
-            ocr 칸은 OCR_MAX_LINES 에서 자른다. 자르지 않은 결과는 S3 cache/ocr/<파일 해시>.json 에 두고, 같은 파일이면
+            ocr 칸은 OCR_MAX_LINES 에서 자른다. 자르지 않은 결과는 S3 cache/ocr/<ocr_cache_key(파일)>.json 에 두고, 같은 파일이면
             그것을 써서 Textract 를 다시 부르지 않는다 (B4-L0, l0). NO_CACHE=1 이면 저장·재사용하지 않는다.
             OCR은 처리 시작부터 OCR_WAIT_SECONDS까지만 기다린다. 넘으면 그 서류는 OCR 없이 진행한다 (Lambda 300초 안에 끝나게).
 제한 시간 300초. 환경 변수: JOBS_TABLE, DOCS_BUCKET, MODEL_ID, HS_HISTORY_TABLE, SHIPMENTS_TABLE, WMS_TABLE
