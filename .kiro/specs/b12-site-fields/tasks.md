@@ -36,6 +36,8 @@
 
 ### 이슈 #228 B12: 현장 칸 추가 (공용 파일, 1번 판독) — 브랜치 `chore/228-site-fields`
 
+> 끝남: PR #237 (main `0dfec90`). 리뷰 보완은 `fix/228-site-fields-review`. 계획과 달라진 점은 아래 '작업 1~4 실행 기록'.
+
 #### 작업 1: 공용 모델·약속·예시
 
 **Files:**
@@ -55,7 +57,7 @@
   - `SITE_FIELDS: dict[str, frozenset[str]]` — 값은 design.md 1번 표 그대로 (품목·컨테이너 칸은 `items.qty`, `containers.seal_no`)
   - `ReadField.site: bool = False`
 
-- [ ] **Step 1: 실패하는 테스트 작성**
+- [x] **Step 1: 실패하는 테스트 작성**
 
 ```python
 def test_현장_칸도_선택_속성_한도_안():
@@ -76,11 +78,11 @@ def test_현장_칸_목록():
     assert SITE_FIELDS["certificate_of_origin"] == frozenset()
 ```
 
-- [ ] **Step 2: 실패 확인** — Run: `uv run pytest tests/unit/test_extract_p1.py -k "현장 or 옛_응답" -v` / Expected: FAIL (ImportError `SITE_FIELDS` 또는 AttributeError `marks`)
-- [ ] **Step 3: 모델 구현** — 위 Interfaces 그대로. 필드 description에 칸 이름·헷갈리는 칸·예시를 적는다: `seal_no` "Seal No. 칸. 컨테이너 번호와 다르다. 예: 'EX1470293'", `size_type` "예: \"20'GP (22G1)\"", `marks` "MARKS & NUMBERS 칸의 줄을 공백 하나로 이은 글자. 예: 'EXAMPLE DISTRIBUTION KOREA INC. BUSAN, KOREA C/NO. 1-53 MADE IN CHINA'", `ExtractedItem.packages` "그 행의 포장 개수(No. of Pkgs, CTNS). 품목 수량(qty)과 다르다. 예: '286'"
-- [ ] **Step 4: schema.md·예시 고침** — 약속 1 표 B/L 줄에 `marks` `containers[]`(여섯 칸), 포장명세서 줄에 `marks`, 품목 `packages`. "화인은 줄을 공백 하나로 잇는다", "`container_no`는 그대로 두고 `containers[]`는 덧붙인 것" 한 줄씩. 약속 2 서류 보기에 "`site`: 현장 칸이면 true (`SITE_FIELDS`). 관리자는 모든 칸을 본다".
-- [ ] **Step 5: 통과 확인** — Run: `uv run pytest tests/unit -q` / Expected: 모두 PASS (`test_examples.py` 포함)
-- [ ] **Step 6: 커밋** — `git commit -m "feat(models): 현장 칸 marks·containers·items.packages와 SITE_FIELDS (B12, 공용)"`
+- [x] **Step 2: 실패 확인** — Run: `uv run pytest tests/unit/test_extract_p1.py -k "현장 or 옛_응답" -v` / Expected: FAIL (ImportError `SITE_FIELDS` 또는 AttributeError `marks`)
+- [x] **Step 3: 모델 구현** — 위 Interfaces 그대로. 필드 description에 칸 이름·헷갈리는 칸·예시를 적는다: `seal_no` "Seal No. 칸. 컨테이너 번호와 다르다. 예: 'EX1470293'", `size_type` "예: \"20'GP (22G1)\"", `marks` "MARKS & NUMBERS 칸의 줄을 공백 하나로 이은 글자. 예: 'EXAMPLE DISTRIBUTION KOREA INC. BUSAN, KOREA C/NO. 1-53 MADE IN CHINA'", `ExtractedItem.packages` "그 행의 포장 개수(No. of Pkgs, CTNS). 품목 수량(qty)과 다르다. 예: '286'"
+- [x] **Step 4: schema.md·예시 고침** — 약속 1 표 B/L 줄에 `marks` `containers[]`(여섯 칸), 포장명세서 줄에 `marks`, 품목 `packages`. "화인은 줄을 공백 하나로 잇는다", "`container_no`는 그대로 두고 `containers[]`는 덧붙인 것" 한 줄씩. 약속 2 서류 보기에 "`site`: 현장 칸이면 true (`SITE_FIELDS`). 관리자는 모든 칸을 본다".
+- [x] **Step 5: 통과 확인** — Run: `uv run pytest tests/unit -q` / Expected: 모두 PASS (`test_examples.py` 포함)
+- [x] **Step 6: 커밋** — `git commit -m "feat(models): 현장 칸 marks·containers·items.packages와 SITE_FIELDS (B12, 공용)"`
 
 #### 작업 2: 판독 변환과 지시문
 
@@ -92,7 +94,7 @@ def test_현장_칸_목록():
 - Consumes: 작업 1의 `RawContainer`, `ExtractedContainer`, `marks`, `packages`
 - Produces: `to_extracted(raw_doc, doc_type, file) -> ExtractedDocument` (시그니처 그대로)가 `containers`·`marks`·`items[].packages`를 채운다
 
-- [ ] **Step 1: 실패하는 테스트 작성** (`BL` dict에 `"marks"`, `"containers"`를 더한 `BL_SITE`를 만든다)
+- [x] **Step 1: 실패하는 테스트 작성** (`BL` dict에 `"marks"`, `"containers"`를 더한 `BL_SITE`를 만든다)
 
 ```python
 BL_SITE = {**BL, "marks": cell("EXAMPLE HOME LIVING\nBUSAN, KOREA C/NO. 1-535"),
@@ -124,10 +126,10 @@ def test_지시문에_현장_칸_설명이_있다():
     assert "packages" in system_prompt("packing_list")
 ```
 
-- [ ] **Step 2: 실패 확인** — Run: `uv run pytest tests/unit/test_extract_p1.py -k "컨테이너_줄 or 화인 or 품목별_포장 or 지시문에_현장" -v` / Expected: FAIL
-- [ ] **Step 3: 구현** — `_cell` 종류 `"marks"`: `Cell(raw=raw, value=" ".join(raw.upper().split()))`. `_CONTAINER_KINDS`·`_DOC_KINDS["marks"]`·`_ITEM_KINDS["packages"]="qty"`는 design.md 2번 값. `to_extracted`는 `containers`를 `items`처럼 줄마다 바꾸고, `cells`를 만들 때 `items`·`containers`를 뺀다. `_DOC_RULES` 문장은 design.md 2번 그대로.
-- [ ] **Step 4: 통과 확인** — Run: `uv run pytest tests/unit/test_extract.py tests/unit/test_extract_p1.py tests/unit/test_read_cache.py -q` / Expected: PASS
-- [ ] **Step 5: 커밋** — `git commit -m "feat(extract): 화인·컨테이너 줄·품목별 포장 수 풀기와 지시문 (B12)"`
+- [x] **Step 2: 실패 확인** — Run: `uv run pytest tests/unit/test_extract_p1.py -k "컨테이너_줄 or 화인 or 품목별_포장 or 지시문에_현장" -v` / Expected: FAIL
+- [x] **Step 3: 구현** — `_cell` 종류 `"marks"`: `Cell(raw=raw, value=" ".join(raw.upper().split()))`. `_CONTAINER_KINDS`·`_DOC_KINDS["marks"]`·`_ITEM_KINDS["packages"]="qty"`는 design.md 2번 값. `to_extracted`는 `containers`를 `items`처럼 줄마다 바꾸고, `cells`를 만들 때 `items`·`containers`를 뺀다. `_DOC_RULES` 문장은 design.md 2번 그대로.
+- [x] **Step 4: 통과 확인** — Run: `uv run pytest tests/unit/test_extract.py tests/unit/test_extract_p1.py tests/unit/test_read_cache.py -q` / Expected: PASS
+- [x] **Step 5: 커밋** — `git commit -m "feat(extract): 화인·컨테이너 줄·품목별 포장 수 풀기와 지시문 (B12)"`
 
 #### 작업 3: 다시 확인 경로에 컨테이너 줄
 
@@ -138,7 +140,7 @@ def test_지시문에_현장_칸_설명이_있다():
 **Interfaces:**
 - Produces: `field_raw(doc, field)`가 `containers[0].seal_no`, `containers[*].packages`(줄 raw를 `' + '`로 이음)를 받는다. 모르는 경로는 지금처럼 `ValueError`.
 
-- [ ] **Step 1: 실패하는 테스트 작성**
+- [x] **Step 1: 실패하는 테스트 작성**
 
 ```python
 def test_field_raw_컨테이너_경로():
@@ -151,10 +153,10 @@ def test_field_raw_컨테이너_경로():
         field_raw(doc, "boxes[0].seal_no")
 ```
 
-- [ ] **Step 2: 실패 확인** — Run: `uv run pytest tests/unit/test_reread.py -k 컨테이너_경로 -v` / Expected: FAIL (`ValueError: 모르는 칸 경로`)
-- [ ] **Step 3: 구현** — `_PATH = re.compile(r"^(?:(items|containers)\[(\d+|\*)\]\.)?([a-z_]+)$")`, 목록 이름으로 `getattr(doc, list_name, [])`를 읽는다.
-- [ ] **Step 4: 통과 확인** — Run: `uv run pytest tests/unit/test_reread.py -q` / Expected: PASS
-- [ ] **Step 5: 커밋** — `git commit -m "feat(reread): 컨테이너 줄 칸 경로 (B12)"`
+- [x] **Step 2: 실패 확인** — Run: `uv run pytest tests/unit/test_reread.py -k 컨테이너_경로 -v` / Expected: FAIL (`ValueError: 모르는 칸 경로`)
+- [x] **Step 3: 구현** — `_PATH = re.compile(r"^(?:(items|containers)\[(\d+|\*)\]\.)?([a-z_]+)$")`, 목록 이름으로 `getattr(doc, list_name, [])`를 읽는다.
+- [x] **Step 4: 통과 확인** — Run: `uv run pytest tests/unit/test_reread.py -q` / Expected: PASS
+- [x] **Step 5: 커밋** — `git commit -m "feat(reread): 컨테이너 줄 칸 경로 (B12)"`
 
 #### 작업 4: 정답지와 판독 측정
 
@@ -166,11 +168,21 @@ def test_field_raw_컨테이너_경로():
 - Consumes: 작업 2의 `ExtractedDocument.containers`·`marks`·`items[].packages`
 - Produces: `eval/fields.csv` 새 칸 이름 `marks`, `containers[i].container_no|seal_no|size_type|packages`, `items[i].packages`
 
-- [ ] **Step 1: 정답 쓰기** — build_samples가 B/L 정답에 `marks`(줄을 공백 하나로 이음)와 `conts` 줄마다 `containers[i].*`, 포장명세서 스타일 1에 `marks`, 스타일 2에 `items[i].packages`를 쓴다. 서류는 다시 그리지 않는다 (`--only` 없이 정답지만 다시 쓰는 방법은 1번이 정한다).
-- [ ] **Step 2: 찍혔는지 확인** — Run: `uv run python samples/check_samples.py --docs --only D001 D008 D011` / Expected: 새 칸 정답이 서류 글자에 있음, 실패 0
-- [ ] **Step 3: 측정 맞춤 기준** — `measure_read_all.same`: `marks`는 대문자·`[^A-Z0-9]` 제거 뒤 같으면 맞음, `containers[i].*`는 `items[i].*`처럼 경로로 찾는다.
-- [ ] **Step 4: 측정 (모델 호출, 수동)** — Run: `NO_CACHE=1 MODEL_ID=... uv run python -m samples.measure_read_all --only D001 D002 D003 D004 D005 D006 D007 D008 D009 D010 D011 D013 --out tmp/read_site_dev.jsonl` / Expected: 새 칸 칸별 정답 수가 나오고, P0 칸(송장·포장명세서 invoice_no·total_qty·total_gross_kg)은 72/72 그대로. 결과를 PR 본문과 design.md 5번에 적는다.
-- [ ] **Step 5: 커밋** — `git commit -m "feat(samples): 현장 칸 정답지와 판독 측정 (B12)"`
+- [x] **Step 1: 정답 쓰기** — build_samples가 B/L 정답에 `marks`(줄을 공백 하나로 이음)와 `conts` 줄마다 `containers[i].*`, 포장명세서 스타일 1에 `marks`, 스타일 2에 `items[i].packages`를 쓴다. 서류는 다시 그리지 않는다 (실행 기록 3 참고).
+- [x] **Step 2: 찍혔는지 확인** — Run: `uv run python samples/check_samples.py --docs --only D001 D008 D011` / Expected: 새 칸 정답이 서류 글자에 있음, 실패 0
+- [x] **Step 3: 측정 맞춤 기준** — `measure_read_all.same`: `marks`는 대문자·`[^A-Z0-9]` 제거 뒤 같으면 맞음, `containers[i].*`는 `items[i].*`처럼 경로로 찾는다.
+- [x] **Step 4: 측정 (모델 호출, 수동)** — Run: `NO_CACHE=1 MODEL_ID=... uv run python -m samples.measure_read_all --only D001 D002 D003 D004 D005 D006 D007 D008 D009 D010 D011 D013 --out tmp/read_site_dev.jsonl` / Expected: 새 칸 칸별 정답 수가 나오고, P0 칸(송장·포장명세서 invoice_no·total_qty·total_gross_kg)은 72/72 그대로. 결과를 PR 본문과 design.md 5번에 적는다.
+- [x] **Step 5: 커밋** — `git commit -m "feat(samples): 현장 칸 정답지와 판독 측정 (B12)"`
+
+#### 작업 1~4 실행 기록
+
+1. `RawBillOfLading.marks`·`containers`에 파이썬 기본값을 두고 스키마에서만 필수로 했다. 기존 B/L 가짜 응답이 깨져서. 대가: 모델이 칸을 빠뜨려도 파이썬 검증은 통과 (Bedrock 구조화 출력은 스키마가 필수라 드묾).
+2. 작업 1 커밋에 `to_extracted` 최소 수정(packages 종류, containers 제외)을 넣었다. 모델만 바꾸면 테스트 37개가 깨져서.
+3. LibreOffice·poppler가 없어 build_samples 전체를 못 돌렸다. 같은 함수(`bl_data`, 새 `pl_site_fields`)로 fields.csv에 607줄만 더했고, 텍스트 PDF 347칸은 글자층에서 모두 찾았다. 스캔·PNG 260칸은 `check_samples --docs`로 확인 못 함 (1번에게 요청).
+4. 포장명세서에 심은 오류·변형이 있는 세트는 포장명세서 새 칸 정답을 쓰지 않았다 (양식이 고친 값으로 박스 수를 다시 계산). 그래서 화인 26, 포장 수 46칸뿐이다.
+5. `check_samples.py`는 고치지 않았다. `found()`가 새 칸을 이미 일반 규칙으로 찾는다.
+6. 측정(Step 4)은 사용자가 돌렸다: 45장 474/475, 새 칸 전부 정답, P0 72/72 (design.md Testing Strategy).
+7. 합친 뒤 리뷰 보완 (`fix/228-site-fields-review`): `same_value`가 packages·cbm을 글자로 비교하던 것을 숫자·단위 비교로, 예시 `job_files.json`의 `site`를 `SITE_FIELDS`와 맞추고 계약 테스트 추가.
 
 ### 이슈 #229 B13: 현장 칸 대조 규칙 (2번 검증) — B12가 합쳐진 뒤, 브랜치 `feat/b13-site-rules`
 
@@ -218,6 +230,7 @@ def test_화인이_흐리면_확인_필요():
 
 **Files:**
 - Modify: `tools/rules/rules.csv` (두 규칙의 불일치·확인 필요 줄), `tools/validate.py` (새 `_check_container_packages`, `_check_item_packages`), `eval/score.py` (`oracle_docs`)
+- Test 파일은 `ExtractedContainer`도 import 한다 (`from tools.models import Cell, ExtractedContainer, ExtractedDocument, ExtractedItem`).
 - Test: `tests/unit/test_validate_p1.py`
 
 **Interfaces:**
@@ -258,7 +271,7 @@ def test_품목_포장_수가_모두_칸_없음이면_건너뜀():
 
 - [ ] **Step 2: 실패 확인** — Run: `uv run pytest tests/unit/test_validate_p1.py -k "포장_수" -v` / Expected: FAIL
 - [ ] **Step 3: 구현** — `_check_container_packages(docs)`, `_check_item_packages(docs)`: 허용 오차 0, 합은 `_fmt`로 근거 문장에 넣는다. 건너뜀·확인 필요 조건은 design.md 3번.
-- [ ] **Step 4: 정답 값으로 다시 채점 (모델 호출 없음)** — `eval/score.py`의 `oracle_docs`가 fields.csv의 새 칸(`marks`, `containers[i].*`, `items[i].packages`)도 채우게 한다. Run: `uv run python -m eval.score --split dev --p1` / Expected: 정상 세트 오탐 0건, 기존 규칙 탐지 수는 이 작업 전과 같음 (먼저 한 번 돌려 숫자를 적어 둔다).
+- [ ] **Step 4: 정답 값으로 다시 채점 (모델 호출 없음)** — `eval/score.py`의 `oracle_docs`가 fields.csv의 새 칸(`marks`, `containers[i].*`, `items[i].packages`, 작업 4에서 이미 들어감)도 채우게 한다. 지금은 모르는 칸을 무시해서 채점 숫자가 안 바뀐다 (작업 4 전후 같음: 53건 중 43건, 오탐 0/30). Run: `uv run python -m eval.score --split dev --p1` / Expected: 정상 세트 오탐 0건, 기존 규칙 탐지 수는 이 작업 전과 같음 (먼저 한 번 돌려 숫자를 적어 둔다).
 - [ ] **Step 5: 통과 확인·커밋** — Run: `uv run pytest tests/unit -q` / Expected: PASS. `git commit -m "feat(validate): X-PKG-02·X-PKG-03 포장 수 합계 대조 (B13)"`
 
 ### 이슈 #230 F12: 서류 보기에 현장 칸 표시 (4번 서버) — B12가 합쳐진 뒤, 브랜치 `feat/f12-site-view`

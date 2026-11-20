@@ -3,7 +3,7 @@
 import pytest
 
 from tools.models import ExtractedDocument, Issue, IssueCell, OcrLine, OcrResult, RawDocument, RereadResult
-from tools.reread import apply_rereads, field_raw, find_in_text, reread_field
+from tools.reread import apply_rereads, field_raw, find_in_text, reread_field, same_value
 
 
 def doc(file="uploads/s1/pl.pdf", **cells) -> ExtractedDocument:
@@ -259,3 +259,14 @@ def test_field_raw_컨테이너_경로():
     assert field_raw(bl, "marks") == "EXAMPLE HOME LIVING\nBUSAN, KOREA C/NO. 1-535"
     with pytest.raises(ValueError):
         field_raw(bl, "boxes[0].seal_no")
+
+
+def test_포장_수와_용적은_숫자로_비교한다():
+    """B12 #228 새 칸과 총포장수·용적: 단위 표기만 다르면 같은 값이다 (리뷰 지적)."""
+    assert same_value("containers[0].packages", "300 CTNS", "300 CTN")
+    assert same_value("items[*].packages", "286 + 374", "286 + 374 CTNS")
+    assert same_value("total_packages", "SAY TOTAL 176 CARTONS ONLY", "176 CTNS")
+    assert same_value("containers[0].cbm", "35.000 CBM", "35 CBM")
+    assert same_value("total_cbm", "63.610", "63.61")
+    assert not same_value("containers[0].packages", "300 CTNS", "30 CTNS")
+    assert not same_value("total_packages", "176 CTNS", "176 PLTS")
