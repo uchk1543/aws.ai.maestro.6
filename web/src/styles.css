@@ -4092,3 +4092,26 @@ button.link {
   background: var(--fill);
   box-shadow: none;
 }
+
+/* ── PC 양옆 여백 (web/DESIGN.md 4절 '본문 최대 폭') ───────────────────────────
+   1200px 이상에서는 위 막대와 본문을 같은 1040px 폭에 가운데로 모은다. 위 막대 글자와 본문 왼쪽 선이 맞는다. */
+@media (min-width: 1200px) {
+  :root {
+    --page-max: 1040px;
+  }
+
+  .job,
+  .dash,
+  .dochist,
+  .upload,
+  .chat {
+    max-width: var(--page-max);
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .topbar {
+    padding-left: max(var(--gutter), calc((100% - var(--page-max)) / 2));
+    padding-right: max(var(--gutter), calc((100% - var(--page-max)) / 2));
+  }
+}
