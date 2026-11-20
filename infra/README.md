@@ -48,12 +48,14 @@ PM과 4번 사이 이름 약속(진입점, 이벤트, 환경 변수)은 이슈 #
 
 ### 테이블 키 바꾸기
 `create.sh`는 이미 있는 테이블의 키가 다르면 멈춘다. 키는 만든 뒤 바꿀 수 없어서 지우고 다시 만들어야 한다.
-지우기 전에 비어 있는지 확인하고, PM이 승인한 뒤에만 지운다 (지운 데이터는 되돌릴 수 없다).
+PM이 승인한 뒤 `recreate-table.sh`로만 지운다 (지운 데이터는 되돌릴 수 없다). 손으로 `delete-table`을 쓰지 않는다.
 ```bash
-aws dynamodb scan --table-name <테이블> --select COUNT      # 0이어야 한다. 아니면 먼저 내보내기
-aws dynamodb delete-table --table-name <테이블> && aws dynamodb wait table-not-exists --table-name <테이블>
-MODEL_ID=... bash infra/create.sh                             # 새 키로 다시 만들고 환경 변수도 맞춘다
+# 1. create.sh의 ensure_table 줄을 새 키로 고치는 PR을 먼저 합친다
+# 2. 최신 main에서
+MODEL_ID=global.anthropic.claude-sonnet-5-5 bash infra/recreate-table.sh <테이블 이름>
 ```
+스크립트가 지키는 것: `team06-` 테이블만, 키가 이미 맞으면 아무것도 안 함, 항목이 하나라도 있으면 멈춤, 지우기 전에 테이블 이름을 한 번 더 입력받음.
+지운 뒤 `create.sh`를 불러 새 키로 만들고 두 Lambda 환경 변수도 맞춘다.
 
 ## 실행 순서 (PM)
 ```bash
