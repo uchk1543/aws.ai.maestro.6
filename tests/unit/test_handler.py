@@ -1078,3 +1078,119 @@ def test_wms_failure_still_saves_hs_choice(hs_fakes, monkeypatch):
     assert job["steps"][-1] == {
         "tool": "push_to_wms", "summary": "WMS 자동 등록 못 함: 가상 WMS 오류(ClientError). 승인하면 다시 등록합니다", "ok": False,
     }
+
+
+# ---------------------------------------------------------------------------
+# GET /jobs/{id}/files 서류 보기 (F7 #156)
+# ---------------------------------------------------------------------------
+from tools.models import JobFilesResponse  # noqa: E402
+
+
+class ViewS3:
+    """서류 보기용 가짜 S3. GET 서명과 이미지 앞부분 받기만 흉내 낸다."""
+
+    def __init__(self, images: dict[str, bytes]):
+        self.images, self.signed, self.ranges = images, [], []
+
+    def generate_presigned_url(self, operation, Params, ExpiresIn, HttpMethod=None):
+        self.signed.append((operation, Params, ExpiresIn))
+        return f"https://s3.test/{Params['Key']}?sig={len(self.signed)}"
+
+    def get_object(self, Bucket, Key, Range=None):
+        from io import BytesIO
+
+        self.ranges.append((Key, Range))
+        return {"Body": BytesIO(self.images[Key])}
+
+
+def _png(width: int, height: int) -> bytes:
+    from io import BytesIO
+
+    from PIL import Image
+
+    buf = BytesIO()
+    Image.new("RGB", (width, height), "white").save(buf, format="PNG")
+    return buf.getvalue()
+
+
+@pytest.fixture
+def view_s3(monkeypatch):
+    fake = ViewS3({"uploads/s1/photo.png": _png(1200, 1600)})
+    monkeypatch.setattr(handler, "_s3", lambda: fake)
+    monkeypatch.setenv("DOCS_BUCKET", "team06-docs-test")
+    return fake
+
+
+def _typed_job(job_id: str, key: str, doc_type: str, status: str = "waiting_approval") -> dict:
+    return {
+        "job_id": job_id, "updated_at": 1795000000, "files": json.dumps([{"key": key, "doc_type": doc_type}]),
+        "data": Job(job_id=job_id, status=status).model_dump_json(),
+    }
+
+
+def test_job_files_give_original_url_and_read_fields(fakes, lambda_client, classifier, view_s3):
+    """끝난 기준: 원본 주소(미리 서명된 GET, inline)와 읽은 칸. 칸 경로는 IssueCell.field와 같다."""
+    job_id = post_untyped("invoice.pdf", "packing_list.pdf")
+    process(lambda_client)
+
+    status, body = call("GET", f"/api/jobs/{job_id}/files")
+
+    assert status == 200
+    res = JobFilesResponse.model_validate(body)
+    assert [f.file_name for f in res.files] == ["invoice.pdf", "packing_list.pdf"]
+    inv = res.files[0]
+    assert (inv.doc_type, inv.classified_by, inv.content_type) == ("commercial_invoice", "model", "application/pdf")
+    assert inv.url.startswith("https://s3.test/uploads/s1/invoice.pdf") and inv.pages == [] and inv.marks == []
+    fields = {f.field: f for f in inv.fields}
+    assert fields["total_gross_kg"].raw == "6,250.00 KGS" and fields["total_gross_kg"].label == "총중량"
+    assert fields["doc_no"].raw == "INV-2026-001"
+    _, issue_job = call("GET", f"/api/jobs/{job_id}")
+    issue_cells = {(c["doc"], c["field"]) for i in issue_job["result"]["issues"] for c in i["cells"]}
+    shown = {(f.doc_type, r.field) for f in res.files for r in f.fields}
+    assert issue_cells and issue_cells <= shown  # 화면이 불일치 칸을 바로 짚는다
+    op, params, seconds = view_s3.signed[0]
+    assert (op, seconds, params["ResponseContentDisposition"]) == ("get_object", handler.VIEW_SECONDS, "inline")
+
+
+def test_job_files_image_has_one_page_with_size(fakes, view_s3):
+    fakes.items["job-0000bbbb"] = _typed_job("job-0000bbbb", "uploads/s1/photo.png", "packing_list")
+
+    [view] = JobFilesResponse.model_validate(call("GET", "/api/jobs/job-0000bbbb/files")[1]).files
+
+    assert view.content_type == "image/png" and [(p.width, p.height) for p in view.pages] == [(1200, 1600)]
+    assert view.fields == []  # 읽지 않은 서류
+    assert view_s3.ranges == [("uploads/s1/photo.png", f"bytes=0-{handler.IMAGE_HEAD_BYTES - 1}")]
+
+
+def test_job_files_broken_image_still_gives_url(fakes, view_s3):
+    view_s3.images["uploads/s1/photo.png"] = b"not an image"
+    fakes.items["job-0000cccc"] = _typed_job("job-0000cccc", "uploads/s1/photo.png", "packing_list", "done")
+
+    [view] = call("GET", "/api/jobs/job-0000cccc/files")[1]["files"]
+
+    assert view["pages"] == [] and view["url"].startswith("https://s3.test/")
+
+
+@pytest.mark.parametrize("job_id", ["job-00000000", "nope"])
+def test_job_files_unknown_job_is_404(fakes, job_id):
+    assert call("GET", f"/api/jobs/{job_id}/files")[0] == 404
+
+
+def test_presign_view_is_regional_get_with_inline(monkeypatch):
+    """실제 botocore로 GET 서명만 해 본다 (AWS를 부르지 않는다)."""
+    for name in ("AWS_PROFILE", "AWS_SESSION_TOKEN", "AWS_ENDPOINT_URL", "AWS_ENDPOINT_URL_S3"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "fake-id")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "fake-secret")
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "ap-northeast-2")
+    monkeypatch.setenv("DOCS_BUCKET", "team06-docs-test")
+    monkeypatch.setattr(boto3, "DEFAULT_SESSION", None)
+    handler._s3.cache_clear()
+    try:
+        url = handler.presign_view("uploads/b1/1-invoice.pdf", "application/pdf")
+    finally:
+        handler._s3.cache_clear()
+    parts, query = urlsplit(url), parse_qs(urlsplit(url).query)
+    assert parts.netloc == "team06-docs-test.s3.ap-northeast-2.amazonaws.com"
+    assert query["response-content-type"] == ["application/pdf"] and query["response-content-disposition"] == ["inline"]
+    assert query["X-Amz-Expires"] == [str(handler.VIEW_SECONDS)]
