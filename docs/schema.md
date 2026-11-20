@@ -40,6 +40,7 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 | `POST /api/chat` | `{"session_id","message"}` | `docs/examples/chat_response.json` |
 | `GET /api/documents?doc_type=<종류>&cursor=<다음 쪽>` | - | `docs/examples/documents.json` (문서 분류 내역, #143) |
 | `GET /api/jobs/{id}/files` | - | `docs/examples/job_files.json` (서류 보기: 원본 주소 + 읽은 칸, #156) |
+| `GET /api/stats` | - | `docs/examples/stats.json` (대시보드 통계, F11 #195) |
 
 서류 보기 (`GET /api/jobs/{id}/files`, F7 #156. 모양은 `tools/models.py`의 `JobFilesResponse`)
 - 서류마다 `url`(원본, 미리 서명된 GET 300초, inline), `content_type`. 화면은 PDF는 iframe, 이미지는 img로 띄운다
@@ -64,6 +65,14 @@ Lambda가 받는 이벤트는 HTTP API 2.0 형식이고 `rawPath`에 `/api`가 �
 - `suspect`: 서류가 셋 이상일 때 다수결로 고른 서류 종류, 둘뿐이면 null
 처리 방식: API Gateway는 요청 하나를 30초 안에 끝내야 해서, `POST /api/jobs`는 작업을 `queued`로 저장하고 `job_id`를 바로 돌려준다.
 처리 Lambda가 비동기로 `run_job`을 돌려 `running` → `waiting_approval`·`done`·`failed`로 바꾼다. 화면은 `GET /api/jobs/{id}`를 2초마다 부른다.
+대시보드 통계 (`GET /api/stats`, F11 #195. 모양은 `tools/models.py`의 `StatsResponse`)
+- 모델 호출 없이 코드가 team06-jobs·team06-shipments를 센다. 화면은 다시 세지 않는다. 날짜는 한국 시간
+- `todo`: 승인 대기 작업, 그중 불일치가 남은 작업, HS를 사람이 골라야 하는 품목, 분류 못 한 서류(문서 분류 내역의 unknown), 통관 지연 화물
+- `flow`: 통관 상태 6개(진행 순서)별 화물 수. `delayed`: 통관 지연 화물(입항 후 지난 날 수가 큰 순서, 10건까지)
+- `auto`: 처리가 끝난 작업(승인 대기 + 끝남)과 그중 WMS에 자동 등록된 작업 수. `top_rules`: 걸린 문제 수가 많은 규칙 5개
+- 통계에서 문서 분류 내역으로 갈 때 `GET /api/documents`에 거르기를 붙인다: `job_status`, `grade`(그 등급의 문제가 남은 작업), `rule_id`(그 규칙에 걸린 작업), `hs=pending`(HS를 사람이 골라야 하는 작업). 거르기가 있으면 `counts`도 그 안에서 센다
+  - `grade`·`hs=pending`은 모든 상태의 작업에서 찾는다. `todo.mismatch_jobs`·`todo.hs_pending`은 승인 대기 작업만 세므로, 숫자와 목록을 맞추려면 `job_status=waiting_approval`을 함께 붙인다
+
 ## 화물 기록 (team06-shipments 한 줄)
 - 예시: `docs/examples/shipment.json`
 - `customs_status` 값은 아래 6개만 쓴다 (진행 순서). 검사 중은 심사 중 뒤에 거치는 선택 단계다.

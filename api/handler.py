@@ -10,6 +10,8 @@ CloudFront가 /api/*를 API Gateway로 보내고, rawPath에 /api가 붙어 온�
     POST /api/jobs/{id}/approve → {"wms"}              (D3, 사람 승인으로 WMS 등록. 불일치가 남았으면 409)
     POST /api/chat           → ChatResponse            (E5, 현황 조회. 1번 agent.query_agent)
     GET  /api/documents?doc_type=…&cursor=… → DocumentsResponse (G10 #143, 문서 분류 내역. team06-jobs Scan)
+         거르기(F11 #195): job_status · grade · rule_id · hs=pending
+    GET  /api/stats           → StatsResponse          (F11 #195, 대시보드 통계. team06-jobs·team06-shipments Scan)
     GET  /api/jobs/{id}/files → JobFilesResponse        (F7 #156, 서류 보기: 원본 주소 + 읽은 칸)
 서류 처리(run_job)는 처리 Lambda team06-worker(api/worker.py)가 한다. API Gateway는 요청 하나를 30초 안에 끝내야 한다.
 
@@ -43,13 +45,19 @@ from tools.models import (
     Job,
     JobFilesResponse,
     JobFileView,
+    AutoRate,
+    DelayedShipment,
+    FlowStage,
     OcrResult,
+    RuleCount,
+    StatsResponse,
+    TodoCounts,
     ReadField,
     Step,
     WmsState,
 )
 from tools.ocr import locate_marks
-from tools.query import dynamo_shipments
+from tools.query import DELAY_RULE, dynamo_shipments, is_delayed
 
 ALLOWED_DOC_TYPES = {"commercial_invoice", "packing_list", "bill_of_lading", "certificate_of_origin"}  # 약속 1의 4종 (#129)
 JOB_ID = re.compile(r"^job-[0-9a-f]{8}$")
@@ -236,10 +244,10 @@ def _hs_known(code: str) -> bool:
     """사람이 고른 HS가 HS부호 표에 있는 10자리 코드인지 본다 (#181).
 
     언제: POST /jobs/{id}/hs에서 이력을 쓰기 전. 표에 없는 코드가 신고서 초안과 확정 이력에 들어가지 않게 한다.
-    받는 것: code(10자리 숫자 문자열). 반환: 표에 있으면 True.
-    TODO(#164): 2번이 tools/hs.py에 표 확인 함수를 만들면 그 함수로 바꾼다. 지금은 이미 있는 CsvHSTable.exists를 쓴다.
+    받는 것: code(고른 코드). 반환: 10자리 ASCII 숫자이고 표에 있으면 True.
+    표 확인은 tools/hs.py의 is_known_hs(#164)가 한다. 형식은 _validate_choices가 먼저 보지만 여기서도 한 번 더 본다.
     """
-    return _hs_table().exists(code)
+    return hs.is_known_hs(code, _hs_table())
 
 
 # ---------------------------------------------------------------------------
@@ -695,11 +703,47 @@ def job_documents(item: dict) -> list[DocumentRecord]:
     return records
 
 
+JOB_STATUSES = ("queued", "running", "waiting_approval", "done", "failed")
+GRADES = ("불일치", "확인 필요", "참고")
+
+
+def _document_filters(query: dict) -> tuple[dict, str | None]:
+    """GET /documents 의 거르기 조건 (F11 #195). 반환: (조건, 문제가 있으면 400 문장)."""
+    filters = {k: query[k] for k in ("job_status", "grade", "rule_id", "hs") if query.get(k)}
+    if filters.get("job_status") not in (None, *JOB_STATUSES):
+        return filters, f"job_status는 {', '.join(JOB_STATUSES)} 중 하나입니다"
+    if filters.get("grade") not in (None, *GRADES):
+        return filters, f"grade는 {', '.join(GRADES)} 중 하나입니다"
+    if filters.get("hs") not in (None, "pending"):
+        return filters, "hs는 pending만 받습니다"
+    if len(filters.get("rule_id", "")) > 40:
+        return filters, "rule_id가 너무 깁니다"
+    return filters, None
+
+
+def job_matches(job: Job, filters: dict) -> bool:
+    """작업이 거르기 조건을 모두 채우는지. 조건은 작업 단위다 (그 작업의 서류가 모두 나온다).
+
+    grade: 그 등급의 문제가 남은 작업, rule_id: 그 규칙에 걸린 작업, hs=pending: HS를 사람이 골라야 하는 품목이 있는 작업.
+    """
+    issues = job.result.issues if job.result else []
+    if "job_status" in filters and job.status != filters["job_status"]:
+        return False
+    if "grade" in filters and not any(i.grade == filters["grade"] for i in issues):
+        return False
+    if "rule_id" in filters and not any(i.rule_id == filters["rule_id"] for i in issues):
+        return False
+    if "hs" in filters and not (job.result and any(h.status == "사람 확인 필요" for h in job.result.hs)):
+        return False
+    return True
+
+
 def list_documents(query: dict | None) -> dict:
     """GET /documents?doc_type=…&cursor=…. 문서 분류 내역 (G10 #143). 모델 호출 없음.
 
-    받는 것: doc_type(LIST_DOC_TYPES 중 하나), cursor(앞 쪽이 준 next_cursor, 없으면 첫 쪽).
-    반환: 200 DocumentsResponse (counts는 전체 작업 기준, items는 최근 작업 먼저 DOC_PAGE건) / 400 요청 형식.
+    받는 것: doc_type(LIST_DOC_TYPES 중 하나), cursor(앞 쪽이 준 next_cursor, 없으면 첫 쪽),
+             거르기(선택, F11 #195): job_status, grade(불일치 · 확인 필요 · 참고), rule_id, hs=pending. 대시보드 통계에서 들어올 때 쓴다.
+    반환: 200 DocumentsResponse (counts는 전체 작업 기준, 거르기가 있으면 그 안에서. items는 최근 작업 먼저 DOC_PAGE건) / 400 요청 형식.
     """
     query = query or {}
     doc_type, cursor = query.get("doc_type"), query.get("cursor") or "0"
@@ -707,9 +751,14 @@ def list_documents(query: dict | None) -> dict:
         return _error(400, f"doc_type은 {', '.join(LIST_DOC_TYPES)} 중 하나입니다")
     if not cursor.isdigit():
         return _error(400, "cursor가 잘못됐습니다")
+    filters, problem = _document_filters(query)
+    if problem:
+        return _error(400, problem)
     records: list[DocumentRecord] = []
     for item in _scan_jobs():
         try:
+            if filters and not job_matches(Job.model_validate_json(item["data"]), filters):
+                continue
             records += job_documents(item)
         except Exception as exc:  # 깨진 줄 하나 때문에 목록 전체가 실패하지 않게 한다
             print(f"[warn] documents job={item.get('job_id')} 건너뜀: {type(exc).__name__}: {exc}")
@@ -722,7 +771,94 @@ def list_documents(query: dict | None) -> dict:
     page = picked[start:start + DOC_PAGE]
     more = start + DOC_PAGE < len(picked)
     body = DocumentsResponse(counts=counts, items=page, next_cursor=str(start + DOC_PAGE) if more else None)
-    print(f"[api] documents doc_type={doc_type} 전체 {len(records)}장, 이 종류 {len(picked)}장, 쪽 {start}")
+    print(f"[api] documents doc_type={doc_type} 거르기={filters} 전체 {len(records)}장, 이 종류 {len(picked)}장, 쪽 {start}")
+    return _response(200, body.model_dump(mode="json"))
+
+
+# ---------------------------------------------------------------------------
+# 대시보드 통계 (F11 #195). 모델 호출 없음, 날짜는 한국 시간
+# ---------------------------------------------------------------------------
+FLOW_STATUSES = ("입항", "수입신고", "심사 중", "검사 중", "수리", "반출")  # docs/schema.md 화물 기록 (진행 순서)
+DELAYED_MAX = 10
+TOP_RULES = 5
+
+
+def _squash_status(text: str) -> str:
+    return "".join(text.split())  # '심사중'과 '심사 중'을 같게 본다 (tools/query.py 와 같은 규칙)
+
+
+def build_stats(items: list[dict], shipments: list, today) -> StatsResponse:
+    """작업 줄과 화물 기록으로 대시보드 통계를 센다 (F11 #195). 화면은 이 숫자를 다시 세지 않는다.
+
+    받는 것: team06-jobs 줄 목록, 화물 기록(Shipment) 목록, 오늘(한국 시간 date).
+    """
+    jobs, records = [], []
+    for item in items:
+        try:
+            jobs.append(Job.model_validate_json(item["data"]))
+            records += job_documents(item)
+        except Exception as exc:  # 깨진 줄 하나 때문에 통계 전체가 실패하지 않게 한다
+            print(f"[warn] stats job={item.get('job_id')} 건너뜀: {type(exc).__name__}: {exc}")
+    waiting = [j for j in jobs if j.status == "waiting_approval" and j.result]
+    delayed = sorted(
+        (s for s in shipments if is_delayed(s, today)), key=lambda s: ((today - s.arrived_at).days, s.bl_no), reverse=True,
+    )
+    flow = {status: 0 for status in FLOW_STATUSES}
+    by_squash = {_squash_status(s): s for s in FLOW_STATUSES}
+    for s in shipments:
+        status = by_squash.get(_squash_status(s.customs_status))
+        if status:
+            flow[status] += 1
+    docs_by_type = {t: 0 for t in LIST_DOC_TYPES}
+    for r in records:
+        docs_by_type[r.doc_type] += 1
+    finished = [j for j in jobs if j.status in ("waiting_approval", "done") and j.result]
+    rules: dict[str, dict] = {}
+    for job in sorted(finished, key=lambda j: j.job_id):  # 같은 순서로 세어 예시 문장이 흔들리지 않게
+        for issue in job.result.issues:
+            entry = rules.setdefault(issue.rule_id, {"count": 0, "grades": {}, "example": issue.evidence})
+            entry["count"] += 1
+            entry["grades"][issue.grade] = entry["grades"].get(issue.grade, 0) + 1
+    top = sorted(rules.items(), key=lambda kv: (-kv[1]["count"], kv[0]))[:TOP_RULES]
+    return StatsResponse(
+        today=today,
+        todo=TodoCounts(
+            waiting_approval=len(waiting),
+            mismatch_jobs=sum(1 for j in waiting if any(i.grade == "불일치" for i in j.result.issues)),
+            hs_pending=sum(1 for j in waiting for h in j.result.hs if h.status == "사람 확인 필요"),
+            unclassified=docs_by_type["unknown"],
+            delayed=len(delayed),
+        ),
+        flow=[FlowStage(status=s, count=n) for s, n in flow.items()],
+        delayed=[
+            DelayedShipment(
+                bl_no=s.bl_no, consignee=s.consignee, item=s.item, arrived_at=s.arrived_at,
+                customs_status=s.customs_status, days=(today - s.arrived_at).days, job_id=s.job_id,
+            )
+            for s in delayed[:DELAYED_MAX]
+        ],
+        delay_rule=DELAY_RULE,
+        docs_by_type=docs_by_type,
+        auto=AutoRate(
+            finished=len(finished), auto=sum(1 for j in finished if j.result.wms and j.result.wms.by == "auto"),
+        ),
+        top_rules=[
+            RuleCount(rule_id=rule_id, grade=max(e["grades"], key=lambda g: (e["grades"][g], -GRADES.index(g))),
+                      count=e["count"], example=e["example"])
+            for rule_id, e in top
+        ],
+    )
+
+
+def stats() -> dict:
+    """GET /stats. 대시보드 통계 (F11 #195). 화물 기록을 못 읽어도 작업 통계는 준다 (화물 칸은 0)."""
+    try:
+        shipments = dynamo_shipments().all()
+    except Exception as exc:
+        print(f"[warn] stats 화물 기록을 읽지 못함: {type(exc).__name__}: {exc}")
+        shipments = []
+    body = build_stats(_scan_jobs(), shipments, report._today())
+    print(f"[api] stats 작업 대기 {body.todo.waiting_approval}, 지연 {body.todo.delayed}, 화물 {len(shipments)}건")
     return _response(200, body.model_dump(mode="json"))
 
 
@@ -872,6 +1008,8 @@ def lambda_handler(event, context):
             return chat(_body(event))
         if method == "GET" and path == "/documents":
             return list_documents(event.get("queryStringParameters"))
+        if method == "GET" and path == "/stats":
+            return stats()
         planned = _planned_route(method, path)
         if planned:
             return _error(501, f"아직 만들지 않은 경로입니다 ({planned}). 형식은 docs/schema.md 약속 2")
