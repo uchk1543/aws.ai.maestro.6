@@ -11,11 +11,12 @@ run_job은 두 길로 돈다. 두 길 모두 같은 도구 묶음(_Run)을 쓰�
 import os
 import threading
 import time
+from pathlib import PurePath
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 
 from agent import today_kst
-from tools.extract import ClassifyReader, ModelReader, ReadError, classify_document, read_document
+from tools.extract import ClassifyReader, ModelReader, ReadError, classify_document, read_document, shrink_image
 from tools.models import (
     DOC_TYPE_KO,
     Classification,
@@ -37,7 +38,10 @@ from tools.reread import apply_rereads, reread_field
 from tools.validate import cross_check
 
 MAX_FILES = 10
-MAX_BYTES = 4_500_000  # Bedrock 문서 블록 한도 (4.5MB)
+MAX_BYTES = 4_500_000  # PDF 한도 = Bedrock 문서 블록 한도 (4.5MB)
+# 이미지(사진) 한도. Bedrock 이미지 한도(3.75MB·8000px)를 넘으면 코드가 줄여 읽는다 (tools.extract.shrink_image, B10 #148).
+# 화면 업로드 한도(G13 #149)와 같은 값이다
+MAX_IMAGE_BYTES = 20_000_000
 # 읽는 종류. 선하증권은 B/L 번호(WMS 등록)와 총중량 3자 대조(X-WT-01)에 쓴다 (#110).
 # 원산지증명서는 원산지 기준·증명서 번호를 신고서 초안에 쓴다 (B2 P1 #11). 그 밖의 종류가 생기면 분류만 하고 '참고'로 알린다
 READ_TYPES = {"commercial_invoice", "packing_list", "bill_of_lading", "certificate_of_origin"}
@@ -132,10 +136,18 @@ class _Run:
             if key in self._data:
                 return self._data[key]
         data = self.fetch(key)
-        if len(data) > MAX_BYTES:
-            raise ReadError(f"파일이 너무 큽니다 ({len(data):,}바이트, 최대 {MAX_BYTES:,})")
+        limit = MAX_BYTES if PurePath(key).suffix.lower() == ".pdf" else MAX_IMAGE_BYTES
+        if len(data) > limit:
+            raise ReadError(f"파일이 너무 큽니다 ({len(data):,}바이트, 최대 {limit:,})")
+        shrunk = shrink_image(key, data)  # 큰 사진은 줄여 읽는다. 결과를 기억해 두어 분류·읽기가 다시 줄이지 않는다
         with self.lock:
+            first = key not in self._data
             self._data[key] = data
+        if shrunk is not None and first:
+            self.step(
+                "shrink_image",
+                f"{_name(key)} {shrunk.before / 1e6:.1f}MB → {len(shrunk.data) / 1e6:.1f}MB({shrunk.side}px)로 줄여 읽음",
+            )
         return data
 
     def step(self, tool: str, summary: str, ok: bool = True) -> None:
