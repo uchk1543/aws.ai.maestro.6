@@ -92,6 +92,18 @@ class ExtractedItem(_Strict):
         default=None,
         description="순중량 칸(Net Weight, N.W.). 포장 뺀 무게로 총중량(G.W.)과 다르다. 예: '6,100.00 KGS'",
     )
+    unit_price: Cell | None = Field(
+        default=None,
+        description="단가 칸(Unit Price, 상업송장). 금액(Amount)과 다르다. value는 숫자, unit은 통화. 예: 'USD 28.00'",
+    )
+    amount: Cell | None = Field(
+        default=None,
+        description="행 금액 칸(Amount, 상업송장). 단가와 다르다. value는 숫자, unit은 통화. 예: 'USD 9,828.00'",
+    )
+    origin_criterion: Cell | None = Field(
+        default=None,
+        description="원산지 기준 칸(Origin Criterion, 원산지증명서 8번). 적힌 그대로. 예: 'PSR', 'WP', 'CTC', 'RVC 40%'",
+    )
 
 
 class ExtractedDocument(_Strict):
@@ -104,7 +116,8 @@ class ExtractedDocument(_Strict):
         description=(
             "서류끼리 맞춰 보는 번호. 상업송장은 송장 번호(Invoice No.), "
             "포장명세서는 그 포장명세서에 적힌 송장 번호(Invoice No., No. & Date of Invoice)로 Packing List No.가 아니다, "
-            "B/L은 'B/L No.'. 같은 칸의 날짜는 뺀다. PO No와 다르다. 예: 'QDT/26/0289'"
+            "B/L은 'B/L No.', 원산지증명서는 10번 칸(Number and date of invoices)의 송장 번호로 증명서 번호(Reference No.)가 아니다. "
+            "같은 칸의 날짜는 뺀다. PO No와 다르다. 예: 'QDT/26/0289'"
         ),
     )
     items: list[ExtractedItem] = Field(default_factory=list, description="품목 행 목록")
@@ -126,6 +139,52 @@ class ExtractedDocument(_Strict):
             "수하인(Consignee, 수입자) 칸의 회사 이름. 주소·전화·담당자 줄은 뺀다. Notify Party·Shipper·Exporter와 다르다. "
             "HS 확정 이력과 WMS 등록의 수입자로 쓴다 (#110). 예: 'EXAMPLE HOME LIVING CO., LTD.'"
         ),
+    )
+    # 남은 칸 (B2 P1 #11, #110). 칸 이름은 eval/fields.csv·docs/schema.md 신고서 표와 같다
+    exporter_name: Cell | None = Field(
+        default=None,
+        description="수출자(Exporter, Shipper/Exporter, Seller) 칸의 회사 이름. 주소는 뺀다 (상업송장·포장명세서·원산지증명서)",
+    )
+    shipper_name: Cell | None = Field(default=None, description="B/L의 송하인(Shipper) 칸의 회사 이름. 주소는 뺀다")
+    notify_name: Cell | None = Field(
+        default=None, description="B/L의 통지처(Notify Party) 칸의 이름. 'SAME AS CONSIGNEE'처럼 적힌 그대로"
+    )
+    total_amount: Cell | None = Field(
+        default=None, description="상업송장 합계 금액(Total Amount). value는 숫자, unit은 통화. 예: 'USD 11,130.00'"
+    )
+    incoterms: Cell | None = Field(
+        default=None, description="상업송장 가격 조건(Terms of Delivery, Price Term, Incoterms). 예: 'FOB HO CHI MINH CITY'"
+    )
+    payment_term: Cell | None = Field(default=None, description="상업송장 결제 조건(Terms of Payment). 예: 'T/T 30 DAYS'")
+    origin: Cell | None = Field(
+        default=None, description="상업송장 원산지(Country of Origin, Origin, MADE IN ...). 적힌 그대로. 예: 'VIETNAM'"
+    )
+    total_packages: Cell | None = Field(
+        default=None,
+        description=(
+            "포장 개수의 합계(Total Packages, No. of Pkgs, SAY TOTAL ... CARTONS). 품목 수량 합계(total_qty)와 다르다. "
+            "value는 개수, unit은 포장 단위. 예: '535 CARTONS' (포장명세서·B/L)"
+        ),
+    )
+    total_cbm: Cell | None = Field(default=None, description="B/L 용적 합계(Measurement, CBM). 예: '63.610'")
+    vessel_voyage: Cell | None = Field(default=None, description="B/L 선명·항차(Ocean Vessel / Voy. No.). 예: 'EXAMPLE VOYAGER 236N'")
+    port_loading: Cell | None = Field(default=None, description="B/L 선적항(Port of Loading). 수취지(Place of Receipt)와 다르다")
+    port_discharge: Cell | None = Field(default=None, description="B/L 양륙항(Port of Discharge). 인도지(Place of Delivery)와 다르다")
+    onboard_date: Cell | None = Field(
+        default=None, description="B/L 본선 적재일(Shipped on Board). value는 'YYYY-MM-DD'. 예: '25 OCT 2026'"
+    )
+    container_no: Cell | None = Field(
+        default=None, description="B/L 컨테이너 번호(Container No.). 봉인 번호(Seal No.)는 뺀다. 여러 개면 공백 하나로 잇는다"
+    )
+    freight_term: Cell | None = Field(default=None, description="B/L 운임 조건. 예: 'FREIGHT PREPAID', 'FREIGHT COLLECT'")
+    co_no: Cell | None = Field(
+        default=None, description="원산지증명서 번호(Reference No., Certificate No.). 송장 번호(doc_no)와 다르다"
+    )
+    issue_date: Cell | None = Field(default=None, description="원산지증명서 발급일 (발급 기관 서명 칸의 날짜). value는 'YYYY-MM-DD'")
+    departure_date: Cell | None = Field(default=None, description="원산지증명서 3번 칸의 출항일(Departure date). value는 'YYYY-MM-DD'")
+    invoice_date: Cell | None = Field(default=None, description="원산지증명서 10번 칸의 송장 날짜. value는 'YYYY-MM-DD'")
+    issued_retroactively: Cell | None = Field(
+        default=None, description="원산지증명서의 'ISSUED RETROACTIVELY' 표시(체크·도장)가 있으면 그 글자. 없으면 비운다"
     )
 
 
@@ -152,6 +211,20 @@ class RawItem(_Strict):
     qty: RawCell | None = Field(default=None, description=ExtractedItem.model_fields["qty"].description)
     gross_kg: RawCell | None = Field(default=None, description=ExtractedItem.model_fields["gross_kg"].description)
     net_kg: RawCell | None = Field(default=None, description=ExtractedItem.model_fields["net_kg"].description)
+    unit_price: RawCell | None = Field(default=None, description=ExtractedItem.model_fields["unit_price"].description)
+    amount: RawCell | None = Field(default=None, description=ExtractedItem.model_fields["amount"].description)
+
+    # 선택 속성 한도(12개) 때문에 새 칸은 스키마에서 필수(null 허용)로 둔다 (RawDocument와 같은 방식)
+    model_config = {
+        **_Strict.model_config,
+        "json_schema_extra": lambda schema: schema.update(
+            required=sorted({*schema.get("required", []), "unit_price", "amount"})
+        ),
+    }
+
+
+# RawDocument에서 스키마로만 필수(null 허용)로 표시하는 칸 (#133 consignee_name과 B2 P1의 남은 칸)
+RAW_REQUIRED_NEW = ("consignee_name", "exporter_name", "total_amount", "incoterms", "payment_term", "origin", "total_packages")
 
 
 class RawDocument(_Strict):
@@ -166,15 +239,84 @@ class RawDocument(_Strict):
     consignee_name: RawCell | None = Field(
         default=None, description=ExtractedDocument.model_fields["consignee_name"].description
     )
+    exporter_name: RawCell | None = Field(default=None, description=ExtractedDocument.model_fields["exporter_name"].description)
+    total_amount: RawCell | None = Field(default=None, description=ExtractedDocument.model_fields["total_amount"].description)
+    incoterms: RawCell | None = Field(default=None, description=ExtractedDocument.model_fields["incoterms"].description)
+    payment_term: RawCell | None = Field(default=None, description=ExtractedDocument.model_fields["payment_term"].description)
+    origin: RawCell | None = Field(default=None, description=ExtractedDocument.model_fields["origin"].description)
+    total_packages: RawCell | None = Field(
+        default=None, description=ExtractedDocument.model_fields["total_packages"].description
+    )
 
     # Bedrock 구조화 출력은 필수가 아닌 속성을 전체 12개까지만 받는다 (agent-design.md 10번).
     # 지금까지 12개라서 새 칸은 스키마에서 필수(null 허용)로 둔다. 파이썬에서는 기본값 None이라 기존 가짜 응답도 그대로 검증된다.
     model_config = {
         **_Strict.model_config,
         "json_schema_extra": lambda schema: schema.update(
-            required=sorted({*schema.get("required", []), "consignee_name"})
+            required=sorted({*schema.get("required", []), *RAW_REQUIRED_NEW})
         ),
     }
+
+
+# B/L·원산지증명서는 칸이 많아 종류별 Raw 모델로 읽는다 (B2 P1). 칸은 모두 필수 + null 허용이라 선택 속성은 RawCell 둘뿐이다.
+def _doc_desc(name: str) -> str:
+    return ExtractedDocument.model_fields[name].description or ""
+
+
+def _item_desc(name: str) -> str:
+    field = RawItem.model_fields.get(name) or ExtractedItem.model_fields[name]
+    return field.description or ""
+
+
+class RawBillOfLading(_Strict):
+    """모델이 B/L 한 장을 읽은 결과. 품목 행은 옮기지 않는다."""
+
+    doc_no: RawCell | None = Field(description="B/L No. 칸의 번호. Booking No., Container No., 송장 번호와 다르다")
+    shipper_name: RawCell | None = Field(description=_doc_desc("shipper_name"))
+    consignee_name: RawCell | None = Field(description=_doc_desc("consignee_name"))
+    notify_name: RawCell | None = Field(description=_doc_desc("notify_name"))
+    vessel_voyage: RawCell | None = Field(description=_doc_desc("vessel_voyage"))
+    port_loading: RawCell | None = Field(description=_doc_desc("port_loading"))
+    port_discharge: RawCell | None = Field(description=_doc_desc("port_discharge"))
+    onboard_date: RawCell | None = Field(description=_doc_desc("onboard_date"))
+    container_no: RawCell | None = Field(description=_doc_desc("container_no"))
+    freight_term: RawCell | None = Field(description=_doc_desc("freight_term"))
+    total_packages: RawCell | None = Field(description=_doc_desc("total_packages"))
+    total_gross_kg: RawCell | None = Field(
+        description="Gross Weight 칸의 총중량. Measurement(CBM)와 다르다. 단위가 칸 제목에만 있으면 숫자만 옮긴다"
+    )
+    total_cbm: RawCell | None = Field(description=_doc_desc("total_cbm"))
+
+
+class RawOriginItem(_Strict):
+    """원산지증명서 품목 한 행."""
+
+    line: int = Field(description="5번 Item number. 1부터 센다")
+    name: RawCell | None = Field(description=_item_desc("name"))
+    hs_code: RawCell | None = Field(description=_item_desc("hs_code"))
+    qty: RawCell | None = Field(description=_item_desc("qty"))
+    origin_criterion: RawCell | None = Field(description=_item_desc("origin_criterion"))
+
+
+class RawOrigin(_Strict):
+    """모델이 원산지증명서 한 장을 읽은 결과."""
+
+    doc_no: RawCell | None = Field(description="10번 칸(Number and date of invoices)의 송장 번호. 증명서 번호(Reference No.)와 다르다")
+    co_no: RawCell | None = Field(description=_doc_desc("co_no"))
+    exporter_name: RawCell | None = Field(description=_doc_desc("exporter_name"))
+    consignee_name: RawCell | None = Field(description=_doc_desc("consignee_name"))
+    departure_date: RawCell | None = Field(description=_doc_desc("departure_date"))
+    invoice_date: RawCell | None = Field(description=_doc_desc("invoice_date"))
+    issue_date: RawCell | None = Field(description=_doc_desc("issue_date"))
+    issued_retroactively: RawCell | None = Field(description=_doc_desc("issued_retroactively"))
+    items: list[RawOriginItem] = Field(description="품목 행 목록. 적힌 행을 빠짐없이 옮긴다")
+
+
+# 종류별 Raw 모델. 여기 없는 종류(상업송장·포장명세서)는 RawDocument로 읽는다
+RAW_MODELS: dict[str, type[BaseModel]] = {
+    "bill_of_lading": RawBillOfLading,
+    "certificate_of_origin": RawOrigin,
+}
 
 
 class Classification(_Strict):
