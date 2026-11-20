@@ -47,6 +47,17 @@ PM과 4번 사이 이름 약속(진입점, 이벤트, 환경 변수)은 이슈 #
 | `team06-wms` | `idempotency_key` = `"<B/L 번호>#<작업 ID>"` | `wms_id`, `record`(WmsRecord JSON 문자열), `registered_at` | `WmsAdapter` 구현 (D1). 같은 키는 조건부 쓰기(`attribute_not_exists`)로 한 번만 |
 | `team06-shipments` | `bl_no` | Shipment 칸 그대로 (날짜는 `YYYY-MM-DD` 문자열, `job_id` 없으면 칸 없음) | `ShipmentStore` 구현 (E3·E4). 시드는 `infra/seed_shipments.py` (E2). Lambda 권한에 Scan 포함 |
 
+### 데모·평가 전 초기화 (PM만, #170)
+평가·10회 반복·데모 직전에는 확정 이력이 비어 있어야 한다 (agent-design.md 11번). 기본은 미리보기이고, `--apply`면 `reset`을 입력해야 지운다.
+지우기 전에 지울 줄을 `build/reset-<시각>.json`에 남긴다.
+```bash
+uv run python infra/reset_demo.py --job <job_id>              # 시험 작업 하나가 남긴 줄 (HS 이력·WMS·화물 기록·작업)
+uv run python infra/reset_demo.py --all                       # 처리 기록 전체 미리보기
+uv run python infra/reset_demo.py --all --apply               # 비우고 시드 화물 기록 다시 넣기
+uv run python infra/reset_demo.py --all --apply --s3          # 서류 버킷 uploads/·cache/read/까지
+```
+시드 화물 기록(job_id 칸 없음)은 지우지 않는다. 처리한 작업이 쓴 줄만 지운다.
+
 ### 테이블 키 바꾸기
 `create.sh`는 이미 있는 테이블의 키가 다르면 멈춘다. 키는 만든 뒤 바꿀 수 없어서 지우고 다시 만들어야 한다.
 PM이 승인한 뒤 `recreate-table.sh`로만 지운다 (지운 데이터는 되돌릴 수 없다). 손으로 `delete-table`을 쓰지 않는다.
