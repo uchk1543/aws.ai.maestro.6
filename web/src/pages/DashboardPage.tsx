@@ -8,6 +8,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { ApiError, getJobs, getStats } from "../api";
 import { Icon } from "../components/Icon";
 import { navigate } from "../route";
+import { shortRuleName } from "../ruleNames";
 import { DOC_TYPES, type StatsResponse, type TodoKind } from "../types";
 import { KIND_LABEL } from "./DocHistoryPage";
 
@@ -61,11 +62,11 @@ export const TODO_KINDS: TodoKind[] = ["fix_docs", "choose_hs", "approve", "reup
 
 /** 다음 할 일별 타일 (#252). 단위는 모두 '작업' */
 export const KIND_TILE: Record<TodoKind, { label: string; hint: string; alert?: boolean }> = {
-  fix_docs: { label: "서류 다시 받기", hint: "불일치가 남아 서류를 고쳐 다시 올려야 함", alert: true },
-  choose_hs: { label: "HS 고르기", hint: "사람이 HS를 골라야 함" },
-  approve: { label: "승인하기", hint: "확인한 뒤 승인하면 WMS 등록" },
-  reupload: { label: "처리 실패", hint: "서류를 다시 올려야 함" },
-  wait: { label: "처리 중", hint: "끝나면 할 일로 옮겨 감" },
+  fix_docs: { label: "오류 서류", hint: "불일치로 인해 서류 재업로드 필요", alert: true },
+  choose_hs: { label: "HS 미작성", hint: "작업자가 HS 확인하고 전송 필요" },
+  approve: { label: "미승인 서류", hint: "서류 확인 후 승인 필요" },
+  reupload: { label: "미인식 서류", hint: "서류 재촬영 필요" },
+  wait: { label: "처리 중", hint: "처리가 끝나지 않은 서류" },
 };
 
 /** 작업 목록 API 가 없을 때(배포 전) 대신 여는 문서 분류 내역 거르기 */
@@ -142,7 +143,7 @@ function TodoTile({ todo, fx, order }: { todo: Todo; fx: boolean; order: number 
 }
 
 /** 부산항 장면: 컨테이너 하나가 입항부터 반출까지 가는 인트로를 한 번, 그다음 항구 전체 항공샷을 되풀이한다.
- * 영상 위 통관 단계 칩은 단계별 화물 수만 보인다. 영상 시간에 맞춰 '지금 단계'를 짚지 않는다 (상태로 오해된다, #252). */
+ * 영상 위에는 날짜·제목·확인할 일 수만 둔다. 단계별 화물 수는 아래 '통관 흐름'에 있다 (G18 #255). */
 function PortHero({ stats }: { stats: StatsResponse | undefined }) {
   const [phase, setPhase] = useState<"intro" | "loop">("intro");
   const loopRef = useRef<HTMLVideoElement>(null);
@@ -185,16 +186,6 @@ function PortHero({ stats }: { stats: StatsResponse | undefined }) {
         <p className="port-title">부산항 통관 현황</p>
         <p className="port-sub">{total === null ? "불러오는 중" : `확인할 일 ${total}건이 들어와 있습니다`}</p>
       </div>
-      {stats && (
-        <ol className="port-stages" aria-label="통관 단계별 화물">
-          {stats.flow.map((f) => (
-            <li key={f.status}>
-              <span className="port-stage-name">{f.status}</span>
-              <b className="port-stage-count">{f.count}</b>
-            </li>
-          ))}
-        </ol>
-      )}
     </div>
   );
 }
@@ -275,23 +266,40 @@ function FlowPanel({ stats, fx }: { stats: StatsResponse; fx: boolean }) {
         <p className="empty">지연된 화물이 없습니다.</p>
       ) : (
         <ul className="delayed">
-          {stats.delayed.map((d) => (
-            <li key={d.bl_no} className="delayed-row">
-              <div className="delayed-main">
-                <strong>{d.bl_no}</strong>
-                <span className="hint">
-                  {d.consignee} · {d.item}
+          {stats.delayed.map((d) => {
+            const body = (
+              <>
+                <span className="delayed-main">
+                  <strong>{d.bl_no}</strong>
+                  <span className="hint">
+                    {d.consignee} · {d.item}
+                  </span>
                 </span>
-              </div>
-              <span className="tag">{d.customs_status}</span>
-              <span className={fx ? "delayed-days pulse" : "delayed-days"}>{d.days}일째</span>
-              {d.job_id && (
-                <button type="button" className="link" onClick={() => navigate(`/jobs/${encodeURIComponent(d.job_id!)}`)}>
-                  작업
-                </button>
-              )}
-            </li>
-          ))}
+                <span className="tag">{d.customs_status}</span>
+                <span className={fx ? "delayed-days pulse" : "delayed-days"}>{d.days}일째</span>
+              </>
+            );
+            // 화물 기록에 작업이 있으면 줄 전체가 그 작업 화면으로 간다 (G18 #255). 미리 넣은 가상 기록은 작업이 없다
+            return (
+              <li key={d.bl_no}>
+                {d.job_id ? (
+                  <button
+                    type="button"
+                    className="delayed-row go"
+                    onClick={() => navigate(`/jobs/${encodeURIComponent(d.job_id!)}`)}
+                    aria-label={`${d.bl_no} 작업 화면 열기`}
+                  >
+                    {body}
+                    <Icon name="chevron" size={18} />
+                  </button>
+                ) : (
+                  <div className="delayed-row" title="연결된 작업이 없는 화물 기록">
+                    {body}
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>
@@ -325,17 +333,6 @@ function DocsPanel({ stats, fx }: { stats: StatsResponse; fx: boolean }) {
       <h2 id="docs-title">서류 처리</h2>
       <p className="hint dash-note">종류·오류를 누르면 그 서류를 문서 분류 내역에서 봅니다</p>
 
-      <div className="auto-box">
-        <AutoRing auto={stats.auto.auto} finished={stats.auto.finished} fx={fx} />
-        <span className="auto-text">
-          <strong>자동 처리율</strong>
-          <span className="hint">
-            처리를 마친 작업 {stats.auto.finished}건(승인 대기 포함) 중 {stats.auto.auto}건이 사람 손 없이 WMS에 등록됐습니다
-          </span>
-          <span className="hint auto-link-note">{stats.auto.rule || AUTO_RULE}</span>
-        </span>
-      </div>
-
       <h3 className="dash-sub">종류별 서류</h3>
       <ul className="kinds">
         {DOC_TYPES.map((t, i) => (
@@ -357,6 +354,17 @@ function DocsPanel({ stats, fx }: { stats: StatsResponse; fx: boolean }) {
         ))}
       </ul>
 
+      <h3 className="dash-sub">자동 처리율</h3>
+      <div className="auto-box">
+        <AutoRing auto={stats.auto.auto} finished={stats.auto.finished} fx={fx} />
+        <span className="auto-text">
+          <span className="hint">
+            처리를 마친 작업 {stats.auto.finished}건(승인 대기 포함) 중 {stats.auto.auto}건이 사람 손 없이 WMS에 등록됐습니다
+          </span>
+          <span className="hint auto-link-note">{stats.auto.rule || AUTO_RULE}</span>
+        </span>
+      </div>
+
       <h3 className="dash-sub">자주 걸린 오류</h3>
       {rules.length === 0 ? (
         <p className="empty">걸린 오류가 없습니다.</p>
@@ -367,10 +375,9 @@ function DocsPanel({ stats, fx }: { stats: StatsResponse; fx: boolean }) {
               <button type="button" className="rule-row" onClick={() => navigate("/documents", { rule_id: r.rule_id })}>
                 <span className={r.grade === "불일치" ? "grade grade-mismatch" : "grade"}>{r.grade}</span>
                 <span className="rule-main">
-                  <strong className="rule-name">{r.name || r.example}</strong>
+                  <strong className="rule-name">{shortRuleName(r.rule_id, r.grade, r.name, r.example)}</strong>
                   <span className="hint">
-                    {r.name ? `${r.example} · ` : ""}
-                    <code>{r.rule_id}</code>
+                    {r.example} · <code>{r.rule_id}</code>
                   </span>
                 </span>
                 <span className="rule-count">{r.count}건</span>
