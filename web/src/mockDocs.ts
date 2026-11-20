@@ -197,5 +197,9 @@ export function fileViewOf(rec: DocumentRecord): JobFileView {
     reason: rec.reason,
     pages: [{ url: svgOf(pieces, extra), width: W, height: H }],
     marks,
+    // 읽은 칸: 그림에 찍은 값 그대로 (G12 오른쪽 표)
+    fields: marks
+      .filter((m) => m.kind === "field" && m.field)
+      .map((m) => ({ field: m.field!, label: m.label, raw: m.text, value: null, unit: null, unreadable: null })),
   };
 }
