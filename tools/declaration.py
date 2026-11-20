@@ -1,7 +1,15 @@
-"""draft_declaration. 담당: 검증. 규칙: .kiro/steering/agent-design.md 7번, 형식: docs/schema.md
+"""draft_declaration과 신고서 PDF. 담당: 검증. 규칙: .kiro/steering/agent-design.md 7번, 형식: docs/schema.md
 
-작업: e2e-plan.md C4·C5 (P1). 칸 목록과 출처는 docs/schema.md에 먼저 적고 여기 표로 옮긴다.
+작업: e2e-plan.md C4·C5 (P1), C6 (P2, 신고서 PDF). 칸 목록과 출처는 docs/schema.md에 먼저 적고 여기 표로 옮긴다.
+PDF는 render_declaration_pdf가 DeclarationDraft를 받아 바이트로 만든다. 저장·내려받기 주소(pdf_url)는 api/ 몫이다.
 """
+
+import io
+import re
+from datetime import datetime
+from pathlib import Path
+from xml.sax.saxutils import escape
+from zoneinfo import ZoneInfo
 
 from tools.models import Cell, DeclarationDraft, DeclarationField, ExtractedDocument, ExtractedItem, HSResult, Issue
 
@@ -150,3 +158,151 @@ def draft_declaration(docs: list[ExtractedDocument], issues: list[Issue], hs: li
             value = _read_value(key, source, by_type.get(doc_type), line)
             put(key, label, src, value, blank_path, path, doc_type)
     return DeclarationDraft(fields=fields, blank_fields=blanks, pdf_url=None)
+
+
+# ---------------------------------------------------------------------------
+# 신고서 PDF (C6 #24). 한글 글꼴(나눔고딕, SIL OFL 1.1)을 PDF에 넣는다. 모델은 쓰지 않는다 (agent-design.md 7번)
+# ---------------------------------------------------------------------------
+FONT_DIR = Path(__file__).parent / "fonts"
+_FONT_REGULAR, _FONT_BOLD = "NanumGothic", "NanumGothic-Bold"
+_KST = ZoneInfo("Asia/Seoul")  # Lambda 시계는 UTC라 한국 시간으로 고쳐 적는다
+_MAX_TEXT = 300  # 서류에서 온 글자 한 덩이의 길이 상한 (표가 한 쪽을 넘어가지 않게)
+PDF_TITLE = "수입신고서 초안 (간이 양식)"
+PDF_NOTICE = f"{DRAFT_NOTICE} · 실제 신고 전송이 아닙니다"
+BLANK_MARK = "(비움)"
+_ITEM_INDEX = re.compile(r"items\[(\d+)\]")
+_HS_INDEX = re.compile(r"hs\[(\d+)\]")
+
+
+def _register_fonts() -> None:
+    """나눔고딕 보통·굵게를 reportlab에 등록한다. 이미 했으면 건너뛴다."""
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    registered = set(pdfmetrics.getRegisteredFontNames())
+    for name, file in ((_FONT_REGULAR, "NanumGothic-Regular.ttf"), (_FONT_BOLD, "NanumGothic-Bold.ttf")):
+        if name not in registered:
+            pdfmetrics.registerFont(TTFont(name, str(FONT_DIR / file)))
+
+
+def _show(value: str | int | float | None) -> str:
+    """신고서에 찍을 글자. 숫자는 천 단위 쉼표, 서류에서 온 글자는 한 줄로 정리하고 길이를 자른다. XML 특수 문자는 이스케이프한다."""
+    if value is None:
+        return BLANK_MARK
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        text = f"{value:,.3f}".rstrip("0").rstrip(".") if isinstance(value, float) else f"{value:,}"
+    else:
+        kept = "".join(ch if ch.isprintable() else " " for ch in str(value))
+        text = " ".join(kept.split())
+        text = text if len(text) <= _MAX_TEXT else text[:_MAX_TEXT] + "…"
+    return escape(text)  # Paragraph가 <img src>·<a href> 같은 표시를 해석하지 못하게 서류 글자는 데이터로만 넣는다
+
+
+def _line_of(field: DeclarationField, hs: list[HSResult] | None) -> int | None:
+    """품목 칸이면 몇 번째 줄(1부터)인지. 서류 전체 칸이면 None. HS 칸은 hs[i]의 줄 번호를 쓴다."""
+    m = _ITEM_INDEX.search(field.source)
+    if m:
+        return int(m.group(1)) + 1
+    h = _HS_INDEX.fullmatch(field.source.split(".")[0])
+    if h:
+        idx = int(h.group(1))
+        return hs[idx].line if hs is not None and idx < len(hs) else idx + 1
+    return None
+
+
+def render_declaration_pdf(
+    draft: DeclarationDraft,
+    *,
+    hs: list[HSResult] | None = None,
+    job_id: str | None = None,
+    now: datetime | None = None,
+) -> bytes:
+    """신고서 초안을 한글 PDF로 만든다. 모델을 쓰지 않고 draft에 있는 칸만 찍는다 (agent-design.md 7번).
+    언제: 화면이나 API가 '신고서 PDF 받기'를 눌렀을 때. 초안이 바뀌면(사람이 HS를 고름) 다시 만든다.
+    받는 것: draft_declaration 결과, 선택으로 품목별 HS 결과(HS 칸의 줄 번호를 맞추는 데 씀), 작업 ID, 만든 시각(없으면 지금).
+    반환: PDF 바이트. 맨 위에 '사람 검토 전 초안'을 적고, 칸마다 값과 출처(서류.칸)를 보인다.
+    문제가 남아 비운 칸은 '(비움)'으로 보이고, 서류에서 온 글자는 데이터로만 넣는다(표시 해석 안 함).
+    """
+    print(f"[tool] render_declaration_pdf fields={len(draft.fields)} blanks={len(draft.blank_fields)}")
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+    _register_fonts()
+    stamp = (now or datetime.now(_KST)).astimezone(_KST).strftime("%Y-%m-%d %H:%M")
+    base = ParagraphStyle("base", fontName=_FONT_REGULAR, fontSize=9, leading=12)
+    small = ParagraphStyle("small", parent=base, fontSize=8, leading=10, textColor=colors.HexColor("#555555"))
+    head = ParagraphStyle("head", parent=base, fontName=_FONT_BOLD, fontSize=10, textColor=colors.white)
+    title = ParagraphStyle("title", parent=base, fontName=_FONT_BOLD, fontSize=17, leading=22)
+    section = ParagraphStyle("section", parent=base, fontName=_FONT_BOLD, fontSize=11, leading=15, spaceBefore=8, spaceAfter=4)
+    notice = ParagraphStyle(
+        "notice", parent=base, fontName=_FONT_BOLD, fontSize=11, leading=15, alignment=TA_CENTER, textColor=colors.HexColor("#b00020")
+    )
+    blank_style = ParagraphStyle("blank", parent=base, textColor=colors.HexColor("#999999"))
+
+    by_label = {f.name: f for f in draft.fields if _line_of(f, hs) is None}
+    blank_keys = set(draft.blank_fields)
+
+    def table(rows: list[tuple[str, str, str, bool]]) -> Table:
+        data = [[Paragraph("칸", head), Paragraph("값", head), Paragraph("출처", head)]]
+        for label, value, source, is_blank in rows:
+            data.append([Paragraph(escape(label), base), Paragraph(value, blank_style if is_blank else base), Paragraph(escape(source), small)])
+        t = Table(data, colWidths=[38 * mm, 78 * mm, 62 * mm], repeatRows=1)
+        t.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#37474f")),
+                    ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#b0bec5")),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f5f7f8")]),
+                ]
+            )
+        )
+        return t
+
+    story: list = [Paragraph(escape(PDF_TITLE), title), Spacer(1, 3 * mm), Paragraph(escape(PDF_NOTICE), notice), Spacer(1, 2 * mm)]
+    meta = f"만든 시각 {stamp} (한국 시간)" + (f" · 작업 {_show(job_id)}" if job_id else "")  # _show가 이미 이스케이프한다
+    story += [Paragraph(meta, small), Spacer(1, 2 * mm)]
+
+    general = [(label, FIELD_KEYS[i]) for i, (label, _) in enumerate(DECLARATION_FIELDS[:_ITEM_FROM])]
+    rows = []
+    for label, key in general:
+        f = by_label.get(label)
+        rows.append((label, _show(f.value) if f else BLANK_MARK, f.source if f else "", f is None))
+    story += [Paragraph("신고 내용", section), table(rows)]
+
+    item_labels = [(FIELD_KEYS[i], label) for i, (label, _) in enumerate(DECLARATION_FIELDS) if i >= _ITEM_FROM]
+    lines = sorted({ln for f in draft.fields if (ln := _line_of(f, hs)) is not None} | {int(m.group(1)) + 1 for k in blank_keys if (m := _ITEM_INDEX.match(k))})
+    for line in lines:
+        rows = []
+        for key, label in item_labels:
+            f = next((x for x in draft.fields if x.name == label and _line_of(x, hs) == line), None)
+            rows.append((label, _show(f.value) if f else BLANK_MARK, f.source if f else "", f is None))
+        story.append(KeepTogether([Paragraph(f"품목 {line}행", section), table(rows)]))
+    if not lines:
+        story.append(Paragraph("품목 칸이 없습니다.", base))
+
+    legend = (
+        f"{BLANK_MARK}: 불일치·확인 필요가 남았거나, HS가 확정되지 않았거나, 서류에서 읽지 못한 칸입니다. "
+        f"비운 칸은 {len(draft.blank_fields)}개입니다. 검토하고 채운 뒤 신고하세요."
+    )
+    story += [Spacer(1, 4 * mm), Paragraph(escape(legend), small)]
+
+    def footer(canvas, doc) -> None:
+        canvas.saveState()
+        canvas.setFont(_FONT_REGULAR, 8)
+        canvas.setFillColor(colors.HexColor("#777777"))
+        canvas.drawString(16 * mm, 10 * mm, PDF_NOTICE)
+        canvas.drawRightString(A4[0] - 16 * mm, 10 * mm, f"{doc.page}쪽")
+        canvas.restoreState()
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=16 * mm, bottomMargin=18 * mm,
+        title=PDF_TITLE, author="team06", invariant=1,
+    )
+    doc.build(story, onFirstPage=footer, onLaterPages=footer)
+    return buf.getvalue()
