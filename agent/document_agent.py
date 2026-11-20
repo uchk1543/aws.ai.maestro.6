@@ -60,6 +60,11 @@ HSRecommender = Callable[[list[ExtractedDocument], int], HSResult]  # (읽은 �
 OnDocs = Callable[[list[ExtractedDocument]], None]  # 처리가 끝날 때 읽은 서류(files 순서)를 받는다 (#122)
 
 _CHECKED_BY_KO = {"pdf_text": "PDF 글자", "textract": "Textract", "model_reread": "모델 다시 읽기", "none": "다른 근거"}
+# 읽은 서류가 하나도 없을 때 failed 이유에 파일마다 붙이는 말 (#173). 키는 사람에게 넘긴 문제의 rule_id
+NOTHING_READ = "서류를 하나도 읽지 못했습니다"
+_NOT_READ_KO = {
+    "DOC-UNKNOWN": "종류를 정하지 못함", "CLASSIFY-FAIL": "분류 실패", "READ-FAIL": "읽기 실패", "DOC-LATER": "읽지 않는 종류",
+}
 # 꼭 있어야 하는 서류와 빠졌을 때의 안내 (#168, agent-design.md 1번 '빠진 서류'). 대조 규칙은 두 서류 이상이어야 돌고,
 # WMS 등록에는 B/L 번호가 있어야 한다. 원산지증명서는 FTA 특혜를 받을 때만 내므로 빠져도 묻지 않는다
 _REQUIRED_DOCS: dict[DocType, str] = {
@@ -388,7 +393,12 @@ class _Run:
         return finish_report(state, handed_over=handed_over, skip=self.skip)
 
     def finish(self) -> Job:
-        """마지막 검사를 하고 Job을 만든다. 조건을 못 채웠으면 '확인 필요'로 남겨 자동 처리되지 않게 한다."""
+        """마지막 검사를 하고 Job을 만든다. 조건을 못 채웠으면 '확인 필요'로 남겨 자동 처리되지 않게 한다.
+
+        읽은 서류가 하나도 없으면 승인할 것이 없으므로 failed로 끝낸다 (승인 대기로 두면 승인이 409로 막힌다, #173).
+        """
+        if not self.state.docs:
+            return self._nothing_read()
         check = self.report()
         # 화면 문제 목록 순서: 파일 문제(모름·실패) → 대조 결과 → 빠진 서류 (#168)
         issues = [self.handover[k] for k in self.state.files if k in self.handover] + list(self.state.issues)
@@ -413,6 +423,20 @@ class _Run:
             status="waiting_approval" if pending else "done",
             steps=list(self.state.steps),
             result=JobResult(issues=issues, hs=list(self.state.hs), declaration_draft=self.state.declaration_draft),
+        )
+
+    def _nothing_read(self) -> Job:
+        """failed Job. error는 '서류를 하나도 읽지 못했습니다: 파일 이유, …'. 파일마다 넘긴 문제는 result.issues에 그대로 두고,
+        빠진 서류(#168)가 있으면 그 뒤에 둔다 (다시 올릴 때 함께 올릴 서류를 알 수 있게)."""
+        issues = [self.handover[k] for k in self.state.files if k in self.handover] + (self.missing or [])
+        reasons = [
+            f"{_name(k)} {_NOT_READ_KO.get(self.handover[k].rule_id, '처리하지 못함') if k in self.handover else '처리하지 못함'}"
+            for k in self.state.files
+        ]
+        error = f"{NOTHING_READ}: " + ", ".join(reasons)
+        print(f"[job] {self.state.job_id} 읽은 서류 없음 → failed ({error})")
+        return Job(
+            job_id=self.state.job_id, status="failed", steps=list(self.state.steps), result=JobResult(issues=issues), error=error
         )
 
 
@@ -623,6 +647,7 @@ def run_job(
         HS 선택(C3)·승인(D3)에 쓴다 (#122). 실패해도 처리 결과는 그대로 돌려준다
     반환: Job. unknown·분류 실패·읽기 실패는 '확인 필요'(DOC-UNKNOWN · CLASSIFY-FAIL · READ-FAIL)로 남기고
           그 서류는 대조에서 뺀다. finish_report 조건을 못 채우면 REPORT-INCOMPLETE '확인 필요'를 더한다.
+          읽은 서류가 하나도 없으면 failed이고 error는 "서류를 하나도 읽지 못했습니다: 파일 이유, …" (#173).
     """
     if rereader is None:
         def rereader(doc: ExtractedDocument, field: str, data: bytes) -> RereadResult:
