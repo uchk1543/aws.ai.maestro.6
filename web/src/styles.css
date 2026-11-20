@@ -1400,3 +1400,415 @@ table.cells tr.suspect td {
     padding: 0 32px;
   }
 }
+
+/* ───── 서류 보기 (G11) ─────
+   쪽 그림 위에 서버가 준 bbox 를 % 로 놓는다. 불일치는 빨강, 나머지는 검정. 강조한 박스는 굵게 + 옅게 채움 + 이름표. */
+.viewer {
+  display: grid;
+  gap: 12px;
+  max-height: 70vh;
+  max-height: 70dvh;
+  padding: 12px;
+  overflow: auto;
+  background: var(--fill);
+  border-radius: 14px;
+}
+
+.viewer-note {
+  padding: 8px 12px;
+  font-size: 14px;
+  background: #fff;
+  border-left: 3px solid var(--ink);
+  border-radius: 4px;
+}
+
+.viewer-page {
+  position: relative;
+  margin: 0;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.viewer-page img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.viewer-page figcaption {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  font-size: 12px;
+}
+
+.mark {
+  position: absolute;
+  padding: 0;
+  background: transparent;
+  border: 1.5px dashed var(--ink);
+  border-radius: 4px;
+  opacity: 0.55;
+}
+
+.mark-mismatch {
+  border-color: var(--red);
+}
+
+.mark-soft {
+  border-color: #9a9a9a;
+}
+
+.mark:hover {
+  opacity: 0.9;
+}
+
+.mark.active {
+  z-index: 2;
+  opacity: 1;
+  border-style: solid;
+  border-width: 3px;
+  background: rgba(20, 20, 20, 0.08);
+  box-shadow: 0 0 0 4px rgba(20, 20, 20, 0.12);
+}
+
+.mark-mismatch.active {
+  background: rgba(214, 64, 42, 0.12);
+  box-shadow: 0 0 0 4px rgba(214, 64, 42, 0.18);
+}
+
+.mark-tag {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: -3px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: #fff;
+  white-space: nowrap;
+  background: var(--ink);
+  border-radius: 6px;
+}
+
+.mark-mismatch .mark-tag {
+  background: var(--red);
+}
+
+/* 작업 화면: 서류 | 오류 */
+.review-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.doc-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.doc-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 14px;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  background: var(--fill);
+  border: 0;
+  border-radius: 999px;
+}
+
+.doc-tab.active {
+  font-weight: 600;
+  color: #fff;
+  background: var(--ink-2);
+}
+
+.doc-tab-count {
+  min-width: 20px;
+  padding: 0 6px;
+  font-size: 12px;
+  line-height: 20px;
+  text-align: center;
+  color: var(--ink);
+  background: #fff;
+  border-radius: 999px;
+}
+
+.review-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.review-item {
+  padding: 16px;
+  background: var(--fill-2);
+  border: 1.5px solid transparent;
+  border-radius: 14px;
+}
+
+.review-item.active {
+  background: #fff;
+  border-color: var(--ink);
+}
+
+.value-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.value-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 44px;
+  padding: 12px 14px;
+  text-align: left;
+  background: var(--fill);
+  border: 1.5px solid transparent;
+  border-radius: 12px;
+}
+
+.value-tile.active {
+  color: #fff;
+  background: var(--ink-2);
+}
+
+.value-doc {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.value-tile.active .value-doc,
+.value-tile.active .value-field {
+  color: #c9c9c9;
+}
+
+.value-suspect {
+  font-weight: 600;
+}
+
+.value-raw {
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.value-field {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+@media (min-width: 1200px) {
+  .job {
+    max-width: 1240px;
+    margin: 0 auto;
+  }
+
+  .review-grid {
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 24px;
+  }
+
+  .review-doc {
+    position: sticky;
+    top: 16px;
+  }
+
+  .review .viewer {
+    max-height: calc(100vh - 120px);
+  }
+}
+
+/* 문서 분류 내역: 파일 이름 버튼, 서류 보기 창 */
+button.doc-open {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.sheet {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: 100%;
+  background: #fff;
+}
+
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 8px 12px var(--gutter);
+  border-bottom: 1px solid var(--line);
+}
+
+.sheet-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sheet-title h2 {
+  overflow: hidden;
+  font-size: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheet-close {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  background: none;
+  border: 0;
+  border-radius: 12px;
+}
+
+.sheet-body {
+  display: grid;
+  gap: 20px;
+  padding: 16px var(--gutter) calc(24px + var(--safe-bottom));
+  overflow: auto;
+}
+
+.sheet-info {
+  display: grid;
+  gap: 20px;
+}
+
+.sheet-info h3 {
+  margin-bottom: 8px;
+  font-size: 15px;
+}
+
+.info-list {
+  margin: 0 0 12px;
+  border-top: 1px solid var(--line);
+}
+
+.info-list div {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 0;
+  font-size: 15px;
+  border-bottom: 1px solid var(--line);
+}
+
+.info-list dt {
+  color: var(--muted);
+}
+
+.info-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.mark-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mark-row {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  text-align: left;
+  background: var(--fill);
+  border: 0;
+  border-radius: 12px;
+}
+
+.mark-row.active {
+  color: #fff;
+  background: var(--ink-2);
+}
+
+.mark-row-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.mark-row.active .mark-row-label {
+  color: #c9c9c9;
+}
+
+.mark-row-text {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.sheet .viewer {
+  max-height: none;
+}
+
+@media (min-width: 768px) {
+  .sheet-backdrop {
+    align-items: center;
+    padding: 24px;
+  }
+
+  .sheet {
+    max-width: 760px;
+    max-height: 92vh;
+    border-radius: 18px;
+  }
+
+  .sheet-head {
+    padding-left: 24px;
+  }
+
+  .sheet-body {
+    padding: 20px 24px 24px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .sheet {
+    max-width: 1180px;
+  }
+
+  .sheet-body {
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 28px;
+  }
+
+  .sheet .viewer {
+    max-height: calc(92vh - 120px);
+  }
+}

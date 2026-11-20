@@ -3,9 +3,9 @@
 import { DOC_TYPE_KO, type CheckedBy, type Grade, type Issue } from "../types";
 
 const GRADE_ORDER: Grade[] = ["불일치", "확인 필요", "참고"];
-const GRADE_CLASS: Record<Grade, string> = { 불일치: "grade-mismatch", "확인 필요": "grade-check", 참고: "grade-note" };
+export const GRADE_CLASS: Record<Grade, string> = { 불일치: "grade-mismatch", "확인 필요": "grade-check", 참고: "grade-note" };
 
-const CHECKED_BY_KO: Record<CheckedBy, string> = {
+export const CHECKED_BY_KO: Record<CheckedBy, string> = {
   pdf_text: "PDF 글자로 다시 확인",
   textract: "Textract OCR로 다시 확인",
   model_reread: "모델에게 다시 물어 확인",

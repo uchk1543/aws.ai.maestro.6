@@ -1,0 +1,127 @@
+// G11 작업 화면 오류 보기: 왼쪽 서류(쪽 그림) | 오른쪽 오류 목록.
+// 오류(또는 서류별 값)를 누르면 그 서류로 바꾸고 그 칸 위치에 박스를 강조한다.
+// 등급·근거 문장·raw 는 서버 값 그대로 쓴다. 칸 위치는 서버가 준 표시(mark)에서 field 이름이 같은 것을 찾을 뿐이다.
+import { useMemo, useRef, useState } from "react";
+import { DOC_TYPE_KO, type DocType, type Issue, type IssueCell, type JobFileView } from "../types";
+import { DocViewer, type Box } from "./DocViewer";
+import { CHECKED_BY_KO, GRADE_CLASS, sortByGrade } from "./IssueList";
+
+/** 오류 칸 하나에 맞는 서류와 표시. 서류 종류와 칸 이름(field)이 같은 것을 찾는다. */
+export function locate(files: JobFileView[], cell: IssueCell) {
+  const file = files.find((f) => f.doc_type === cell.doc) ?? null;
+  const mark = file?.marks.find((m) => m.kind === "field" && m.field === cell.field) ?? null;
+  return { file, mark };
+}
+
+const cellId = (i: number, c: number) => `${i}:${c}`;
+
+export function DocReview({ issues, files }: { issues: Issue[]; files: JobFileView[] }) {
+  const sorted = useMemo(() => sortByGrade(issues), [issues]);
+  const firstCell = (issue: Issue) => Math.max(0, issue.cells.findIndex((c) => c.doc === issue.suspect));
+  const [active, setActive] = useState<{ i: number; c: number }>(() => ({ i: 0, c: sorted[0] ? firstCell(sorted[0]) : 0 }));
+  const activeCell = sorted[active.i]?.cells[active.c] ?? null;
+  const [viewDoc, setViewDoc] = useState<DocType | null>(activeCell?.doc ?? files[0]?.doc_type ?? null);
+  const viewerRef = useRef<HTMLDivElement>(null);
+
+  const file = files.find((f) => f.doc_type === viewDoc) ?? null;
+
+  // 지금 보는 서류에 걸린 오류 칸마다 박스 하나 (불일치는 빨강, 나머지는 검정)
+  const boxes: Box[] = [];
+  sorted.forEach((issue, i) =>
+    issue.cells.forEach((cell, c) => {
+      if (cell.doc !== viewDoc) return;
+      const { mark } = locate(files, cell);
+      if (!mark) return;
+      boxes.push({ id: cellId(i, c), mark, tone: issue.grade === "불일치" ? "mismatch" : "ink", label: `${issue.grade} · ${mark.label}` });
+    }),
+  );
+
+  const activeId = activeCell && activeCell.doc === viewDoc ? cellId(active.i, active.c) : null;
+  const missing = activeCell && activeCell.doc === viewDoc && !boxes.some((b) => b.id === activeId);
+
+  function select(i: number, c: number) {
+    setActive({ i, c });
+    setViewDoc(sorted[i].cells[c].doc);
+    // 한 칸 배치(모바일·태블릿)에서는 서류가 위에 있으므로 서류로 올라간다
+    if (typeof window.matchMedia === "function" && window.matchMedia("(max-width: 1199px)").matches) {
+      viewerRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+    }
+  }
+
+  const issueCount = (doc: DocType) => sorted.reduce((n, issue) => n + issue.cells.filter((c) => c.doc === doc).length, 0);
+
+  return (
+    <div className="panel review">
+      <h2>오류 목록 ({issues.length})</h2>
+      <div className="review-grid">
+        <div className="review-doc" ref={viewerRef}>
+          <div className="doc-tabs" role="tablist" aria-label="서류">
+            {files.map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                role="tab"
+                aria-selected={f.doc_type === viewDoc}
+                className={f.doc_type === viewDoc ? "doc-tab active" : "doc-tab"}
+                onClick={() => setViewDoc(f.doc_type)}
+              >
+                {DOC_TYPE_KO[f.doc_type]}
+                {issueCount(f.doc_type) > 0 && <span className="doc-tab-count">{issueCount(f.doc_type)}</span>}
+              </button>
+            ))}
+          </div>
+          {file ? (
+            <DocViewer
+              file={file}
+              boxes={boxes}
+              activeId={activeId}
+              onSelect={(id) => {
+                const [i, c] = id.split(":").map(Number);
+                setActive({ i, c });
+              }}
+              note={missing ? `이 칸(${activeCell!.field})의 위치를 찾지 못했습니다.` : null}
+            />
+          ) : (
+            <p className="empty">이 서류의 그림이 없습니다.</p>
+          )}
+        </div>
+
+        <ul className="review-list" aria-label="오류">
+          {sorted.map((issue, i) => (
+            <li key={`${issue.rule_id}-${i}`} className={active.i === i ? "review-item active" : "review-item"}>
+              <div className="issue-head">
+                <span className={`grade ${GRADE_CLASS[issue.grade]}`}>{issue.grade}</span>
+                <span className="issue-evidence">{issue.evidence}</span>
+              </div>
+              <div className="value-tiles">
+                {issue.cells.map((cell, c) => {
+                  const on = active.i === i && active.c === c;
+                  const suspect = issue.suspect === cell.doc;
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      className={on ? "value-tile active" : "value-tile"}
+                      aria-pressed={on}
+                      onClick={() => select(i, c)}
+                    >
+                      <span className="value-doc">
+                        {DOC_TYPE_KO[cell.doc]}
+                        {suspect && <span className="value-suspect"> · 다른 쪽</span>}
+                      </span>
+                      <span className="value-raw">{cell.raw ?? "못 읽음"}</span>
+                      <code className="value-field">{cell.field}</code>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="issue-meta">
+                규칙 <code>{issue.rule_id}</code> · {CHECKED_BY_KO[issue.checked_by]}
+              </p>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
