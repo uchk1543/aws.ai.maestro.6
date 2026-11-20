@@ -25,9 +25,17 @@ class WmsAdapter(Protocol):
         """등록하고 wms_id를 돌려준다. 같은 idempotency_key면 이미 있는 wms_id를 돌려준다."""
         ...
 
+    def registered_jobs(self, bl_no: str) -> dict[str, str]:
+        """이 B/L 번호로 이미 등록된 건을 {작업 ID: wms_id}로 돌려준다. 없으면 빈 dict (#176)."""
+        ...
+
 
 class RecordNotReady(Exception):
     """WMS에 올릴 기록을 만들 수 없음: B/L 번호가 없거나 둘 이상, 또는 수하인이 비어 있음."""
+
+
+class DuplicateBL(Exception):
+    """같은 B/L이 다른 작업으로 이미 WMS에 있음 (#176). 등록하지 않고 사람에게 넘긴다 (API는 409)."""
 
 
 # WmsRecord.items 한 행의 칸. ERP용 CSV(D4)도 이 칸을 쓴다.
@@ -166,6 +174,8 @@ class DynamoWms:
 
     키 idempotency_key("<B/L 번호>#<작업 ID>"), 칸 wms_id · record(WmsRecord JSON 문자열) · registered_at(초).
     같은 키는 조건부 쓰기(attribute_not_exists)로 한 번만 넣는다. 재시도·동시 요청이 와도 처음 준 wms_id를 돌려준다.
+    같은 B/L의 다른 작업은 Scan(begins_with "<B/L 번호>#")으로 찾는다. 키가 B/L + 작업이라 Query로는 못 찾는다.
+      가상 WMS는 수십 건이라 Scan으로 충분하다. 실제 WMS는 B/L로 찾는 API를 쓰면 된다.
     """
 
     def __init__(self, table):
@@ -188,6 +198,24 @@ class DynamoWms:
         existing = self.table.get_item(Key={"idempotency_key": record.idempotency_key}, ConsistentRead=True)["Item"]
         print(f"[wms] 이미 등록됨 key={record.idempotency_key} wms_id={existing['wms_id']}")
         return existing["wms_id"]
+
+    def registered_jobs(self, bl_no: str) -> dict[str, str]:
+        prefix = f"{bl_no}#"
+        found: dict[str, str] = {}
+        start: dict | None = None
+        while True:
+            page = self.table.scan(
+                FilterExpression="begins_with(idempotency_key, :prefix)",
+                ExpressionAttributeValues={":prefix": prefix},
+                ProjectionExpression="idempotency_key, wms_id",
+                ConsistentRead=True,
+                **({"ExclusiveStartKey": start} if start else {}),
+            )
+            for item in page.get("Items", []):
+                found[item["idempotency_key"][len(prefix):]] = item["wms_id"]
+            start = page.get("LastEvaluatedKey")
+            if not start:
+                return found
 
 
 @cache
@@ -239,7 +267,7 @@ def register_if_ready(
       - 등록했으면 (WmsState(등록됨, auto, wms_id), None). 이미 등록된 건은 그 상태를 그대로 돌려준다.
       - 조건 미달(불일치·확인 필요·HS 대기)이면 (승인 대기, None). 정상 흐름이라 이유를 붙이지 않는다.
       - 조건은 채웠는데 못 했으면 (승인 대기, 이유): 서류 품목 행에 HS 결과가 없음, 기록을 못 만듦(B/L 번호·수하인 없음),
-        가상 WMS 오류. 부르는 쪽이 이유를 단계 기록에 남겨 사람이 보게 한다.
+        같은 B/L이 다른 작업으로 이미 등록됨(#176), 가상 WMS 오류. 부르는 쪽이 이유를 단계 기록에 남겨 사람이 보게 한다.
       예외는 올리지 않는다. 앞 단계(HS 선택 저장 등)를 막지 않으려고서다. 사람이 승인하면 그때 다시 등록하고(D3),
       멱등 키라 두 번 들어가지 않는다.
     """
@@ -260,6 +288,9 @@ def register_if_ready(
         return waiting, str(exc)
     try:
         return push_to_wms(record, adapter=adapter if adapter is not None else dynamo_wms()), None
+    except DuplicateBL as exc:
+        print(f"[wms] 자동 등록 안 함 job={job_id}: {exc}")
+        return waiting, str(exc)
     except Exception as exc:  # 저장소 오류뿐 아니라 설정 오류(WMS_TABLE 없음 등)도 승인 대기로 돌린다
         print(f"[error] WMS 자동 등록 실패 job={job_id} {type(exc).__name__}: {exc}")
         return waiting, f"가상 WMS 오류({type(exc).__name__}). 승인하면 다시 등록합니다"
@@ -278,12 +309,25 @@ def push_to_wms(record: WmsRecord, *, adapter: WmsAdapter) -> WmsState:
     언제: finish_report 직후 can_auto_register가 참이면(by=auto), 또는 사람이 승인하면(by=human).
     받는 것: record(멱등 키 포함, make_record로 만든다), adapter(Lambda에서는 dynamo_wms()).
     반환: WmsState(status='등록됨', by, wms_id). 같은 멱등 키로 다시 부르면 처음 받은 wms_id가 그대로 온다.
-    실패: 멱등 키가 "<B/L 번호>#<작업 ID>"가 아니면 ValueError (재시도해도 한 번만 들어가야 해서). 저장소 오류는 그대로 올린다.
+    실패: 멱등 키가 "<B/L 번호>#<작업 ID>"가 아니면 ValueError (재시도해도 한 번만 들어가야 해서).
+      같은 B/L이 다른 작업으로 이미 있으면 DuplicateBL (#176. 서류를 고쳐 다시 올린 건이 두 번 들어가지 않게).
+      이 작업이 이미 등록돼 있으면 재시도로 보고 막지 않는다. 저장소 오류는 그대로 올린다.
+    남은 틈: 찾기(registered_jobs)와 등록(register) 사이가 원자적이지 않아, 서로 다른 작업이 같은 B/L을
+      정확히 동시에 등록하면 둘 다 들어갈 수 있다. 가상 WMS·데모 규모에서는 두고, 실제 WMS에 붙일 때는
+      어댑터가 B/L 단위 조건부 쓰기(또는 WMS 쪽 중복 거절)로 막는다.
     """
     print(f"[tool] push_to_wms key={record.idempotency_key} by={record.by}")
     expected = idempotency_key(record.bl_no, record.job_id)
     if record.idempotency_key != expected:
         raise ValueError(f"멱등 키가 B/L 번호 + 작업 ID와 다릅니다: {record.idempotency_key} (기대: {expected})")
+    jobs = adapter.registered_jobs(record.bl_no)
+    others = {job: wms_id for job, wms_id in jobs.items() if job != record.job_id}
+    if others and record.job_id not in jobs:
+        listed = ", ".join(f"{job}({wms_id})" for job, wms_id in sorted(others.items()))
+        raise DuplicateBL(
+            f"B/L {record.bl_no}은 이미 다른 작업으로 WMS에 등록돼 있습니다: {listed}. "
+            "같은 화물이 두 번 들어가지 않게 등록하지 않았습니다. 먼저 등록한 건을 확인해 주세요"
+        )
     wms_id = adapter.register(record)
     return WmsState(status="등록됨", by=record.by, wms_id=wms_id)
 

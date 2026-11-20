@@ -374,6 +374,8 @@ class HSResult(_Strict):
     by: HSBy | None = Field(default=None, description="확정한 경로. 확정 전이면 null")
     hs_code: str | None = Field(default=None, description="확정된 10자리 HSK. 확정 전이면 null")
     candidates: list[HSCandidate] = Field(default_factory=list, description="후보 최대 3개")
+    item_name: str | None = Field(default=None, description="그 행의 품명(서류에 적힌 글자). 못 읽었으면 null. 화면이 '1행 · 품명'으로 보여 준다")
+    doc_hs_code: str | None = Field(default=None, description="서류에 적힌 HS(적힌 그대로. 예: '9401.61'). 서류에 없으면 null")
 
 
 class DeclarationField(_Strict):

@@ -500,7 +500,8 @@ def approve_job(job_id: str, body) -> dict:
     언제: '확인 필요'가 남은 건을 사람이 화면에서 보고 승인할 때 (agent-design.md 8번 예외). 모델 호출 없음.
     받는 것: {"approver"}: 승인자 이름. 공백만이면 안 되고 50자까지. 단계 기록에 남긴다.
     반환: 200 {"wms": {"status", "wms_id"}} / 400 요청 형식 / 404 없는 작업
-      / 409 {"error"}: 불일치가 남음, 승인 대기 중이 아님, 서류 기록이 없음, B/L 번호·수하인이 없어 기록을 못 만듦
+      / 409 {"error"}: 불일치가 남음, 승인 대기 중이 아님, 서류 기록이 없음, B/L 번호·수하인이 없어 기록을 못 만듦,
+        같은 B/L이 다른 작업으로 이미 등록됨(#176. 이때만 단계 기록에 이유를 한 줄 남긴다. 같은 이유면 다시 남기지 않는다)
       / 502 가상 WMS 저장 실패 (작업은 그대로라 다시 승인하면 된다).
     이미 등록된 작업이면 다시 등록하지 않고 그 상태를 돌려준다. WMS 쪽도 멱등 키라 재시도해도 한 번만 들어간다.
     저장: result.wms = {등록됨, human, wms_id}, status = done, steps에 push_to_wms 한 줄과 mark_registered 한 줄(E3).
@@ -535,6 +536,14 @@ def approve_job(job_id: str, body) -> dict:
     print(f"[api] approve job={job_id}")
     try:
         state = wms.push_to_wms(record, adapter=wms.dynamo_wms())
+    except wms.DuplicateBL as exc:  # 같은 B/L이 다른 작업으로 이미 있다 (#176). 작업은 승인 대기 그대로, 이유만 남긴다
+        reason = str(exc)
+        print(f"[api] approve job={job_id} 등록 안 함: {reason}")
+        # 막힌 승인을 다시 눌러도 같은 이유면 단계 기록에는 한 줄만 둔다 (승인자가 달라도). 409는 매번 돌려준다
+        if not any(s.tool == "push_to_wms" and not s.ok and s.summary.endswith(reason) for s in job.steps):
+            job.steps.append(Step(tool="push_to_wms", summary=f"사람 승인({approver}) 했지만 WMS에 등록하지 않음: {reason}", ok=False))
+            save_job(job, keep=item)
+        return _error(409, reason)
     except (BotoCoreError, ClientError) as exc:
         print(f"[error] WMS 등록 실패 job={job_id} {type(exc).__name__}: {exc}")
         return _error(502, "가상 WMS에 등록하지 못했습니다. 잠시 뒤 다시 승인해 주세요 (같은 건은 한 번만 들어갑니다)")
