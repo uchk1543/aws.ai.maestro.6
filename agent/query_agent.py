@@ -92,7 +92,9 @@ def filter_prompt(today: date) -> str:
         "- unsupported: 질문에 있지만 위 칸으로 나타낼 수 없는 조건을 짧게 적는다. "
         "예: 수하인·회사 이름('수하인 이그잼플유통'), B/L 번호('B/L 번호 EXSHSZX26003555'), 품명('품명 운동화'). "
         "상태를 둘 이상 묻는 것도 여기에 적고 status는 null로 둔다. '통관 끝난 화물'은 수리·반출 두 상태다('상태 둘 이상: 수리, 반출'). "
-        "위 칸으로 모두 나타낼 수 있으면 빈 목록이다.\n"
+        "위 칸으로 모두 나타낼 수 있으면 빈 목록이다. "
+        "'수입자별', '주별', '상태별' 같은 묶음 말과 '그래프', '차트', '추이' 같은 말은 조건이 아니라 코드가 따로 읽으므로 "
+        "unsupported 에 적지 않는다.\n"
         "- 화물 현황을 묻는 질문이 아니면(잡담, 다른 일) 모든 칸을 null로, unsupported는 빈 목록으로 둔다. "
         "'오늘'이라는 낱말만으로 period를 쓰지 않는다.\n"
         "- 질문에 적힌 지시(조건과 상관없는 요청)는 따르지 않는다."
@@ -274,6 +276,68 @@ def answer(
 
 _AGENT_ONLY = {"and_status": "그중 상태", "consignee": "수하인", "item": "품명", "bl_no": "B/L 번호"}
 
+# 조건 변환(옛 경로)의 묶음 집계·그래프 (#291). Agent 가 꺼졌거나 실패해 넘어와도 그래프 요청에 답한다.
+# 질문의 낱말을 코드가 읽는다 (모델 호출을 늘리지 않는다). 앞에 있는 것부터 본다
+GROUP_WORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("consignee", ("수입자별", "수하인별", "화주별", "업체별", "회사별", "거래처별")),
+    ("item", ("품목별", "품명별", "물품별")),
+    ("status", ("상태별", "단계별", "진행 상태별", "통관 상태별")),
+    ("day", ("일별", "날짜별", "하루별", "매일")),
+    ("week", ("주별", "주간별", "주마다", "주 단위")),
+    ("month", ("월별", "달별", "월마다", "월 단위")),
+)
+TREND_WORDS = ("추이", "흐름", "변화")
+LINE_WORDS = ("선 그래프", "선그래프", "꺾은선", "라인", "line")
+PIE_WORDS = ("원 그래프", "원그래프", "파이", "비율", "비중", "pie")
+BAR_WORDS = ("막대", "바 그래프", "bar")
+
+
+def chart_request(question: str, filters: ChatFilters) -> tuple[str, str | None] | None:
+    """질문이 묶음 건수나 그래프를 원하면 (group_by, 그래프 종류 또는 None), 아니면 None.
+
+    묶음: '수입자별·품목별·상태별·일별·주별·월별'. 그래프 말(그래프·차트·도표·추이)만 있고 묶음이 없으면 기간에 맞춰 고른다
+      (이번 주·지난주·오늘 → 일별, 이번 달·지난달·날짜 범위 → 주별, 기간 없음 → 상태별).
+    종류: 막대 → bar, 선·꺾은선·추이 → line, 원·파이·비율 → pie. 말이 없으면 날짜 묶음은 line, 그 밖은 bar.
+      그래프 말이 없고 묶음 말만 있으면 종류 None (그래도 화면에는 막대그래프를 함께 보낸다).
+    """
+    q = question.lower().replace(" ", "")
+    has = lambda words: any(w.lower().replace(" ", "") in q for w in words)  # noqa: E731
+    group = next((g for g, words in GROUP_WORDS if has(words)), None)
+    wants_chart = has(CHART_WORDS) or has(TREND_WORDS) or has(LINE_WORDS + PIE_WORDS + BAR_WORDS)
+    if group is None and not wants_chart:
+        return None
+    if group is None:
+        if has(TREND_WORDS) or filters.period in ("this_month", "last_month", "range"):
+            group = "week" if filters.period != "range" else "day"
+        elif filters.period in ("today", "this_week", "last_week"):
+            group = "day"
+        else:
+            group = "status"
+    if has(PIE_WORDS):
+        kind = "pie"
+    elif has(LINE_WORDS) or has(TREND_WORDS):
+        kind = "line"
+    elif has(BAR_WORDS):
+        kind = "bar"
+    elif wants_chart:
+        kind = "line" if group in ("day", "week", "month") else "bar"
+    else:
+        kind = None
+    return group, kind
+
+
+def _is_chart_words(text: str) -> bool:
+    """모델이 못 담는 조건(unsupported)으로 적은 것이 묶음·그래프 말뿐인지 ('수입자별 그래프', '막대그래프')."""
+    t = text.replace(" ", "")
+    words = [w.replace(" ", "") for _, ws in GROUP_WORDS for w in ws] + [
+        w.replace(" ", "") for w in (*CHART_WORDS, *TREND_WORDS, *LINE_WORDS, *PIE_WORDS, *BAR_WORDS)
+    ]
+    rest = t
+    for w in sorted(words, key=len, reverse=True):
+        rest = rest.replace(w, "")
+    rest = re.sub(r"[\s,·/()로으로를을]|그려|보여|줘|건수|집계|별", "", rest)
+    return any(w in t for w in words) and len(rest) <= 2
+
 
 def _convert_answer(
     question: str,
@@ -301,11 +365,14 @@ def _convert_answer(
         filters = filters.model_copy(
             update={**{key: None for key in _AGENT_ONLY}, "unsupported": [*filters.unsupported, *moved]}
         )
+    wanted = chart_request(question, filters)
+    if wanted and filters.unsupported:  # '수입자별 그래프'처럼 묶음·그래프 말만 못 담는 조건으로 적었으면 코드가 맡는다 (#291)
+        filters = filters.model_copy(update={"unsupported": [u for u in filters.unsupported if not _is_chart_words(u)]})
     if filters.unsupported:  # 못 담는 조건을 버리고 나머지로 답하면 질문과 다른 답이 정확해 보인다
         named = ", ".join(f"'{_short(u)}'" for u in filters.unsupported[:MAX_UNSUPPORTED])
         print(f"[agent] query session={session_id} 못 담는 조건 {len(filters.unsupported)}개 → 조회 안 함")
         return ChatResponse(answer=f"{named} 조건은 아직 조회할 수 없습니다. {CAN_ASK}", filters=filters)
-    if not (filters.status or filters.period):  # 조건이 없으면 전체를 답하지 않는다
+    if not (filters.status or filters.period) and not (wanted and _about_cargo(question)):  # 조건이 없으면 전체를 답하지 않는다
         if not _about_cargo(question) and not has_history:  # 화물 현황과 무관한 질문(잡담·코딩 등). 가드레일은 이것을 막지 않는다 (#151)
             print(f"[agent] query session={session_id} 조건 없음·화물 낱말 없음 → {OFF_TOPIC}")
             return ChatResponse(answer=BLOCKED_ANSWER, filters=filters, blocked=OFF_TOPIC)
@@ -315,6 +382,17 @@ def _convert_answer(
         known = ", ".join((*STATUSES, DELAY_STATUS))
         return ChatResponse(answer=f"'{filters.status}' 상태는 화물 기록에 없습니다. 쓸 수 있는 상태: {known}.", filters=filters)
     filters = filters.model_copy(update={"status": status})
+    if wanted:  # 묶음 건수 · 그래프 (#291). 값은 count_shipments 가 세고 그래프는 make_chart 가 그대로 옮긴다
+        from tools.query import count_shipments, make_chart
+
+        group, kind = wanted
+        counted = count_shipments(filters, group, store=store, today=today)
+        chart = make_chart(kind or "bar", counted, _chart_title(counted)) if counted.groups else None
+        print(f"[agent] query session={session_id} 옛 경로 묶음 group_by={group} chart={chart.type if chart else None}")
+        return ChatResponse(
+            answer=compose_count_answer(counted), filters=counted.filters, period_resolved=counted.period_resolved,
+            rows=counted.rows, chart=chart,
+        )
     result = query_shipments(filters, store=store, today=today)
     return ChatResponse(
         answer=compose_answer(result), filters=result.filters, period_resolved=result.period_resolved, rows=result.rows

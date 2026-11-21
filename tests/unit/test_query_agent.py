@@ -201,3 +201,69 @@ def test_chat_route_rejects_bad_body(monkeypatch):
     assert call_chat(monkeypatch, {"session_id": "s1", "message": "  "})[0] == 400
     assert call_chat(monkeypatch, {"session_id": "s1", "message": "가" * 501})[0] == 400
     assert call_chat(monkeypatch, {"session_id": 3, "message": "오늘 입항"})[0] == 400
+
+
+# ---------------------------------------------------------------------------
+# #291 조건 변환(옛 경로)에서도 묶음 건수·그래프 (Agent 가 꺼졌거나 실패해 넘어와도)
+# ---------------------------------------------------------------------------
+from agent.query_agent import chart_request  # noqa: E402
+from tools.query import count_shipments  # noqa: E402
+
+CHART_SET = list(csv.DictReader((ROOT / "eval/queries_chart.csv").open(encoding="utf-8", newline="")))
+
+
+@pytest.mark.parametrize(
+    ("question", "period", "expected"),
+    [
+        ("이번 달 수입자별 통관 지연 건수를 막대그래프로 보여줘", "this_month", ("consignee", "bar")),
+        ("이번 달 통관 지연 주별 추이를 선 그래프로 보여줘", "this_month", ("week", "line")),
+        ("지금 통관 상태별 화물 비율을 원 그래프로 그려줘", None, ("status", "pie")),
+        ("지난주 입항 화물 그래프로 보여줘", "last_week", ("day", "line")),
+        ("이번 달 통관 지연 그래프", "this_month", ("week", "line")),
+        ("품목별 건수", None, ("item", None)),
+        ("이번 주 통관 지연 건은?", "this_week", None),
+    ],
+)
+def test_chart_request_reads_group_and_kind(question, period, expected):
+    assert chart_request(question, ChatFilters(period=period)) == expected
+
+
+@pytest.mark.parametrize("row", CHART_SET, ids=[r["query_id"] for r in CHART_SET])
+def test_old_path_draws_chart_set(row):
+    args = json.loads(row["tool_args"])
+    filters = {k: v for k, v in args.items() if k != "group_by"}
+    res = answer(row["question"], "s1", store=STORE, today=TODAY, parser=parser_of(**filters), guard=lambda q: None)
+    if not args:  # 집계할 수 없는 요청: 화물 낱말이 없으면 지금처럼 무관한 질문으로 막는다 (#289 규칙 그대로)
+        assert res.chart is None and res.blocked == "무관한 질문"
+        return
+    counted = count_shipments(ChatFilters.model_validate(filters), args["group_by"], store=STORE, today=TODAY)
+    assert res.chart is not None and res.chart.type == row["chart_type"]
+    assert res.chart.points == counted.groups
+    assert [[p.label, p.value] for p in res.chart.points] == json.loads(row["expected_points"])
+    assert len(res.rows) == counted.total
+
+
+def test_old_path_drops_chart_words_from_unsupported():
+    # 배포본(11/21)에서 본 모습: 모델이 '수입자별 그래프'를 못 담는 조건으로 적어 조회조차 하지 않았다
+    parser = parser_of(status="통관 지연", period="this_month", unsupported=["수입자별 그래프"])
+    res = answer("이번 달 수입자별 통관 지연 그래프", "s1", store=STORE, today=TODAY, parser=parser, guard=lambda q: None)
+    assert res.filters.unsupported == [] and res.chart is not None and res.chart.type == "bar"
+    assert res.answer.startswith("이번 달(11/1~11/30) 통관 지연은 모두 11건입니다. 수입자별: ")
+
+
+def test_old_path_keeps_real_unsupported_conditions():
+    parser = parser_of(unsupported=["수하인 이그잼플유통"])
+    res = answer("이그잼플유통 화물만 보여줘", "s1", store=STORE, today=TODAY, parser=parser, guard=lambda q: None)
+    assert res.chart is None and "조건은 아직 조회할 수 없습니다" in res.answer
+    parser = parser_of(period="this_month", unsupported=["수입자별 그래프", "수하인 이그잼플유통"])
+    res = answer("이번 달 이그잼플유통 수입자별 그래프", "s1", store=STORE, today=TODAY, parser=parser, guard=lambda q: None)
+    assert res.chart is None and res.filters.unsupported == ["수하인 이그잼플유통"]
+
+
+def test_old_path_group_words_without_chart_still_send_bar_chart():
+    res = answer("이번 달 품목별 입항 건수", "s1", store=STORE, today=TODAY, parser=parser_of(period="this_month"), guard=lambda q: None)
+    assert res.chart is not None and res.chart.type == "bar" and res.answer.startswith("이번 달(11/1~11/30) 입항한 화물은 모두")
+
+
+def test_old_path_prompt_says_group_words_are_not_unsupported():
+    assert "unsupported 에 적지 않는다" in filter_prompt(TODAY)
